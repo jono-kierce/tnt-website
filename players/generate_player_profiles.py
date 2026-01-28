@@ -204,7 +204,7 @@ def render_player_qmd(
         image = str(info.iloc[0].get("image", "") or "").strip()
 
     # headline stats
-    matches_played = int(len(matches_df))
+    matches_played_total = int(len(matches_df))
     wins = int((matches_df["Result"] == "W").sum())
     losses = int((matches_df["Result"] == "L").sum())
     win_rate = (wins / (wins + losses) * 100) if (wins + losses) > 0 else None
@@ -261,7 +261,7 @@ def render_player_qmd(
             f"| {season} | {matches_played} | {season_wins} | {team or '—'} | {partner_md} | {mvp_votes} |"
         )
 
-    season_summary_md = "\n".join(season_summary_lines) if matches_played else "> No matches found."
+    season_summary_md = "\n".join(season_summary_lines) if matches_played_total else "> No matches found."
 
     stats_lines = []
     stats_lines.append(
@@ -291,7 +291,7 @@ def render_player_qmd(
             )
         )
 
-    season_stats_md = "\n".join(stats_lines) if matches_played else "> No matches found."
+    season_stats_md = "\n".join(stats_lines) if matches_played_total else "> No matches found."
 
     for _, r in matches_df.iterrows():
         season = r.get("Season", "")
@@ -318,7 +318,7 @@ def render_player_qmd(
             f"| {season} | {rnd} | {match_link} | {partner} | {opps_md} | {res} | {score} | {mvp_votes} | {fill} |"
         )
 
-    matches_table_md = "\n".join(table_lines) if matches_played else "> No matches found."
+    matches_table_md = "\n".join(table_lines) if matches_played_total else "> No matches found."
 
     # Write QMD
     qmd = f"""---
@@ -343,7 +343,7 @@ format:
 
 | Matches | Record | MVP Votes | BOGs |
 |---|---|---|---|
-| **{matches_played}**<br>fill-ins: {fillin_count} | **{wins}-{losses}**<br>win rate: {fmt_pct(win_rate)} | **{votes_total}** | **{bog_count}** |
+| **{matches_played_total}**<br>fill-ins: {fillin_count} | **{wins}-{losses}**<br>win rate: {fmt_pct(win_rate)} | **{votes_total}** | **{bog_count}** |
 
 ## Season Summary
 
