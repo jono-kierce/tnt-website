@@ -248,10 +248,26 @@ format:
 
 ## Snapshot
 
-- **Matches:** {matches_played} (fill-ins: {fillin_count})
-- **Record:** {wins}-{losses} (win rate: {fmt_pct(win_rate)})
-- **Votes:** {votes_total}
-- **BOGs:** {bog_count}
+<div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+  <div style="flex: 1 1 160px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0.75rem;">
+    <div style="font-size: 0.8rem; text-transform: uppercase; color: #57606a; letter-spacing: 0.04em;">Matches</div>
+    <div style="font-size: 1.4rem; font-weight: 600;">{matches_played}</div>
+    <div style="color: #57606a;">Fill-ins: {fillin_count}</div>
+  </div>
+  <div style="flex: 1 1 160px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0.75rem;">
+    <div style="font-size: 0.8rem; text-transform: uppercase; color: #57606a; letter-spacing: 0.04em;">Record</div>
+    <div style="font-size: 1.4rem; font-weight: 600;">{wins}-{losses}</div>
+    <div style="color: #57606a;">Win rate: {fmt_pct(win_rate)}</div>
+  </div>
+  <div style="flex: 1 1 160px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0.75rem;">
+    <div style="font-size: 0.8rem; text-transform: uppercase; color: #57606a; letter-spacing: 0.04em;">Votes</div>
+    <div style="font-size: 1.4rem; font-weight: 600;">{votes_total}</div>
+  </div>
+  <div style="flex: 1 1 160px; border: 1px solid #d0d7de; border-radius: 8px; padding: 0.75rem;">
+    <div style="font-size: 0.8rem; text-transform: uppercase; color: #57606a; letter-spacing: 0.04em;">BOGs</div>
+    <div style="font-size: 1.4rem; font-weight: 600;">{bog_count}</div>
+  </div>
+</div>
 
 ## Matches
 
