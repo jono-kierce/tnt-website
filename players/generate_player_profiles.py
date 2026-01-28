@@ -235,8 +235,8 @@ def render_player_qmd(
     season_header = "Matches Played [Filled in]" if fillin_matches > 0 else "Matches Played"
 
     season_summary_lines = []
-    season_summary_lines.append(f"| Season | {season_header} | Team | Partner | MVP Votes |")
-    season_summary_lines.append("|---:|---:|---|---|---:|")
+    season_summary_lines.append(f"| Season | {season_header} | Wins | Team | Partner | MVP Votes |")
+    season_summary_lines.append("|---:|---:|---:|---|---|---:|")
 
     for season, season_df in matches_df.groupby("Season", dropna=True):
         season_df = season_df.copy()
@@ -254,10 +254,11 @@ def render_player_qmd(
         fillin_count = int(season_df["Fill-in"].sum())
         matches_played = f"{team_matches} [{fillin_count}]" if fillin_count > 0 else f"{team_matches}"
 
+        season_wins = int((season_df.loc[~season_df["Fill-in"], "Result"] == "W").sum())
         mvp_votes = int(season_df.loc[~season_df["Fill-in"], "Votes"].sum())
 
         season_summary_lines.append(
-            f"| {season} | {matches_played} | {team or '—'} | {partner_md} | {mvp_votes} |"
+            f"| {season} | {matches_played} | {season_wins} | {team or '—'} | {partner_md} | {mvp_votes} |"
         )
 
     season_summary_md = "\n".join(season_summary_lines) if matches_played else "> No matches found."
