@@ -72,6 +72,20 @@ def fmt_score(score_for: int | None, score_against: int | None) -> str:
         return "—"
     return f"{score_for}–{score_against}"
 
+def most_common_value(values) -> str:
+    if values is None:
+        return ""
+    series = pd.Series(list(values)).dropna().astype(str)
+    series = series[series.str.strip().astype(bool)]
+    if series.empty:
+        return ""
+    return series.value_counts().index[0]
+
+def fmt_per_match(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return f"{value:.1f}"
+
 
 # ---------------- core logic ----------------
 
@@ -136,7 +150,16 @@ def build_match_rows_for_player(df: pd.DataFrame, player_name: str) -> pd.DataFr
 
         # Votes / BOG
         votes = to_int(me.get("votes"))
+        if votes is None:
+            votes = to_int(me.get("MVP Votes"))
         bog = str(me.get("BOG?", "")).strip().lower() == "true"
+
+        # Player stats
+        winners = to_int(me.get("Winners"))
+        unforced_errors = to_int(me.get("Unforced Errors"))
+        aces = to_int(me.get("Aces"))
+        errors_forced = to_int(me.get("Errors Forced"))
+        double_faults = to_int(me.get("Double Faults"))
 
         # Fill-in flag for this match for this player (if their raw name contained fill-in)
         fill_in_here = bool(me.get("is_fill_in", False))
@@ -154,6 +177,11 @@ def build_match_rows_for_player(df: pd.DataFrame, player_name: str) -> pd.DataFr
             "Fill-in": fill_in_here,
             "Votes": votes if votes is not None else 0,
             "BOG": bog,
+            "Winners": winners,
+            "Unforced Errors": unforced_errors,
+            "Aces": aces,
+            "Errors Forced": errors_forced,
+            "Double Faults": double_faults,
         })
 
     out = pd.DataFrame(rows)
@@ -202,6 +230,67 @@ def render_player_qmd(
         if not p:
             return "—"
         return md_link(p, f"{slugify(p)}.qmd")
+
+    fillin_matches = matches_df["Fill-in"].sum() if "Fill-in" in matches_df.columns else 0
+    season_header = "Matches Played [Filled in]" if fillin_matches > 0 else "Matches Played"
+
+    season_summary_lines = []
+    season_summary_lines.append(f"| Season | {season_header} | Team | Partner | MVP Votes |")
+    season_summary_lines.append("|---:|---:|---|---|---:|")
+
+    for season, season_df in matches_df.groupby("Season", dropna=True):
+        season_df = season_df.copy()
+        season_df = season_df.sort_values("Round", na_position="last")
+
+        non_fill_df = season_df[~season_df["Fill-in"]]
+        team_pool = non_fill_df["Team"] if not non_fill_df.empty else season_df["Team"]
+        partner_pool = non_fill_df["Partner"] if not non_fill_df.empty else season_df["Partner"]
+
+        team = most_common_value(team_pool)
+        partner = most_common_value(partner_pool)
+        partner_md = player_link(partner) if partner else "—"
+
+        team_matches = int((~season_df["Fill-in"]).sum())
+        fillin_count = int(season_df["Fill-in"].sum())
+        matches_played = f"{team_matches} [{fillin_count}]" if fillin_count > 0 else f"{team_matches}"
+
+        mvp_votes = int(season_df.loc[~season_df["Fill-in"], "Votes"].sum())
+
+        season_summary_lines.append(
+            f"| {season} | {matches_played} | {team or '—'} | {partner_md} | {mvp_votes} |"
+        )
+
+    season_summary_md = "\n".join(season_summary_lines) if matches_played else "> No matches found."
+
+    stats_lines = []
+    stats_lines.append(
+        "| Season | Winners Per Match | Unforced Errors Per Match | Aces Per Match | Errors Forced Per Game | Double Faults Per Match |"
+    )
+    stats_lines.append("|---:|---:|---:|---:|---:|---:|")
+
+    for season, season_df in matches_df.groupby("Season", dropna=True):
+        count = len(season_df)
+        if count == 0:
+            winners_pm = unforced_pm = aces_pm = errors_forced_pm = double_faults_pm = None
+        else:
+            winners_pm = pd.to_numeric(season_df["Winners"], errors="coerce").fillna(0).sum() / count
+            unforced_pm = pd.to_numeric(season_df["Unforced Errors"], errors="coerce").fillna(0).sum() / count
+            aces_pm = pd.to_numeric(season_df["Aces"], errors="coerce").fillna(0).sum() / count
+            errors_forced_pm = pd.to_numeric(season_df["Errors Forced"], errors="coerce").fillna(0).sum() / count
+            double_faults_pm = pd.to_numeric(season_df["Double Faults"], errors="coerce").fillna(0).sum() / count
+
+        stats_lines.append(
+            "| {season} | {winners} | {unforced} | {aces} | {errors_forced} | {double_faults} |".format(
+                season=season,
+                winners=fmt_per_match(winners_pm),
+                unforced=fmt_per_match(unforced_pm),
+                aces=fmt_per_match(aces_pm),
+                errors_forced=fmt_per_match(errors_forced_pm),
+                double_faults=fmt_per_match(double_faults_pm),
+            )
+        )
+
+    season_stats_md = "\n".join(stats_lines) if matches_played else "> No matches found."
 
     for _, r in matches_df.iterrows():
         season = r.get("Season", "")
@@ -254,6 +343,14 @@ format:
 | Matches | Record | MVP Votes | BOGs |
 |---|---|---|---|
 | **{matches_played}**<br>fill-ins: {fillin_count} | **{wins}-{losses}**<br>win rate: {fmt_pct(win_rate)} | **{votes_total}** | **{bog_count}** |
+
+## Season Summary
+
+{season_summary_md}
+
+## Season Stats
+
+{season_stats_md}
 
 ## Matches
 
