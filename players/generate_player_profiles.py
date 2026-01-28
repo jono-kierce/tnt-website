@@ -248,10 +248,9 @@ format:
 
 ## Snapshot
 
-- **Matches:** {matches_played} (fill-ins: {fillin_count})
-- **Record:** {wins}-{losses} (win rate: {fmt_pct(win_rate)})
-- **Votes:** {votes_total}
-- **BOGs:** {bog_count}
+| Matches | Record | Votes | BOGs |
+|---|---|---|---|
+| **{matches_played}**<br>fill-ins: {fillin_count} | **{wins}-{losses}**<br>win rate: {fmt_pct(win_rate)} | **{votes_total}** | **{bog_count}** |
 
 ## Matches
 
