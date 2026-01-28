@@ -1,4 +1,4 @@
-﻿match_id,Team,Opponent,Season,Round,Player,Aces,Unforced Errors,Forced Errors,Double Faults,Winners,Errors Forced,win?,Team Score,Opponent Score,votes,BOG?,
+﻿match_id,Team,Opponent,Season,Round,Player,Aces,Unforced Errors,Forced Errors,Double Faults,Winners,Errors Forced,win?,Team Score,Opponent Score,MVP Votes,BOG?,
 s1r1navpin,Pink,Navy,1,1,Emerson Wise,1,7,2,2,3,,TRUE,5,5,0,FALSE,
 s1r1navpin,Pink,Navy,1,1,Jack Raines,0,6,6,2,3,,TRUE,5,5,1,FALSE,
 s1r1navpin,Navy,Pink,1,1,Will Burgess,1,5,5,3,4,,FALSE,5,5,2,TRUE,

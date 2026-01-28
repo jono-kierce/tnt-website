@@ -195,8 +195,8 @@ def render_player_qmd(
     # - match page: ../matches/{match_id}.qmd
     # - partner/opponents: {slug}.qmd (same folder)
     table_lines = []
-    table_lines.append("| Season | Round | Match | Partner | Opponents | Result | Score | Fill-in |")
-    table_lines.append("|---:|---:|---|---|---|:---:|:---:|:---:|")
+    table_lines.append("| Season | Round | Match | Partner | Opponents | Result | Score | MVP Votes | Fill-in |")
+    table_lines.append("|---:|---:|---|---|---|:---:|:---:|---:|:---:|")
 
     def player_link(p: str) -> str:
         if not p:
@@ -221,9 +221,12 @@ def render_player_qmd(
 
         res = r.get("Result", "—")
         score = r.get("Score", "—")
+        mvp_votes = r.get("Votes", 0)
         fill = "✓" if bool(r.get("Fill-in", False)) else ""
 
-        table_lines.append(f"| {season} | {rnd} | {match_link} | {partner} | {opps_md} | {res} | {score} | {fill} |")
+        table_lines.append(
+            f"| {season} | {rnd} | {match_link} | {partner} | {opps_md} | {res} | {score} | {mvp_votes} | {fill} |"
+        )
 
     matches_table_md = "\n".join(table_lines) if matches_played else "> No matches found."
 
@@ -248,7 +251,7 @@ format:
 
 ## Snapshot
 
-| Matches | Record | Votes | BOGs |
+| Matches | Record | MVP Votes | BOGs |
 |---|---|---|---|
 | **{matches_played}**<br>fill-ins: {fillin_count} | **{wins}-{losses}**<br>win rate: {fmt_pct(win_rate)} | **{votes_total}** | **{bog_count}** |
 

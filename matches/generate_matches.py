@@ -85,7 +85,7 @@ def build_stats_table(
     # Determine which stat columns exist and have any non-null values
     exclude = {
         "match_id", "Team", "Opponent", "Season", "Round", "Player",
-        "win?", "Team Score", "Opponent Score", "Unnamed: 17", "bog?"
+        "win?", "Team Score", "Opponent Score", "Unnamed: 17", "BOG?"
     }
     stat_cols = [c for c in g.columns if c not in exclude]
 
