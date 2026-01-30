@@ -240,6 +240,8 @@ def build_finals_rows_for_player(df: pd.DataFrame, player_name: str) -> pd.DataF
         round_name = round_label(me.get("Round", ""))
         score = fmt_tennis_score(me.get("Team Score"), me.get("Opponent Score"))
         final_label = f"{round_name} ({score})" if score != "—" else str(round_name)
+        won = me.get("win?", None)
+        result = "W" if str(won).strip().lower() == "true" else ("L" if str(won).strip().lower() == "false" else "—")
 
         rows.append({
             "Season": season,
@@ -249,6 +251,8 @@ def build_finals_rows_for_player(df: pd.DataFrame, player_name: str) -> pd.DataF
             "Aces": to_int(me.get("Aces")),
             "Errors Forced": to_int(me.get("Errors Forced")),
             "Finals MVP Votes": to_int(me.get("MVP Votes")),
+            "Result": result,
+            "Fill-in": bool(me.get("is_fill_in", False)),
         })
 
     out = pd.DataFrame(rows)
@@ -272,12 +276,18 @@ def render_player_qmd(
         image = str(info.iloc[0].get("image", "") or "").strip()
 
     # headline stats
-    matches_played_total = int(len(matches_df))
+    finals_matches = int(len(finals_df)) if finals_df is not None else 0
+    matches_played_total = int(len(matches_df)) + finals_matches
     wins = int((matches_df["Result"] == "W").sum())
     losses = int((matches_df["Result"] == "L").sum())
+    if finals_df is not None and not finals_df.empty and "Result" in finals_df.columns:
+        wins += int((finals_df["Result"] == "W").sum())
+        losses += int((finals_df["Result"] == "L").sum())
     win_rate = (wins / (wins + losses) * 100) if (wins + losses) > 0 else None
 
     fillin_count = int(matches_df["Fill-in"].sum()) if "Fill-in" in matches_df.columns else 0
+    if finals_df is not None and not finals_df.empty and "Fill-in" in finals_df.columns:
+        fillin_count += int(finals_df["Fill-in"].sum())
     votes_total = int(matches_df["Votes"].sum()) if "Votes" in matches_df.columns else 0
     bog_count = int(matches_df["BOG"].sum()) if "BOG" in matches_df.columns else 0
     finals_votes_total = int(finals_df["Finals MVP Votes"].sum()) if finals_df is not None and not finals_df.empty else 0
