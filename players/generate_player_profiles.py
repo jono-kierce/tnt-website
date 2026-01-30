@@ -72,6 +72,45 @@ def fmt_score(score_for: int | None, score_against: int | None) -> str:
         return "—"
     return f"{score_for}–{score_against}"
 
+def parse_score_list(value) -> list[str] | None:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return [item.strip() for item in text.split(",") if item.strip()]
+
+def fmt_tennis_score(team_score, opp_score) -> str:
+    team_list = parse_score_list(team_score)
+    opp_list = parse_score_list(opp_score)
+    if not team_list or not opp_list:
+        return "—"
+    pairs = []
+    for i in range(max(len(team_list), len(opp_list))):
+        t_val = team_list[i] if i < len(team_list) else "?"
+        o_val = opp_list[i] if i < len(opp_list) else "?"
+        pairs.append(f"{t_val}–{o_val}")
+    return ", ".join(pairs)
+
+def fmt_stat(value) -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, float) and pd.isna(value):
+        return "—"
+    text = str(value).strip()
+    if not text:
+        return "—"
+    return text
+
+def round_label(value: str) -> str:
+    mapping = {
+        "QF": "Quarter Final",
+        "SF": "Semi Final",
+        "GF": "Championship Final",
+    }
+    key = str(value or "").strip().upper()
+    return mapping.get(key, value)
+
 def most_common_value(values) -> str:
     if values is None:
         return ""
@@ -188,10 +227,39 @@ def build_match_rows_for_player(df: pd.DataFrame, player_name: str) -> pd.DataFr
     out = out.sort_values(["Season", "Round"], ascending=[True, True], na_position="last")
     return out
 
+def build_finals_rows_for_player(df: pd.DataFrame, player_name: str) -> pd.DataFrame:
+    pdf = df[df["canonical_player"] == player_name].copy()
+    if pdf.empty:
+        return pdf
+
+    pdf["Season_num"] = pd.to_numeric(pdf["Season"], errors="coerce")
+    rows = []
+    for match_id, g in pdf.groupby("match_id", sort=False):
+        me = g.iloc[0]
+        season = to_int(me.get("Season"))
+        round_name = round_label(me.get("Round", ""))
+        score = fmt_tennis_score(me.get("Team Score"), me.get("Opponent Score"))
+        final_label = f"{round_name} ({score})" if score != "—" else str(round_name)
+
+        rows.append({
+            "Season": season,
+            "Final": final_label,
+            "Winners": to_int(me.get("Winners")),
+            "Unforced Errors": to_int(me.get("Unforced Errors")),
+            "Aces": to_int(me.get("Aces")),
+            "Errors Forced": to_int(me.get("Errors Forced")),
+            "Finals MVP Votes": to_int(me.get("MVP Votes")),
+        })
+
+    out = pd.DataFrame(rows)
+    out = out.sort_values(["Season"], ascending=[True], na_position="last")
+    return out
+
 def render_player_qmd(
     player_name: str,
     player_slug: str,
     matches_df: pd.DataFrame,
+    finals_df: pd.DataFrame,
     players_info: pd.DataFrame,
     out_path: Path,
 ) -> None:
@@ -293,6 +361,26 @@ def render_player_qmd(
 
     season_stats_md = "\n".join(stats_lines) if matches_played_total else "> No matches found."
 
+    finals_lines = []
+    finals_lines.append("| Season | Final | Winners | Unforced Errors | Aces | Errors Forced | Finals MVP Votes |")
+    finals_lines.append("|---:|---|---:|---:|---:|---:|---:|")
+
+    if finals_df is not None and not finals_df.empty:
+        for _, r in finals_df.iterrows():
+            finals_lines.append(
+                "| {season} | {final} | {winners} | {unforced} | {aces} | {errors_forced} | {votes} |".format(
+                    season=fmt_stat(r.get("Season")),
+                    final=fmt_stat(r.get("Final")),
+                    winners=fmt_stat(r.get("Winners")),
+                    unforced=fmt_stat(r.get("Unforced Errors")),
+                    aces=fmt_stat(r.get("Aces")),
+                    errors_forced=fmt_stat(r.get("Errors Forced")),
+                    votes=fmt_stat(r.get("Finals MVP Votes")),
+                )
+            )
+
+    finals_table_md = "\n".join(finals_lines) if finals_df is not None and not finals_df.empty else "> No finals matches found."
+
     for _, r in matches_df.iterrows():
         season = r.get("Season", "")
         rnd = r.get("Round", "")
@@ -353,6 +441,10 @@ format:
 
 {season_stats_md}
 
+## Finals Statistics
+
+{finals_table_md}
+
 ## Matches
 
 {matches_table_md}
@@ -363,6 +455,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--match_stats", type=str, default=None,
                         help="Path to match_stats.csv (default: ../data/match_stats.csv relative to this script)")
+    parser.add_argument("--finals_stats", type=str, default=None,
+                        help="Path to match_stats_finals.csv (default: ../data/match_stats_finals.csv relative to this script)")
     parser.add_argument("--players_csv", type=str, default=None,
                         help="Path to players.csv (default: ../data/players.csv relative to this script)")
     parser.add_argument("--outdir", type=str, default=None,
@@ -371,6 +465,7 @@ def main():
 
     here = Path(__file__).resolve().parent
     match_path = Path(args.match_stats) if args.match_stats else (here / ".." / "data" / "match_stats.csv")
+    finals_path = Path(args.finals_stats) if args.finals_stats else (here / ".." / "data" / "match_stats_finals.csv")
     players_path = Path(args.players_csv) if args.players_csv else (here / ".." / "data" / "players.csv")
     out_dir = Path(args.outdir) if args.outdir else (here / ".." / "players")
 
@@ -392,6 +487,18 @@ def main():
     df["is_fill_in"] = canon.apply(lambda t: t[1])
     df["player_slug"] = df["canonical_player"].apply(slugify)
 
+    finals_df = pd.DataFrame()
+    if finals_path.exists():
+        finals_df = pd.read_csv(finals_path)
+        finals_df.columns = [c.strip() for c in finals_df.columns]
+        unnamed_cols = [c for c in finals_df.columns if c.startswith("Unnamed") or not c]
+        if unnamed_cols:
+            finals_df = finals_df.drop(columns=unnamed_cols)
+
+        finals_canon = finals_df["Player"].astype(str).apply(canonical_player_name)
+        finals_df["canonical_player"] = finals_canon.apply(lambda t: t[0])
+        finals_df["is_fill_in"] = finals_canon.apply(lambda t: t[1])
+
     players_info = load_players_csv(players_path)
 
     # Ensure players.csv is keyed on canonical names
@@ -404,8 +511,9 @@ def main():
     for pname in unique_players:
         pslug = slugify(pname)
         pmatches = build_match_rows_for_player(df, pname)
+        pfinals = build_finals_rows_for_player(finals_df, pname) if not finals_df.empty else pd.DataFrame()
         out_path = out_dir / f"{pslug}.qmd"
-        render_player_qmd(pname, pslug, pmatches, players_info, out_path)
+        render_player_qmd(pname, pslug, pmatches, pfinals, players_info, out_path)
         n += 1
 
     print(f"Generated {n} player pages in: {out_dir}")
