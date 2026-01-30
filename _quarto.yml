@@ -7,6 +7,8 @@ website:
     left:
       - href: index.qmd
         text: Home
+      - href: leaderboards.qmd
+        text: Leaderboards
       - about.qmd
 
 format:
@@ -16,6 +18,5 @@ format:
       - brand
     css: styles.css
     toc: true
-
 
 

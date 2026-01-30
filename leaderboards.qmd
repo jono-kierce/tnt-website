@@ -1,0 +1,148 @@
+---
+title: "Leaderboards"
+format: html
+---
+
+```{ojs}
+import {Inputs} from "@observablehq/inputs"
+import {csvParse} from "d3-dsv"
+import {rollups, sum, descending} from "d3-array"
+
+const rawText = await FileAttachment("data/match_stats.csv").text()
+const rows = csvParse(rawText, (row) => {
+  const matchId = row.match_id ?? row["\ufeffmatch_id"] ?? row["\uFEFFmatch_id"]
+  return {
+    matchId,
+    team: row.Team,
+    opponent: row.Opponent,
+    season: row.Season,
+    round: row.Round,
+    player: row.Player,
+    aces: Number(row.Aces || 0),
+    unforcedErrors: Number(row["Unforced Errors"] || 0),
+    forcedErrors: Number(row["Forced Errors"] || 0),
+    doubleFaults: Number(row["Double Faults"] || 0),
+    winners: Number(row.Winners || 0),
+    errorsForced: Number(row["Errors Forced"] || 0),
+    mvpVotes: Number(row["MVP Votes"] || 0)
+  }
+})
+
+const seasons = Array.from(new Set(rows.map((row) => row.season))).sort((a, b) => Number(a) - Number(b))
+const rounds = Array.from(new Set(rows.map((row) => row.round))).sort((a, b) => Number(a) - Number(b))
+
+const maxMatches = rows.length
+
+const viewof seasonFilter = Inputs.select(["All", ...seasons], {label: "Season", value: "All"})
+const viewof roundFilter = Inputs.select(["All", ...rounds], {label: "Round", value: "All"})
+const viewof minMatches = Inputs.range([1, maxMatches], {
+  label: "Minimum matches for per-match rates",
+  step: 1,
+  value: 3
+})
+```
+
+```{ojs}
+const filteredRows = rows.filter((row) => {
+  const seasonOk = seasonFilter === "All" || row.season === seasonFilter
+  const roundOk = roundFilter === "All" || row.round === roundFilter
+  return seasonOk && roundOk
+})
+
+function buildLeaderboard(rows, metricKey) {
+  const grouped = rollups(
+    rows,
+    (values) => {
+      const matches = values.length
+      const total = sum(values, (value) => value[metricKey])
+      return {matches, total}
+    },
+    (value) => value.player
+  )
+
+  return grouped
+    .map(([player, stats]) => ({
+      Player: player,
+      Matches: stats.matches,
+      Total: stats.total,
+      "Per Match": stats.matches >= minMatches ? stats.total / stats.matches : null
+    }))
+    .sort((a, b) => {
+      const aValue = a["Per Match"] ?? -Infinity
+      const bValue = b["Per Match"] ?? -Infinity
+      return descending(aValue, bValue)
+    })
+}
+
+function formatRows(rows) {
+  return rows.map((row) => ({
+    ...row,
+    Total: row.Total.toFixed(0),
+    "Per Match": row["Per Match"] === null ? "—" : row["Per Match"].toFixed(2)
+  }))
+}
+
+const mvpRows = rollups(
+  filteredRows,
+  (values) => ({
+    matches: values.length,
+    total: sum(values, (value) => value.mvpVotes)
+  }),
+  (value) => value.player
+)
+  .map(([player, stats]) => ({
+    Player: player,
+    Matches: stats.matches,
+    "MVP Votes": stats.total
+  }))
+  .sort((a, b) => descending(a["MVP Votes"], b["MVP Votes"]))
+
+const acesRows = formatRows(buildLeaderboard(filteredRows, "aces"))
+const winnersRows = formatRows(buildLeaderboard(filteredRows, "winners"))
+const errorsForcedRows = formatRows(buildLeaderboard(filteredRows, "errorsForced"))
+const disciplineRows = formatRows(
+  buildLeaderboard(
+    filteredRows.map((row) => ({
+      ...row,
+      discipline: row.doubleFaults + row.unforcedErrors
+    })),
+    "discipline"
+  )
+)
+```
+
+Filter by season, round, and the minimum matches required to show per-match rates.
+
+```{ojs}
+Inputs.form({seasonFilter, roundFilter, minMatches})
+```
+
+## MVP Votes
+
+```{ojs}
+Inputs.table(mvpRows, {sort: "MVP Votes", reverse: true})
+```
+
+## Aces (per match)
+
+```{ojs}
+Inputs.table(acesRows, {sort: "Per Match", reverse: true})
+```
+
+## Winners (per match)
+
+```{ojs}
+Inputs.table(winnersRows, {sort: "Per Match", reverse: true})
+```
+
+## Errors Forced (per match)
+
+```{ojs}
+Inputs.table(errorsForcedRows, {sort: "Per Match", reverse: true})
+```
+
+## Discipline (double faults + unforced errors, per match)
+
+```{ojs}
+Inputs.table(disciplineRows, {sort: "Per Match", reverse: true})
+```

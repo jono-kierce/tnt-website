@@ -1,0 +1,7 @@
+---
+title: "Tuesday Night Tennis"
+---
+
+Welcome to Tuesday Night Tennis stats and player pages.
+
+- [View leaderboards](leaderboards.qmd)
