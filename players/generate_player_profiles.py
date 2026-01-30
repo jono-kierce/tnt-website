@@ -280,6 +280,7 @@ def render_player_qmd(
     fillin_count = int(matches_df["Fill-in"].sum()) if "Fill-in" in matches_df.columns else 0
     votes_total = int(matches_df["Votes"].sum()) if "Votes" in matches_df.columns else 0
     bog_count = int(matches_df["BOG"].sum()) if "BOG" in matches_df.columns else 0
+    finals_votes_total = int(finals_df["Finals MVP Votes"].sum()) if finals_df is not None and not finals_df.empty else 0
 
     # image block
     img_block = ""
@@ -429,9 +430,9 @@ format:
 
 ## Snapshot
 
-| Matches | Record | MVP Votes | BOGs |
-|---|---|---|---|
-| **{matches_played_total}**<br>fill-ins: {fillin_count} | **{wins}-{losses}**<br>win rate: {fmt_pct(win_rate)} | **{votes_total}** | **{bog_count}** |
+| Matches | Record | MVP Votes | Finals MVP Votes | BOGs |
+|---|---|---|---|---|
+| **{matches_played_total}**<br>fill-ins: {fillin_count} | **{wins}-{losses}**<br>win rate: {fmt_pct(win_rate)} | **{votes_total}** | **{finals_votes_total}** | **{bog_count}** |
 
 ## Season Summary
 
