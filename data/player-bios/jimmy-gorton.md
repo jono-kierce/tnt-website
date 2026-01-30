@@ -1,1 +1,11 @@
-No bio written yet.
+Jimmy Gorton is one of TNT's favourite characters. The fiery Season 2 Champion is well known for his smack-talk and competitive spirit.
+
+Season 1 was not particularly notable. Gorton picked up [Ed Simpson](ed-simpson.qmd) with the fourth pick in the draft, the pair finishing 7th with 3 wins and being knocked out in the quarter finals 6-4 by future runners-up [Charlie Simpson](charlie-simpson.qmd) and [Angus Hume](angus-hume.qmd).
+
+Following this, Gorton surprised many pundits by picking up Simpson again in Season 2. Despite Simpson leading the league again in unforced errors and a similar regular season yielding a 6th placed finish, the pair went on an incredible finals run, knocking out 3rd-placed pair [Lewis Mossman](lewis-mossman.qmd) & [Ethan Seamer](ethan-seamer.qmd) 6-0 then narrowly defeating future championship pair [Jonathan Kierce](jonathan-kierce.qmd) & [Damon Maurice](damon-maurice.qmd) in 3 sets to earn a spot in the Championship match.
+
+The pair looked all but done in the championship match against [Emerson Wise](emerson-wise.qmd) & [Angus Hume](angus-hume.qmd), down one set and facing a tiebreak in the second, but they found something and took out the championship in 3 sets. Gorton was voted Finals MVP, with best ons in all 3 finals, the only player to achieve this in a championship year.
+
+Gorton found similar success in Season 3. With E. Simpson out with a season-ending knee injury, Gorton would pickup [Lewis Mossman](lewis-mossman.qmd). The pair had a fantastic regular season, with a 6-2 record earning them a 2nd-placed finish. They would earn their place in the final match of the season, but [Jonathan Kierce](jonathan-kierce.qmd) & [Damon Maurice](damon-maurice.qmd) had their revenge on their Season 2 semi-final defeat, taking the title in 3 sets. Gorton would finish 5th in MVP voting that season.
+
+With E. Simpson returning to the TNT fold for season 4, it was inevitable that Gorton would pick him up, taking him with the 6th pick. The pair had their best regular season together, finishing 3rd (5-3). The Gorton-Kierce chapter saw another chapter, with the two meeting in the semi finals, but it was Kierce who won this one, knocking the pair out in two sets. Gorton had his best MVP voting season yet, earning 40-votes, just 1 shy of S4 MVP [Adam Dickson](adam-dickson.qmd)

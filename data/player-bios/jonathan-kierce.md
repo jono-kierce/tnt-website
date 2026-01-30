@@ -1,1 +1,1 @@
-No bio written yet.
+Kierce has a large trophy cabinet. A 2x Champion, 2x Minor Premier, 2x Finals MVP, 2x MVP and one time Player's MVP. Kierce is one of three TNT players to have never missed a match across all 4 seasons.
