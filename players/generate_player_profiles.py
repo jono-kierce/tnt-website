@@ -2,7 +2,8 @@
 """
 Generate Quarto player profile pages from:
 - ../data/match_stats.csv   (required)
-- ../data/players.csv       (optional; enriches bio + image)
+- ../data/players.csv       (optional; enriches image)
+- ../data/player-bios/*.md  (optional; bio content per player slug)
 
 Outputs:
 - ../players/{player_slug}.qmd
@@ -128,13 +129,19 @@ def fmt_per_match(value: float | None) -> str:
 
 # ---------------- core logic ----------------
 
+def load_player_bio(player_slug: str, bios_dir: Path) -> str:
+    bio_path = bios_dir / f"{player_slug}.md"
+    if not bio_path.exists():
+        return ""
+    return bio_path.read_text(encoding="utf-8").strip()
+
 def load_players_csv(path: Path) -> pd.DataFrame:
     if not path.exists():
-        return pd.DataFrame(columns=["name", "bio", "image"])
+        return pd.DataFrame(columns=["name", "image"])
     df = pd.read_csv(path)
     df.columns = [c.strip() for c in df.columns]
     # guarantee columns
-    for c in ["name", "bio", "image"]:
+    for c in ["name", "image"]:
         if c not in df.columns:
             df[c] = ""
     return df
@@ -265,15 +272,16 @@ def render_player_qmd(
     matches_df: pd.DataFrame,
     finals_df: pd.DataFrame,
     players_info: pd.DataFrame,
+    bios_dir: Path,
     out_path: Path,
 ) -> None:
     # player info lookup
     info = players_info[players_info["name"].astype(str) == str(player_name)]
-    bio = ""
     image = ""
     if len(info) > 0:
-        bio = str(info.iloc[0].get("bio", "") or "").strip()
         image = str(info.iloc[0].get("image", "") or "").strip()
+
+    bio = load_player_bio(player_slug, bios_dir)
 
     # headline stats
     finals_matches = int(len(finals_df)) if finals_df is not None else 0
@@ -470,6 +478,8 @@ def main():
                         help="Path to match_stats_finals.csv (default: ../data/match_stats_finals.csv relative to this script)")
     parser.add_argument("--players_csv", type=str, default=None,
                         help="Path to players.csv (default: ../data/players.csv relative to this script)")
+    parser.add_argument("--bios_dir", type=str, default=None,
+                        help="Directory with player bio markdown files (default: ../data/player-bios relative to this script)")
     parser.add_argument("--outdir", type=str, default=None,
                         help="Output directory for player QMDs (default: ../players relative to this script)")
     args = parser.parse_args()
@@ -478,6 +488,7 @@ def main():
     match_path = Path(args.match_stats) if args.match_stats else (here / ".." / "data" / "match_stats.csv")
     finals_path = Path(args.finals_stats) if args.finals_stats else (here / ".." / "data" / "match_stats_finals.csv")
     players_path = Path(args.players_csv) if args.players_csv else (here / ".." / "data" / "players.csv")
+    bios_dir = Path(args.bios_dir) if args.bios_dir else (here / ".." / "data" / "player-bios")
     out_dir = Path(args.outdir) if args.outdir else (here / ".." / "players")
 
     if not match_path.exists():
@@ -524,7 +535,7 @@ def main():
         pmatches = build_match_rows_for_player(df, pname)
         pfinals = build_finals_rows_for_player(finals_df, pname) if not finals_df.empty else pd.DataFrame()
         out_path = out_dir / f"{pslug}.qmd"
-        render_player_qmd(pname, pslug, pmatches, pfinals, players_info, out_path)
+        render_player_qmd(pname, pslug, pmatches, pfinals, players_info, bios_dir, out_path)
         n += 1
 
     print(f"Generated {n} player pages in: {out_dir}")
