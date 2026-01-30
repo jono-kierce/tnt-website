@@ -434,11 +434,11 @@ format:
 |---|---|---|---|---|
 | **{matches_played_total}**<br>fill-ins: {fillin_count} | **{wins}-{losses}**<br>win rate: {fmt_pct(win_rate)} | **{votes_total}** | **{finals_votes_total}** | **{bog_count}** |
 
-## Season Summary
+## Regular Season Summary
 
 {season_summary_md}
 
-## Season Stats
+## Regular Season Stats
 
 {season_stats_md}
 
