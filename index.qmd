@@ -1,0 +1,6 @@
+---
+title: "Tuesday Night Tennis"
+---
+
+Welcome to Tuesday Night Tennis. Visit the new [leaderboards](leaderboards.qmd) page to explore per-match stats with season and round filters.
+

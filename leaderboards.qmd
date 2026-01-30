@@ -1,0 +1,133 @@
+---
+title: "Leaderboards"
+---
+
+Explore per-match leaderboards based on match stats. Use the filters to focus on a season or round, and set a minimum matches threshold to control who appears in the per-match rates.
+
+```{ojs}
+import {Inputs} from "@observablehq/inputs";
+```
+
+```{ojs}
+rawStats = await FileAttachment("data/match_stats.csv").csv({typed: true});
+```
+
+```{ojs}
+seasonOptions = ["All", ...new Set(rawStats.map((d) => d.Season).filter((d) => d !== null && d !== undefined))]
+  .sort((a, b) => (a ?? 0) - (b ?? 0));
+
+viewof season = Inputs.select(seasonOptions, {label: "Season", value: "All"});
+```
+
+```{ojs}
+seasonFilteredForRounds = rawStats.filter((d) => season === "All" || d.Season === season);
+roundOptions = ["All", ...new Set(seasonFilteredForRounds.map((d) => d.Round).filter((d) => d !== null && d !== undefined))]
+  .sort((a, b) => (a ?? 0) - (b ?? 0));
+
+viewof round = Inputs.select(roundOptions, {label: "Round", value: "All"});
+```
+
+```{ojs}
+viewof minMatches = Inputs.number({
+  label: "Minimum matches for per-match rates",
+  min: 1,
+  step: 1,
+  value: 3
+});
+```
+
+```{ojs}
+filteredStats = rawStats.filter((d) => {
+  const seasonMatch = season === "All" || d.Season === season;
+  const roundMatch = round === "All" || d.Round === round;
+  return seasonMatch && roundMatch;
+});
+```
+
+```{ojs}
+const numericValue = (value) => Number(value ?? 0) || 0;
+
+function buildLeaderboard(rows, valueAccessor) {
+  const totals = new Map();
+  const matchSets = new Map();
+
+  for (const row of rows) {
+    const player = row.Player;
+    const matchId = row.match_id;
+
+    if (!matchSets.has(player)) {
+      matchSets.set(player, new Set());
+    }
+    matchSets.get(player).add(matchId);
+
+    totals.set(player, (totals.get(player) ?? 0) + valueAccessor(row));
+  }
+
+  const leaderboard = [];
+  for (const [player, total] of totals.entries()) {
+    const matches = matchSets.get(player)?.size ?? 0;
+    if (matches >= minMatches) {
+      leaderboard.push({
+        Player: player,
+        Matches: matches,
+        Total: total,
+        "Per Match": total / matches
+      });
+    }
+  }
+
+  return leaderboard.sort((a, b) => b["Per Match"] - a["Per Match"]);
+}
+```
+
+## MVP votes
+
+```{ojs}
+Inputs.table(buildLeaderboard(filteredStats, (row) => numericValue(row["MVP Votes"])), {
+  sort: "Per Match",
+  reverse: true
+})
+```
+
+## Aces
+
+```{ojs}
+Inputs.table(buildLeaderboard(filteredStats, (row) => numericValue(row.Aces)), {
+  sort: "Per Match",
+  reverse: true
+})
+```
+
+## Winners
+
+```{ojs}
+Inputs.table(buildLeaderboard(filteredStats, (row) => numericValue(row.Winners)), {
+  sort: "Per Match",
+  reverse: true
+})
+```
+
+## Errors forced
+
+```{ojs}
+Inputs.table(buildLeaderboard(filteredStats, (row) => numericValue(row["Errors Forced"])), {
+  sort: "Per Match",
+  reverse: true
+})
+```
+
+## Discipline (double faults + unforced errors)
+
+```{ojs}
+Inputs.table(
+  buildLeaderboard(
+    filteredStats,
+    (row) => numericValue(row["Double Faults"]) + numericValue(row["Unforced Errors"])
+  ),
+  {
+    sort: "Per Match",
+    reverse: true
+  }
+)
+```
+
