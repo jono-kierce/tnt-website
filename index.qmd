@@ -1,0 +1,10 @@
+---
+title: "Tuesday Night Tennis"
+format:
+  html:
+    toc: false
+---
+
+Welcome to Tuesday Night Tennis. Explore player stats, match results, and seasonal highlights.
+
+- [View the leaderboards](leaderboards.qmd) for MVP votes, aces, winners, and error stats.

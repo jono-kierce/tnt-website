@@ -1,0 +1,129 @@
+---
+title: "Leaderboards"
+format:
+  html:
+    toc: true
+---
+
+Track seasonal leaders with sortable tables. Use the filters to focus on a specific season and round, and the minimum matches threshold to control when per-match rates appear.
+
+```{ojs}
+const raw = await FileAttachment("data/match_stats.csv").csv({typed: true});
+
+const data = raw.map((d) => ({
+  match_id: d["\ufeffmatch_id"] ?? d.match_id ?? "",
+  Season: d.Season?.toString() ?? "",
+  Round: d.Round?.toString() ?? "",
+  Player: d.Player ?? "",
+  Aces: Number(d.Aces) || 0,
+  Winners: Number(d.Winners) || 0,
+  ErrorsForced: Number(d["Errors Forced"]) || 0,
+  UnforcedErrors: Number(d["Unforced Errors"]) || 0,
+  MVPVotes: Number(d["MVP Votes"]) || 0
+})).filter((d) => d.Player);
+
+const seasonValues = Array.from(new Set(data.map((d) => d.Season).filter(Boolean)))
+  .sort((a, b) => Number(a) - Number(b));
+const roundValues = Array.from(new Set(data.map((d) => d.Round).filter(Boolean)))
+  .sort((a, b) => Number(a) - Number(b));
+```
+
+```{ojs}
+viewof season = Inputs.select(["All", ...seasonValues], {
+  label: "Season",
+  value: "All"
+})
+```
+
+```{ojs}
+viewof round = Inputs.select(["All", ...roundValues], {
+  label: "Round",
+  value: "All"
+})
+```
+
+```{ojs}
+viewof minMatches = Inputs.range([1, 10], {
+  label: "Minimum matches for per-match rates",
+  step: 1,
+  value: 3
+})
+```
+
+```{ojs}
+const filtered = data.filter((d) =>
+  (season === "All" || d.Season === season) &&
+  (round === "All" || d.Round === round)
+);
+
+function buildLeaderboard(rows, statKey) {
+  const grouped = d3.rollup(
+    rows,
+    (v) => ({
+      matches: v.length,
+      total: d3.sum(v, (row) => row[statKey])
+    }),
+    (row) => row.Player
+  );
+
+  return Array.from(grouped, ([player, stats]) => {
+    const perMatch = stats.matches >= minMatches ? stats.total / stats.matches : null;
+    return {
+      Player: player,
+      Matches: stats.matches,
+      Total: stats.total,
+      "Per Match": perMatch
+    };
+  }).sort((a, b) => {
+    if (b.Total !== a.Total) return b.Total - a.Total;
+    return (b["Per Match"] ?? -Infinity) - (a["Per Match"] ?? -Infinity);
+  });
+}
+
+function leaderboardTable(rows) {
+  return Inputs.table(rows, {
+    columns: ["Player", "Matches", "Total", "Per Match"],
+    sort: "Total",
+    reverse: true,
+    format: {
+      "Per Match": (value) => (value == null ? "—" : value.toFixed(2))
+    }
+  });
+}
+
+const mvpLeaderboard = buildLeaderboard(filtered, "MVPVotes");
+const acesLeaderboard = buildLeaderboard(filtered, "Aces");
+const winnersLeaderboard = buildLeaderboard(filtered, "Winners");
+const errorsForcedLeaderboard = buildLeaderboard(filtered, "ErrorsForced");
+const unforcedErrorsLeaderboard = buildLeaderboard(filtered, "UnforcedErrors");
+```
+
+## MVP votes
+
+```{ojs}
+leaderboardTable(mvpLeaderboard)
+```
+
+## Aces
+
+```{ojs}
+leaderboardTable(acesLeaderboard)
+```
+
+## Winners
+
+```{ojs}
+leaderboardTable(winnersLeaderboard)
+```
+
+## Errors forced
+
+```{ojs}
+leaderboardTable(errorsForcedLeaderboard)
+```
+
+## Unforced errors
+
+```{ojs}
+leaderboardTable(unforcedErrorsLeaderboard)
+```
