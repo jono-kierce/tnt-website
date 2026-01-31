@@ -1,1 +1,52 @@
 /* css styles */
+
+.leaderboard-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.leaderboard-controls .control {
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+}
+
+.leaderboard-controls label {
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.leaderboard-controls select,
+.leaderboard-controls input {
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+}
+
+.leaderboard-section {
+  margin-top: 2rem;
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+}
+
+.leaderboard-table th,
+.leaderboard-table td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.leaderboard-table th {
+  cursor: pointer;
+  background: #f8fafc;
+}
+
+.leaderboard-table tbody tr:hover {
+  background: #f1f5f9;
+}

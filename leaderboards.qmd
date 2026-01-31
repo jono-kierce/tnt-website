@@ -1,0 +1,274 @@
+---
+title: "Leaderboards"
+---
+
+Compare per-match performance across key stats. Use the filters to focus on a season or round, and adjust the minimum matches threshold to ensure rates are meaningful.
+
+<div class="leaderboard-controls">
+  <div class="control">
+    <label for="season-filter">Season</label>
+    <select id="season-filter"></select>
+  </div>
+  <div class="control">
+    <label for="round-filter">Round</label>
+    <select id="round-filter"></select>
+  </div>
+  <div class="control">
+    <label for="min-matches">Minimum matches</label>
+    <input id="min-matches" type="number" min="1" value="3" />
+  </div>
+</div>
+
+<section class="leaderboard-section">
+  <h2>MVP Votes</h2>
+  <div id="mvp-table"></div>
+</section>
+
+<section class="leaderboard-section">
+  <h2>Aces</h2>
+  <div id="aces-table"></div>
+</section>
+
+<section class="leaderboard-section">
+  <h2>Winners</h2>
+  <div id="winners-table"></div>
+</section>
+
+<section class="leaderboard-section">
+  <h2>Errors Forced</h2>
+  <div id="forced-errors-table"></div>
+</section>
+
+<section class="leaderboard-section">
+  <h2>Unforced Errors</h2>
+  <div id="unforced-errors-table"></div>
+</section>
+
+<script>
+const leaderboardState = {
+  rows: [],
+  season: "All",
+  round: "All",
+  minMatches: 3,
+};
+
+const metrics = [
+  { key: "MVP Votes", label: "MVP Votes", container: "mvp-table" },
+  { key: "Aces", label: "Aces", container: "aces-table" },
+  { key: "Winners", label: "Winners", container: "winners-table" },
+  { key: "Errors Forced", label: "Errors Forced", container: "forced-errors-table" },
+  { key: "Unforced Errors", label: "Unforced Errors", container: "unforced-errors-table" },
+];
+
+function parseCsv(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (!lines.length) return [];
+  const headers = lines.shift().split(",").map((header) => header.replace(/^\uFEFF/, "").trim());
+  return lines
+    .filter((line) => line.trim().length)
+    .map((line) => {
+      const values = line.split(",");
+      const row = {};
+      headers.forEach((header, index) => {
+        row[header] = values[index] ?? "";
+      });
+      return row;
+    });
+}
+
+function toNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function populateFilters() {
+  const seasonSelect = document.getElementById("season-filter");
+  const roundSelect = document.getElementById("round-filter");
+  const seasons = new Set();
+  const rounds = new Set();
+
+  leaderboardState.rows.forEach((row) => {
+    if (row.Season) seasons.add(row.Season);
+    if (row.Round) rounds.add(row.Round);
+  });
+
+  const buildOptions = (select, values) => {
+    select.innerHTML = "";
+    const allOption = document.createElement("option");
+    allOption.value = "All";
+    allOption.textContent = "All";
+    select.appendChild(allOption);
+
+    Array.from(values)
+      .sort((a, b) => Number(a) - Number(b))
+      .forEach((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+  };
+
+  buildOptions(seasonSelect, seasons);
+  buildOptions(roundSelect, rounds);
+}
+
+function aggregateStats(rows) {
+  const byPlayer = new Map();
+
+  rows.forEach((row) => {
+    const player = row.Player || "Unknown";
+    if (!byPlayer.has(player)) {
+      byPlayer.set(player, {
+        player,
+        matches: 0,
+        totals: {
+          "MVP Votes": 0,
+          Aces: 0,
+          Winners: 0,
+          "Errors Forced": 0,
+          "Unforced Errors": 0,
+        },
+      });
+    }
+
+    const entry = byPlayer.get(player);
+    entry.matches += 1;
+    entry.totals["MVP Votes"] += toNumber(row["MVP Votes"]);
+    entry.totals.Aces += toNumber(row.Aces);
+    entry.totals.Winners += toNumber(row.Winners);
+    entry.totals["Errors Forced"] += toNumber(row["Errors Forced"]);
+    entry.totals["Unforced Errors"] += toNumber(row["Unforced Errors"]);
+  });
+
+  return Array.from(byPlayer.values());
+}
+
+function makeSortable(table) {
+  const headers = table.querySelectorAll("th");
+  headers.forEach((header) => {
+    header.addEventListener("click", () => {
+      const tbody = table.querySelector("tbody");
+      const rows = Array.from(tbody.querySelectorAll("tr"));
+      const index = header.cellIndex;
+      const type = header.dataset.type || "text";
+      const current = header.dataset.sortDir || "desc";
+      const nextDir = current === "asc" ? "desc" : "asc";
+
+      headers.forEach((h) => h.removeAttribute("data-sort-dir"));
+      header.dataset.sortDir = nextDir;
+
+      rows.sort((a, b) => {
+        const aValue = a.children[index].dataset.sortValue || a.children[index].textContent;
+        const bValue = b.children[index].dataset.sortValue || b.children[index].textContent;
+        if (type === "number") {
+          return (Number(aValue) - Number(bValue)) * (nextDir === "asc" ? 1 : -1);
+        }
+        return aValue.localeCompare(bValue) * (nextDir === "asc" ? 1 : -1);
+      });
+
+      rows.forEach((row) => tbody.appendChild(row));
+    });
+  });
+}
+
+function renderTable(containerId, metricKey, entries) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
+
+  const table = document.createElement("table");
+  table.className = "leaderboard-table";
+
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th data-type="text">Player</th>
+        <th data-type="number">Matches</th>
+        <th data-type="number">Total</th>
+        <th data-type="number">Per Match</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+
+  const tbody = table.querySelector("tbody");
+
+  entries.forEach((entry) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${entry.player}</td>
+      <td data-sort-value="${entry.matches}">${entry.matches}</td>
+      <td data-sort-value="${entry.total}">${entry.total.toFixed(1)}</td>
+      <td data-sort-value="${entry.rate}">${entry.rate.toFixed(2)}</td>
+    `;
+    tbody.appendChild(row);
+  });
+
+  container.appendChild(table);
+  makeSortable(table);
+}
+
+function updateTables() {
+  const season = leaderboardState.season;
+  const round = leaderboardState.round;
+  const minMatches = leaderboardState.minMatches;
+
+  const filtered = leaderboardState.rows.filter((row) => {
+    const seasonMatch = season === "All" || row.Season === season;
+    const roundMatch = round === "All" || row.Round === round;
+    return seasonMatch && roundMatch;
+  });
+
+  const entries = aggregateStats(filtered);
+
+  metrics.forEach((metric) => {
+    const rows = entries
+      .filter((entry) => entry.matches >= minMatches)
+      .map((entry) => {
+        const total = entry.totals[metric.key] || 0;
+        return {
+          player: entry.player,
+          matches: entry.matches,
+          total,
+          rate: entry.matches ? total / entry.matches : 0,
+        };
+      })
+      .sort((a, b) => b.rate - a.rate);
+
+    renderTable(metric.container, metric.key, rows);
+  });
+}
+
+function bindControls() {
+  const seasonSelect = document.getElementById("season-filter");
+  const roundSelect = document.getElementById("round-filter");
+  const minMatchesInput = document.getElementById("min-matches");
+
+  seasonSelect.addEventListener("change", (event) => {
+    leaderboardState.season = event.target.value;
+    updateTables();
+  });
+
+  roundSelect.addEventListener("change", (event) => {
+    leaderboardState.round = event.target.value;
+    updateTables();
+  });
+
+  minMatchesInput.addEventListener("input", (event) => {
+    const value = Number(event.target.value);
+    leaderboardState.minMatches = Number.isFinite(value) && value > 0 ? value : 1;
+    updateTables();
+  });
+}
+
+async function initLeaderboards() {
+  const response = await fetch("data/match_stats.csv");
+  const text = await response.text();
+  leaderboardState.rows = parseCsv(text);
+  populateFilters();
+  bindControls();
+  updateTables();
+}
+
+initLeaderboards();
+</script>

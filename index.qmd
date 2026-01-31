@@ -1,0 +1,11 @@
+---
+title: "Tuesday Night Tennis"
+---
+
+Welcome to Tuesday Night Tennis. Explore match stats, player highlights, and season insights.
+
+## Leaderboards
+
+Dive into per-match leaderboards with season and round filters:
+
+- [View the leaderboards](leaderboards.qmd)
