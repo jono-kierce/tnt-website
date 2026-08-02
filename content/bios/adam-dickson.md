@@ -1,5 +1,1 @@
-Wielding TNT's arguably strongest serve, Dickson is one of TNT's great entertainers. The season 4 MVP has only played the one full season.
-
-Adam was a mere fill in when he stunned onlookers in Season 1 with a powerful hitting display.
-
-It would take until Season 4 for Dickson to reappear at TNT. He was awarded the fifth pick, taking [Declan Croucher](declan-croucher). The pair had immediate chemistry, finishing 2nd (6-2). However, the pair couldn't find finals success and fell in the Quarter Finals. Dickson would earn MVP honours with 41 votes.
+Adam Dickson might be the best player the league doesn't see enough of. Just 11 matches across two seasons have yielded a 73% win rate, a winner-to-error ratio of 0.97 that ties Charlie Simpson for best all-time, and a Season 4 campaign — 78% wins, 4.8 winners a game, five aces — good enough for second in the season MVP standings behind only the undefeated Luke Sharrock. He announced himself early, too: his 12-winner match in Season 1 remains tied for second on the all-time single-game list. The style is aggressive but ruthlessly clean; the only blemish is a double-fault count (14 in 11 games) that suggests the second serve gets the same full-blooded treatment as everything else. Now with his third team in Pink, Dickson's challenge for Season 5 is simple: play more. The numbers say a full season could be scary.
