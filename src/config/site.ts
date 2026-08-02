@@ -51,7 +51,7 @@ export const SITE = {
    * The site shows "votes sealed" instead of zeros for these. When you commit
    * the real votes, remove the season from this list.
    */
-  sealedVoteSeasons: [4],
+  sealedVoteSeasons: [],
 
   /** Map season number -> calendar year for labelling ("Season 4 (2025)"). */
   seasonYears: { 1: 2022, 2: 2023, 3: 2024, 4: 2025 } as Record<number, number>,
