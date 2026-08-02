@@ -17,10 +17,10 @@ const season1: SeasonConfig = {
   },
 
   honours: [
-    { title: 'Champions', detail: 'TODO' },
+    { title: 'Champions', team: 'White', detail: 'J. Kierce & E. Seamer' },
     { title: 'Runners-up', team: 'Red', detail: 'C. Simpson & A. Hume' },
-    { title: 'Season MVP', detail: 'TODO' },
-    { title: 'Finals MVP', detail: 'TODO' },
+    { title: 'Season MVP', detail: 'A. Littlejohn, J. Kierce & L. Sharrock' },
+    { title: 'Finals MVP', detail: 'C. Simpson' },
   ],
 
   // TODO: add the finals bracket + results for Season 1.

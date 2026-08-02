@@ -16,8 +16,8 @@ const season2: SeasonConfig = {
   honours: [
     { title: 'Champions', team: 'Orange', detail: 'J. Gorton & E. Simpson' },
     { title: 'Runners-up', team: 'Light Blue', detail: 'E. Wise & A. Hume' },
-    { title: 'Season MVP', detail: 'TODO — fill from awards night' },
-    { title: 'Finals MVP', detail: 'J. Gorton (best-on in all three finals)' },
+    { title: 'Season MVP', detail: 'L. Sharrock' },
+    { title: 'Finals MVP', detail: 'J. Gorton' },
   ],
 
   // TODO: add the finals bracket + results for Season 2.

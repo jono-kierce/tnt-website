@@ -18,8 +18,8 @@ const season3: SeasonConfig = {
   honours: [
     { title: 'Champions', team: 'White', detail: 'J. Kierce & D. Maurice' },
     { title: 'Runners-up', team: 'Orange', detail: 'J. Gorton & L. Mossman' },
-    { title: 'Season MVP', detail: 'TODO — fill from awards night' },
-    { title: 'Finals MVP', detail: 'TODO' },
+    { title: 'Season MVP', detail: 'J. Kierce' },
+    { title: 'Finals MVP', detail: 'J. Kierce' },
   ],
 
   // TODO: add the finals bracket + results for Season 3.
