@@ -1,0 +1,100 @@
+---
+import type { FinalsRound, FinalsSlot, FinalsMatch } from '../config/seasons/schema.ts';
+import type { LadderRow } from '../lib/types.ts';
+import { teamMeta } from '../config/site.ts';
+
+interface Props { finals: FinalsRound[]; ladder: LadderRow[] }
+const { finals, ladder } = Astro.props;
+
+// Resolve every match's winner/loser team so later rounds can reference them.
+const winners = new Map<string, string>();
+const losers = new Map<string, string>();
+const allMatches = finals.flatMap((r) => r.matches);
+const bySeed = (n: number) => ladder[n - 1]?.team ?? '';
+
+function resolveTeam(slot: FinalsSlot): string {
+  if ('seed' in slot) return bySeed(slot.seed);
+  if ('winnerOf' in slot) return winners.get(slot.winnerOf) ?? '';
+  return losers.get(slot.loserOf) ?? '';
+}
+
+// Two passes so winnerOf references resolve regardless of declaration order.
+for (let pass = 0; pass < allMatches.length; pass++) {
+  for (const m of allMatches) {
+    if (!m.result || winners.has(m.id)) continue;
+    const home = resolveTeam(m.home), away = resolveTeam(m.away);
+    if (!home || !away) continue;
+    winners.set(m.id, m.result.winner === 'home' ? home : away);
+    losers.set(m.id, m.result.winner === 'home' ? away : home);
+  }
+}
+
+function label(slot: FinalsSlot): string {
+  if ('seed' in slot) {
+    const l = ladder[slot.seed - 1];
+    return l ? l.pairingName : `Seed ${slot.seed}`;
+  }
+  if ('winnerOf' in slot) {
+    const t = winners.get(slot.winnerOf);
+    return t ? (ladderName(t) ?? t) : `Winner of ${slot.winnerOf}`;
+  }
+  const t = losers.get(slot.loserOf);
+  return t ? (ladderName(t) ?? t) : `Loser of ${slot.loserOf}`;
+}
+function ladderName(team: string) { return ladder.find((l) => l.team === team)?.pairingName; }
+function slotTeam(slot: FinalsSlot): string { return resolveTeam(slot); }
+
+function side(m: FinalsMatch, which: 'home' | 'away') {
+  const slot = m[which];
+  const team = slotTeam(slot);
+  const meta = team ? teamMeta(team) : null;
+  const won = m.result ? m.result.winner === which : false;
+  const scores = m.result ? (which === 'home' ? m.result.homeScore : m.result.awayScore) : undefined;
+  return { label: label(slot), team, meta, won, scores };
+}
+---
+{finals.length === 0 ? (
+  <p class="muted">Finals bracket for this season hasn't been added yet.</p>
+) : (
+  <div class="bracket-wrap">
+    <div class="bracket">
+      {finals.map((round) => (
+        <div class="bracket-col">
+          <p class="finenote bracket-round">{round.name}</p>
+          {round.matches.map((m) => {
+            const h = side(m, 'home'), a = side(m, 'away');
+            return (
+              <div class="tie card">
+                {m.label && <span class="tie-label">{m.label}</span>}
+                {[h, a].map((s) => (
+                  <div class={`tie-side ${s.won ? 'won' : ''}`}
+                    style={s.meta ? `--team-color:${s.meta.color};--team-color-2:${s.meta.color2}` : ''}>
+                    <span class="bar"></span>
+                    <span class="tie-name">{s.label}</span>
+                    <span class="tie-score">{s.scores ? s.scores.join(' ') : ''}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+
+<style>
+  .bracket-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .bracket { display: flex; gap: 18px; min-width: min-content; align-items: flex-start; }
+  .bracket-col { display: flex; flex-direction: column; gap: 16px; justify-content: space-around; min-width: 230px; }
+  .bracket-round { text-align: center; text-transform: uppercase; letter-spacing: 0.16em; margin: 0 0 2px; }
+  .tie { padding: 10px 12px; position: relative; }
+  .tie-label { position: absolute; top: -9px; left: 12px; font-size: 0.6rem; letter-spacing: 0.1em; color: var(--muted); background: var(--card); padding: 0 6px; text-transform: uppercase; }
+  .tie-side { display: grid; grid-template-columns: 6px 1fr auto; align-items: center; gap: 10px; padding: 8px 2px; }
+  .tie-side + .tie-side { border-top: 1px solid var(--line-soft); }
+  .tie-side .bar { height: 20px; }
+  .tie-name { font-family: var(--serif); font-size: 0.98rem; white-space: nowrap; }
+  .tie-side:not(.won) .tie-name { color: var(--ivory-dim); }
+  .tie-side.won .tie-name { color: var(--ivory); font-weight: 700; }
+  .tie-score { font-variant-numeric: tabular-nums; color: var(--gold-soft); font-weight: 700; }
+</style>

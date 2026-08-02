@@ -1,0 +1,24 @@
+---
+import { teamMeta } from '../config/site.ts';
+
+interface Props {
+  team: string;
+  /** Label to show; defaults to the team name. */
+  label?: string;
+  /** Render just the colour dot + label (no filled pill). */
+  plain?: boolean;
+}
+const { team, label, plain = false } = Astro.props;
+const m = teamMeta(team);
+const style = `--team-color:${m.color};--team-color-2:${m.color2};--team-ink:${m.ink}`;
+const text = label ?? team;
+---
+{plain ? (
+  <span class="flex items-center gap-8" style={style}>
+    <span class="dot"></span><span>{text}</span>
+  </span>
+) : (
+  <span class="chip" style={style}>
+    <span class="dot" style="box-shadow:none;background:rgba(0,0,0,0.25)"></span>{text}
+  </span>
+)}

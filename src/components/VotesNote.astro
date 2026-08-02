@@ -1,0 +1,9 @@
+---
+interface Props { compact?: boolean }
+const { compact = false } = Astro.props;
+---
+<p class={compact ? 'finenote' : 'muted'} style={compact ? '' : 'font-size:0.85rem'}>
+  <strong>How votes work:</strong> Season 1 used 2 (best) / 1 (second) per match plus a
+  Player-of-the-Round bonus. From Season 2 onward, two voters each award 3-2-1 per
+  match — a maximum of <strong>6 per game</strong>.
+</p>

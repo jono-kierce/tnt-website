@@ -1,0 +1,28 @@
+---
+import fs from 'node:fs';
+import path from 'node:path';
+import { withBase } from '../lib/url.ts';
+
+interface Props { class?: string }
+const { class: cls = '' } = Astro.props;
+
+// Prefer inlining the SVG crest so it inherits currentColor (header + watermark).
+// Fall back to a PNG <img>, then to a text mark.
+const svgPath = path.join(process.cwd(), 'public/logo/crest.svg');
+const pngPath = path.join(process.cwd(), 'public/logo/crest.png');
+
+let inlineSvg: string | null = null;
+let pngSrc: string | null = null;
+if (fs.existsSync(svgPath)) {
+  inlineSvg = fs.readFileSync(svgPath, 'utf8').replace(/<\?xml[\s\S]*?\?>/, '').trim();
+} else if (fs.existsSync(pngPath)) {
+  pngSrc = withBase('/logo/crest.png');
+}
+---
+{inlineSvg ? (
+  <span class={cls} set:html={inlineSvg} />
+) : pngSrc ? (
+  <img class={cls} src={pngSrc} alt="Tuesday Night Tennis crest" />
+) : (
+  <span class={cls} style="font-family: var(--serif); font-weight:700; letter-spacing:0.12em;">TNT</span>
+)}

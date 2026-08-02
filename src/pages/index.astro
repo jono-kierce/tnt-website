@@ -1,0 +1,97 @@
+---
+import Layout from '../layouts/Layout.astro';
+import LadderTable from '../components/LadderTable.astro';
+import TeamChip from '../components/TeamChip.astro';
+import { SITE, seasonLabel } from '../config/site.ts';
+import { withBase, seasonHref } from '../lib/url.ts';
+import { seasonLadder, latestRound, rotatingFunStat } from '../lib/site-data.ts';
+
+const season = SITE.currentSeason;
+const table = seasonLadder(season);
+const snapshot = table.slice(0, 8);
+const { round, fixtures } = latestRound(season);
+const fun = rotatingFunStat();
+---
+<Layout title="Home">
+  <section class="section container hero">
+    <p class="eyebrow">Melbourne · Social Doubles · Est. 2022</p>
+    <h1 class="tabloid">Tuesday<br />Night Tennis</h1>
+    <p class="lead" style="max-width:640px">
+      Nine teams. One trophy. Every ace, winner and double fault recorded since
+      the beginning. This is the official record of TNT — {seasonLabel(season)} in progress.
+    </p>
+    <div class="pill-row mt-16">
+      <a class="btn" href={withBase('/ladder/')}>Current Ladder</a>
+      <a class="btn" href={withBase('/leaderboards/')}>Leaderboards</a>
+      <a class="btn" href={withBase('/records/')}>The Record Books</a>
+    </div>
+  </section>
+
+  {fun && (
+    <section class="section container">
+      <div class="card funstat">
+        <p class="eyebrow">{fun.kicker}</p>
+        <h2 class="tabloid tabloid--accent" style="--team-color:var(--gold);--team-color-2:var(--gold-soft)">{fun.headline}</h2>
+        <p class="lead mb-0" style="max-width:680px">{fun.detail}</p>
+      </div>
+    </section>
+  )}
+
+  <section class="section container">
+    <div class="grid grid-2" style="align-items:start">
+      <div>
+        <p class="eyebrow">Standings</p>
+        <h2 class="serif-title" style="margin-bottom:14px">{seasonLabel(season)} Ladder</h2>
+        <LadderTable rows={snapshot} cutoff={8} caption="Ranked by wins, then games ratio (for ÷ against). Top 8 make finals." />
+        <p class="mt-16"><a href={withBase('/ladder/')}>Full ladder →</a></p>
+      </div>
+      <div>
+        <p class="eyebrow">Latest results</p>
+        <h2 class="serif-title" style="margin-bottom:14px">Round {round}</h2>
+        <div class="card card--dark results">
+          {fixtures.length === 0 && <p class="muted">No results recorded yet.</p>}
+          {fixtures.map((f) => (
+            <div class="result-row">
+              <span class="result-team win"><TeamChip team={f.winner} plain /></span>
+              <span class="score">{f.winnerScore}–{f.loserScore}</span>
+              <span class="result-team muted"><TeamChip team={f.loser} plain /></span>
+            </div>
+          ))}
+        </div>
+        <p class="mt-16"><a href={seasonHref(season)}>Season {season} in full →</a></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-lg container">
+    <div class="grid grid-3">
+      <a class="card nav-card" href={withBase('/players/')}>
+        <p class="eyebrow">The Field</p><h3 class="serif-title">Players</h3>
+        <p class="muted mb-0">Bios, galleries, career stat lines and season-by-season form.</p>
+      </a>
+      <a class="card nav-card" href={withBase('/records/')}>
+        <p class="eyebrow">Hall of Fame &amp; Shame</p><h3 class="serif-title">Records</h3>
+        <p class="muted mb-0">Most winners, most aces, biggest meltdowns and longest streaks.</p>
+      </a>
+      <a class="card nav-card" href={withBase('/seasons/')}>
+        <p class="eyebrow">The Archive</p><h3 class="serif-title">Seasons</h3>
+        <p class="muted mb-0">Final ladders, finals brackets, MVP podiums and honours.</p>
+      </a>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .hero { padding-top: 40px; }
+  .hero .tabloid { margin: 6px 0 18px; }
+  .funstat { background: linear-gradient(135deg, #12271a, #0d0d0b); border-color: var(--line); }
+  .results .result-row {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+    gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--line-soft);
+  }
+  .results .result-row:last-child { border-bottom: 0; }
+  .result-team { display: flex; }
+  .result-row .result-team:last-child { justify-content: flex-end; text-align: right; }
+  .nav-card { transition: transform .15s ease, border-color .15s ease; }
+  .nav-card:hover { transform: translateY(-3px); border-color: var(--gold); text-decoration: none; }
+</style>

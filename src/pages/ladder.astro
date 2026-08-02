@@ -1,0 +1,56 @@
+---
+import Layout from '../layouts/Layout.astro';
+import LadderTable from '../components/LadderTable.astro';
+import TeamChip from '../components/TeamChip.astro';
+import { SITE, seasonLabel } from '../config/site.ts';
+import { withBase } from '../lib/url.ts';
+import { seasonLadder, seasonRosters } from '../lib/site-data.ts';
+import { playerHref } from '../lib/url.ts';
+import { playerSlug } from '../config/aliases.ts';
+
+const season = SITE.currentSeason;
+const table = seasonLadder(season);
+const rosters = seasonRosters(season);
+---
+<Layout title={`${seasonLabel(season)} Ladder`}>
+  <section class="section container">
+    <p class="eyebrow">Current Season · Standings</p>
+    <h1 class="serif-title">{seasonLabel(season)} Ladder</h1>
+    <p class="lead" style="max-width:640px">
+      Ranked by wins, then games ratio (games for ÷ games against). Top eight
+      qualify for finals.
+    </p>
+
+    <div class="mt-24">
+      <LadderTable rows={table} cutoff={8}
+        caption="Games ratio = total games for ÷ total games against across the season." />
+    </div>
+
+    <h2 class="serif-title mt-24" style="margin-bottom:14px">The Teams</h2>
+    <div class="grid grid-auto">
+      {table.map((r) => {
+        const roster = rosters[r.team];
+        return (
+          <div class="card team-card">
+            <div class="flex items-center gap-8" style="justify-content:space-between">
+              <TeamChip team={r.team} />
+              <span class="rank">#{r.rank}</span>
+            </div>
+            <p class="team-pair">{roster.pairingName}</p>
+            <div class="pill-row">
+              {roster.core.map((c) => (
+                <a class="badge" href={playerHref(playerSlug(c.player))}>{c.player}</a>
+              ))}
+            </div>
+            {roster.captain && <p class="finenote">Captain: {roster.captain}</p>}
+          </div>
+        );
+      })}
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .team-card { display: flex; flex-direction: column; gap: 10px; }
+  .team-pair { font-family: var(--serif); font-weight: 600; font-size: 1.2rem; margin: 4px 0 0; }
+</style>

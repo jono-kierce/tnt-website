@@ -1,0 +1,92 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { seasonLabel } from '../config/site.ts';
+import { playerHref } from '../lib/url.ts';
+import { records, leaderboard } from '../lib/stats.ts';
+import { rows } from '../lib/site-data.ts';
+
+const rec = records(rows);
+const mostBog = leaderboard('bog', rows).slice(0, 5);
+const mostWinnersCareer = leaderboard('winners', rows).slice(0, 5);
+
+interface Board {
+  kicker: string; title: string; caption: string;
+  rows: { player: string; slug: string; value: number | string; note?: string }[];
+}
+const gameNote = (r: { season: number; round: number; opponent: string }) =>
+  `${seasonLabel(r.season)} · R${r.round} v ${r.opponent}`;
+
+const boards: Board[] = [
+  {
+    kicker: 'Single game', title: 'THE HIGHLIGHT REEL', caption: 'Most winners struck in one match. Absolute cinema.',
+    rows: rec.mostWinnersGame.map((r) => ({ player: r.player, slug: r.slug, value: r.value, note: gameNote(r) })),
+  },
+  {
+    kicker: 'Single game', title: 'UNRETURNABLE', caption: 'Most aces in a single match. Blink and you missed it.',
+    rows: rec.mostAcesGame.map((r) => ({ player: r.player, slug: r.slug, value: r.value, note: gameNote(r) })),
+  },
+  {
+    kicker: 'Single game', title: 'THE HORROR SHOW', caption: 'Biggest unforced-error meltdown in one night. We do not speak of it.',
+    rows: rec.biggestUeGame.map((r) => ({ player: r.player, slug: r.slug, value: r.value, note: gameNote(r) })),
+  },
+  {
+    kicker: 'Career', title: 'TOSS IT HIGHER', caption: 'Career double faults. The double-fault dossier, updated weekly.',
+    rows: rec.mostDoubleFaultsCareer.map((r) => ({ player: r.player, slug: r.slug, value: r.value, note: `${r.games} games` })),
+  },
+  {
+    kicker: 'Career', title: 'ON A HEATER', caption: 'Longest win streak in TNT history. Untouchable while it lasted.',
+    rows: rec.longestWinStreaks.map((r) => ({ player: r.player, slug: r.slug, value: `${r.streak} wins` })),
+  },
+  {
+    kicker: 'Career', title: 'MR RELIABLE', caption: 'Most Best-on-Ground awards. Turns up, stands up.',
+    rows: mostBog.map((r) => ({ player: r.player, slug: r.slug, value: `${r.value}×`, note: `${r.games} games` })),
+  },
+  {
+    kicker: 'Career', title: 'THE FINISHER', caption: 'Most career winners, all-time. The scoreboard operator.',
+    rows: mostWinnersCareer.map((r) => ({ player: r.player, slug: r.slug, value: r.value, note: `${r.games} games` })),
+  },
+];
+---
+<Layout title="Records">
+  <section class="section container">
+    <p class="eyebrow">Hall of Fame &amp; Hall of Shame</p>
+    <h1 class="tabloid">The Record Books</h1>
+    <p class="lead" style="max-width:640px">
+      The best, the worst, and the frankly unforgivable — every extreme in the
+      TNT archive. Fill-in cameos excluded.
+    </p>
+
+    <div class="grid grid-2 mt-24">
+      {boards.map((b) => (
+        <div class="card record-card">
+          <p class="eyebrow">{b.kicker}</p>
+          <h2 class="tabloid record-title">{b.title}</h2>
+          <p class="muted record-caption">{b.caption}</p>
+          <ol class="record-list">
+            {b.rows.map((r, i) => (
+              <li>
+                <span class="rank">{i + 1}</span>
+                <a href={playerHref(r.slug)}>{r.player}</a>
+                <span class="record-val">{r.value}</span>
+                {r.note && <span class="record-note">{r.note}</span>}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ))}
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .record-title { font-size: clamp(1.8rem, 4.5vw, 2.6rem); margin: 2px 0 6px; }
+  .record-caption { font-size: 0.9rem; margin: 0 0 14px; }
+  .record-list { list-style: none; margin: 0; padding: 0; }
+  .record-list li {
+    display: grid; grid-template-columns: 2ch 1fr auto; align-items: baseline;
+    gap: 4px 10px; padding: 8px 0; border-bottom: 1px solid var(--line-soft);
+  }
+  .record-list li:last-child { border-bottom: 0; }
+  .record-val { font-family: var(--serif); font-weight: 700; font-size: 1.15rem; color: var(--gold-soft); font-variant-numeric: tabular-nums; }
+  .record-note { grid-column: 2 / 4; font-size: 0.72rem; color: var(--muted); }
+</style>

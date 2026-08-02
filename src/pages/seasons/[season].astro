@@ -1,0 +1,128 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import LadderTable from '../../components/LadderTable.astro';
+import FinalsBracket from '../../components/FinalsBracket.astro';
+import TeamChip from '../../components/TeamChip.astro';
+import VotesNote from '../../components/VotesNote.astro';
+import { seasonLabel, isVotesSealed } from '../../config/site.ts';
+import { playerHref } from '../../lib/url.ts';
+import { allSeasons } from '../../lib/stats.ts';
+import { rows, seasonLadder, seasonMvp } from '../../lib/site-data.ts';
+import { getSeasonConfig } from '../../config/seasons/index.ts';
+import { seasonRecapHtml } from '../../lib/content.ts';
+
+export function getStaticPaths() {
+  return allSeasons(rows).map((s) => ({ params: { season: String(s) }, props: { season: s } }));
+}
+const { season } = Astro.props;
+const cfg = getSeasonConfig(season);
+const table = seasonLadder(season);
+const sealed = isVotesSealed(season);
+const mvp = seasonMvp(season);
+const podium = mvp.slice(0, 3);
+const rest = mvp.slice(3, 10);
+const recap = seasonRecapHtml(season);
+const honours = cfg?.honours ?? [];
+const podiumMedals = ['🥇', '🥈', '🥉'];
+---
+<Layout title={seasonLabel(season)}>
+  <section class="section container">
+    <p class="eyebrow">Season Archive</p>
+    <h1 class="tabloid">{seasonLabel(season)}</h1>
+
+    {honours.length > 0 && (
+      <div class="honours mt-16">
+        {honours.map((h) => (
+          <div class="honour card">
+            <p class="eyebrow" style="margin:0 0 6px">{h.title}</p>
+            {h.team && <div style="margin-bottom:6px"><TeamChip team={h.team} /></div>}
+            <p class="honour-detail">{h.detail}</p>
+          </div>
+        ))}
+      </div>
+    )}
+  </section>
+
+  {recap && (
+    <section class="section container">
+      <p class="eyebrow">Recap</p>
+      <div class="card prose season-recap" set:html={recap} />
+    </section>
+  )}
+
+  <section class="section container grid grid-2" style="align-items:start">
+    <div>
+      <p class="eyebrow">Final Standings</p>
+      <h2 class="serif-title" style="margin-bottom:14px">Ladder</h2>
+      <LadderTable rows={table} cutoff={8} caption="Wins, then games ratio. Top 8 into finals." />
+    </div>
+    <div>
+      <p class="eyebrow">MVP Race</p>
+      <h2 class="serif-title" style="margin-bottom:14px">Vote Count</h2>
+      {sealed ? (
+        <div class="card sealed-card">
+          <p class="tabloid" style="font-size:clamp(1.6rem,5vw,2.4rem);margin:0">SEALED 🔒</p>
+          <p class="muted mb-0">Season {season} votes stay locked until awards night. This board fills in the moment they're committed to the CSV.</p>
+        </div>
+      ) : mvp.length === 0 ? (
+        <p class="muted">No votes recorded for this season.</p>
+      ) : (
+        <>
+          <div class="podium">
+            {podium.map((p, i) => (
+              <a class={`podium-slot slot-${i}`} href={playerHref(p.slug)}>
+                <span class="medal">{podiumMedals[i]}</span>
+                <span class="podium-name">{p.player}</span>
+                <span class="podium-votes">{p.votes}</span>
+                <span class="podium-team"><TeamChip team={p.team} plain /></span>
+              </a>
+            ))}
+          </div>
+          {rest.length > 0 && (
+            <ol class="mvp-list card" start="4">
+              {rest.map((p) => (
+                <li>
+                  <a href={playerHref(p.slug)}>{p.player}</a>
+                  <span class="mvp-votes">{p.votes}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+          <VotesNote compact />
+        </>
+      )}
+    </div>
+  </section>
+
+  <section class="section container">
+    <p class="eyebrow">The Run Home</p>
+    <h2 class="serif-title" style="margin-bottom:14px">Finals</h2>
+    <FinalsBracket finals={cfg?.finals ?? []} ladder={table} />
+  </section>
+</Layout>
+
+<style>
+  .honours { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+  .honour-detail { font-family: var(--serif); font-weight: 600; font-size: 1.15rem; margin: 0; }
+  .season-recap :global(p) { color: var(--ivory-dim); }
+  .season-recap :global(h1) { font-family: var(--serif); font-size: 1.4rem; }
+  .sealed-card { background: linear-gradient(135deg, #12271a, #0d0d0b); display: flex; flex-direction: column; gap: 10px; }
+  .podium { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; align-items: end; }
+  .podium-slot {
+    display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+    padding: 16px 8px; border-radius: 12px; border: 1px solid var(--line);
+    background: linear-gradient(180deg, #163a24, #0e1c13); color: var(--ivory);
+  }
+  .podium-slot:hover { text-decoration: none; border-color: var(--gold); }
+  .podium-slot.slot-0 { background: linear-gradient(180deg, #1f6b3d, #0e1c13); padding-top: 26px; border-color: var(--gold); }
+  .medal { font-size: 1.5rem; }
+  .podium-name { font-family: var(--serif); font-weight: 700; font-size: 1rem; }
+  .podium-votes { font-size: 1.7rem; font-weight: 700; color: var(--gold-soft); font-variant-numeric: tabular-nums; }
+  .podium-team { font-size: 0.72rem; }
+  .mvp-list { list-style: none; margin: 14px 0 0; padding: 8px 14px; counter-reset: r 3; }
+  .mvp-list li { display: flex; justify-content: space-between; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--line-soft); }
+  .mvp-list li:last-child { border-bottom: 0; }
+  .mvp-list li::before { counter-increment: r; content: counter(r) '.'; color: var(--muted); margin-right: 8px; font-family: var(--serif); }
+  .mvp-list li a { flex: 1; }
+  .mvp-votes { font-weight: 700; color: var(--gold-soft); font-variant-numeric: tabular-nums; }
+</style>

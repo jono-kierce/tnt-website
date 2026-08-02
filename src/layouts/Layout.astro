@@ -1,0 +1,80 @@
+---
+import '../styles/global.css';
+import { SITE } from '../config/site.ts';
+import { withBase } from '../lib/url.ts';
+import Crest from '../components/Crest.astro';
+
+interface Props {
+  title?: string;
+  description?: string;
+  /** Optional team accent for the whole page (player/season theming). */
+  accent?: { color: string; color2: string; ink: string };
+}
+const { title, description = SITE.description, accent } = Astro.props;
+const fullTitle = title ? `${title} — ${SITE.short}` : `${SITE.title}`;
+const path = Astro.url.pathname;
+const nav = [
+  { href: withBase('/'), label: 'Home' },
+  { href: withBase('/ladder/'), label: 'Ladder' },
+  { href: withBase('/players/'), label: 'Players' },
+  { href: withBase('/leaderboards/'), label: 'Leaderboards' },
+  { href: withBase('/records/'), label: 'Records' },
+  { href: withBase('/seasons/'), label: 'Seasons' },
+];
+const isCurrent = (href: string) =>
+  href === withBase('/') ? path === href : path.startsWith(href);
+const bodyStyle = accent
+  ? `--team-color:${accent.color};--team-color-2:${accent.color2};--team-ink:${accent.ink}`
+  : undefined;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" href={withBase('/logo/favicon.png')} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={withBase('/logo/og.png')} />
+    <meta name="theme-color" content="#0a130d" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,500;1,600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body style={bodyStyle}>
+    <header class="site-header">
+      <div class="inner">
+        <a class="brand" href={withBase('/')}>
+          <Crest class="crest" />
+          <span class="name">Tuesday Night Tennis</span>
+        </a>
+        <nav class="nav">
+          {nav.map((n) => (
+            <a href={n.href} aria-current={isCurrent(n.href) ? 'page' : undefined}>{n.label}</a>
+          ))}
+        </nav>
+      </div>
+    </header>
+
+    <div class="watermark" aria-hidden="true"><Crest /></div>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="inner">
+        <Crest class="crest" />
+        <span>Tuesday Night Tennis — Melbourne</span>
+        <a href={SITE.instagram} target="_blank" rel="noopener">@tuesday_night_tennis</a>
+        <a href={withBase('/data/alltimestats.csv')} download>Download raw data (CSV)</a>
+        <span class="muted" style="margin-left:auto">Built from <code>data/alltimestats.csv</code></span>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,224 @@
+---
+import Layout from '../layouts/Layout.astro';
+import VotesNote from '../components/VotesNote.astro';
+import { SITE, seasonLabel, teamMeta, isVotesSealed } from '../config/site.ts';
+import { withBase } from '../lib/url.ts';
+import { allPlayers, playerAgg, playerRows, allSeasons } from '../lib/stats.ts';
+import { rows, playerLatestTeam } from '../lib/site-data.ts';
+
+const seasons = allSeasons(rows);
+
+/** Dominant team for a player within a scope (season or all-time). */
+function scopeTeam(name: string, season?: number): string {
+  if (season === undefined) return playerLatestTeam(name);
+  const pr = rows.filter((r) => !r.isSingles && r.player === name && r.season === season);
+  const counts = new Map<string, number>();
+  for (const r of pr) counts.set(r.team, (counts.get(r.team) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+}
+
+// Precompute per-player aggregates for every (scope, fill-in mode).
+const players = allPlayers(rows);
+type Entry = {
+  player: string; slug: string; team: string; games: number;
+  winners: number; unforcedErrors: number; aces: number; doubleFaults: number;
+  errorsForced: number; errorsForcedGames: number; votes: number | null; votedGames: number;
+  bog: number; winPct: number; winnerToUe: number | null;
+};
+function buildScope(season: number | undefined, includeFillIns: boolean): Entry[] {
+  return players
+    .map((name) => {
+      const a = playerAgg(name, rows, { season, includeFillIns });
+      return {
+        player: name, slug: a.slug, team: scopeTeam(name, season), games: a.games,
+        winners: a.winners, unforcedErrors: a.unforcedErrors, aces: a.aces, doubleFaults: a.doubleFaults,
+        errorsForced: a.errorsForced ?? 0, errorsForcedGames: a.errorsForcedGames,
+        votes: a.votes, votedGames: a.votedGames, bog: a.bog, winPct: a.winPct,
+        winnerToUe: a.winnerToUe === Infinity ? a.winners : a.winnerToUe,
+      };
+    })
+    .filter((e) => e.games > 0);
+}
+
+const datasets: Record<string, Entry[]> = {};
+for (const fill of [false, true]) {
+  datasets[`all|${fill}`] = buildScope(undefined, fill);
+  for (const s of seasons) datasets[`${s}|${fill}`] = buildScope(s, fill);
+}
+
+const teamColors: Record<string, { color: string; color2: string; ink: string }> = {};
+for (const e of Object.values(datasets).flat()) {
+  if (e.team && !teamColors[e.team]) {
+    const m = teamMeta(e.team);
+    teamColors[e.team] = { color: m.color, color2: m.color2, ink: m.ink };
+  }
+}
+
+const sealedSeasons = seasons.filter(isVotesSealed);
+const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSeasons, playerBase: withBase('/players/') };
+---
+<Layout title="Leaderboards">
+  <section class="section container">
+    <p class="eyebrow">Who's really the best?</p>
+    <h1 class="serif-title">Leaderboards</h1>
+    <p class="lead" style="max-width:640px">
+      Argue responsibly. Filter by season, flip between totals and per-game, and
+      mind the minimum-games threshold on per-game boards.
+    </p>
+
+    <div class="card controls">
+      <label>Season
+        <select id="lbSeason">
+          <option value="all">All-time</option>
+          {seasons.map((s) => <option value={String(s)}>{seasonLabel(s)}</option>)}
+        </select>
+      </label>
+      <label>Stat
+        <select id="lbStat">
+          <option value="winners">Winners</option>
+          <option value="unforcedErrors">Unforced Errors</option>
+          <option value="aces">Aces</option>
+          <option value="doubleFaults">Double Faults</option>
+          <option value="errorsForced">Errors Forced (S2+)</option>
+          <option value="votes">Votes (MVP)</option>
+          <option value="bog">Best on Ground</option>
+          <option value="winPct">Win %</option>
+          <option value="winnerToUe">Winner : UE ratio</option>
+        </select>
+      </label>
+      <label>Mode
+        <select id="lbMode">
+          <option value="total">Totals</option>
+          <option value="perGame">Per game</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="lbFill" /> Include fill-in games</label>
+      <button class="btn btn--sm" id="lbCsv" type="button">Download table CSV</button>
+    </div>
+    <p class="finenote" id="lbNote"></p>
+
+    <div class="card card--dark mt-16">
+      <div class="table-wrap">
+        <table class="stat" id="lbTable">
+          <thead>
+            <tr>
+              <th style="width:2ch">#</th>
+              <th>Player</th>
+              <th>Team</th>
+              <th id="lbValHead">Value</th>
+              <th>Games</th>
+            </tr>
+          </thead>
+          <tbody id="lbBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mt-24"><VotesNote /></div>
+  </section>
+</Layout>
+
+<script type="application/json" id="lbData" set:html={JSON.stringify(payload)}></script>
+<script>
+  type Entry = Record<string, number | string | null> & { player: string; slug: string; team: string; games: number };
+  const cfg = JSON.parse(document.getElementById('lbData')!.textContent!);
+  const $ = (id: string) => document.getElementById(id) as HTMLSelectElement & HTMLInputElement;
+  const seasonSel = $('lbSeason'), statSel = $('lbStat'), modeSel = $('lbMode'), fillChk = $('lbFill');
+  const body = document.getElementById('lbBody')!, note = document.getElementById('lbNote')!;
+  const valHead = document.getElementById('lbValHead')!;
+
+  const COUNTS = ['winners', 'unforcedErrors', 'aces', 'doubleFaults', 'errorsForced', 'votes', 'bog'];
+  const PER_GAME_ONLY_TOTAL = ['winPct', 'winnerToUe']; // already rates
+  const LABELS: Record<string, string> = {
+    winners: 'Winners', unforcedErrors: 'Unforced Errors', aces: 'Aces',
+    doubleFaults: 'Double Faults', errorsForced: 'Errors Forced', votes: 'Votes',
+    bog: 'Best on Ground', winPct: 'Win %', winnerToUe: 'Winner : UE',
+  };
+
+  let current: { rows: any[]; valLabel: string } = { rows: [], valLabel: '' };
+
+  function metric(e: Entry, stat: string, perGame: boolean): number | null {
+    if (stat === 'winPct') return e.winPct as number;
+    if (stat === 'winnerToUe') return e.winnerToUe as number | null;
+    if (stat === 'votes') {
+      if (e.votes === null) return null;
+      return perGame ? (e.votedGames ? (e.votes as number) / (e.votedGames as number) : null) : (e.votes as number);
+    }
+    const total = e[stat] as number;
+    if (!perGame) return total;
+    const denom = stat === 'errorsForced' ? (e.errorsForcedGames as number) : e.games;
+    return denom ? total / denom : null;
+  }
+
+  function fmt(v: number, stat: string, perGame: boolean): string {
+    if (stat === 'winPct') return (v * 100).toFixed(0) + '%';
+    if (perGame || stat === 'winnerToUe') return v.toFixed(2);
+    return String(v);
+  }
+
+  function render() {
+    const scope = seasonSel.value, stat = statSel.value;
+    const perGame = modeSel.value === 'perGame' && !PER_GAME_ONLY_TOTAL.includes(stat);
+    modeSel.disabled = PER_GAME_ONLY_TOTAL.includes(stat);
+    const data: Entry[] = cfg.datasets[`${scope}|${fillChk.checked}`] ?? [];
+
+    let rows = data
+      .map((e) => ({ e, value: metric(e, stat, perGame) }))
+      .filter((r) => r.value !== null) as { e: Entry; value: number }[];
+
+    const minGames = cfg.minGames;
+    const applyMin = perGame || stat === 'winPct' || stat === 'winnerToUe';
+    if (applyMin) rows = rows.filter((r) => r.e.games >= minGames);
+
+    rows.sort((a, b) => b.value - a.value || b.e.games - a.e.games);
+
+    const rateLabel = perGame ? ' / game' : '';
+    valHead.textContent = LABELS[stat] + rateLabel;
+    current = { rows: rows.map((r) => ({ ...r.e, value: r.value })), valLabel: LABELS[stat] + rateLabel };
+
+    body.innerHTML = rows.map((r, i) => {
+      const c = cfg.teamColors[r.e.team];
+      const chip = c
+        ? `<span class="flex items-center gap-8" style="--team-color:${c.color};--team-color-2:${c.color2}"><span class="dot"></span>${r.e.team}</span>`
+        : '';
+      return `<tr>
+        <td class="rank">${i + 1}</td>
+        <td><a href="${cfg.playerBase}${r.e.slug}/">${r.e.player}</a></td>
+        <td>${chip}</td>
+        <td class="num">${fmt(r.value, stat, perGame)}</td>
+        <td>${r.e.games}</td>
+      </tr>`;
+    }).join('') || `<tr><td colspan="5" class="muted">No qualifying players.</td></tr>`;
+
+    const notes: string[] = ['All fill-in games excluded' + (fillChk.checked ? ' — currently INCLUDED' : ' by default') + '.'];
+    if (applyMin) notes.push(`Minimum ${minGames} games to qualify.`);
+    if (stat === 'votes' && cfg.sealedSeasons.includes(Number(scope))) notes.push('Votes for this season are sealed 🔒 — board will populate after awards night.');
+    if (stat === 'errorsForced') notes.push('Errors Forced only tracked from Season 2.');
+    note.textContent = notes.join(' ');
+  }
+
+  function downloadCsv() {
+    const header = ['Rank', 'Player', 'Team', current.valLabel, 'Games'];
+    const lines = [header.join(',')].concat(
+      current.rows.map((r, i) => [i + 1, `"${r.player}"`, r.team, r.value, r.games].join(','))
+    );
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `tnt-${statSel.value}-${seasonSel.value}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  [seasonSel, statSel, modeSel, fillChk].forEach((el) => el.addEventListener('change', render));
+  document.getElementById('lbCsv')!.addEventListener('click', downloadCsv);
+  render();
+</script>
+
+<style>
+  .controls { display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: center; }
+  .controls label { font-family: var(--serif); letter-spacing: 0.06em; font-size: 0.82rem; color: var(--ivory-dim); display: flex; align-items: center; gap: 8px; }
+  .controls select { font-family: var(--sans); font-size: 0.9rem; color: var(--ivory); background: var(--grass-800); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+  .controls select:disabled { opacity: 0.4; }
+  .controls .check { cursor: pointer; }
+</style>

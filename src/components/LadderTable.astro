@@ -1,0 +1,61 @@
+---
+import type { LadderRow } from '../lib/types.ts';
+import { teamMeta } from '../config/site.ts';
+
+interface Props {
+  rows: LadderRow[];
+  /** Draw a divider under this rank (e.g. 8 = finals cutoff). */
+  cutoff?: number;
+  caption?: string;
+}
+const { rows, cutoff, caption } = Astro.props;
+---
+<div class="card card--dark ladder-card">
+  <div class="table-wrap">
+    <table class="stat ladder">
+      <thead>
+        <tr>
+          <th style="width:2ch">#</th>
+          <th>Team</th>
+          <th title="Matches played">P</th>
+          <th>Wins</th>
+          <th title="Games for : against">Ratio</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => {
+          const m = teamMeta(r.team);
+          const style = `--team-color:${m.color};--team-color-2:${m.color2};--team-ink:${m.ink}`;
+          return (
+            <tr style={style} class={cutoff && r.rank === cutoff ? 'cutoff' : undefined}>
+              <td class="rank">{r.rank}</td>
+              <td>
+                <span class="ladder-team">
+                  <span class="bar"></span>
+                  <span class="ladder-name">{r.pairingName}</span>
+                </span>
+              </td>
+              <td>{r.matchesPlayed}</td>
+              <td class="num">{r.wins}</td>
+              <td class="num">{r.ratio.toFixed(2)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+  {caption && <p class="finenote">{caption}</p>}
+</div>
+
+<style>
+  .ladder-card { padding: 12px 12px 14px; }
+  table.ladder { min-width: 420px; }
+  table.ladder tbody td { padding: 12px; vertical-align: middle; }
+  .ladder-team { display: inline-flex; align-items: center; gap: 12px; }
+  .ladder-team .bar { height: 26px; width: 6px; }
+  .ladder-name {
+    font-family: var(--serif); font-weight: 600; letter-spacing: 0.03em;
+    font-size: 1.05rem; white-space: nowrap;
+  }
+  tr.cutoff td { border-bottom: 2px solid var(--gold); }
+</style>

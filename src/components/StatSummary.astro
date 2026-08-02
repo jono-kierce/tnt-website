@@ -1,0 +1,42 @@
+---
+import type { PlayerAgg } from '../lib/stats.ts';
+
+interface Props {
+  agg: PlayerAgg;
+  scopeLabel: string;
+  sealed?: boolean;
+  season?: number;
+}
+const { agg, scopeLabel, sealed = false } = Astro.props;
+
+const fmt = (n: number, d = 0) => n.toFixed(d);
+const ratio =
+  agg.winnerToUe === null ? '—'
+  : agg.winnerToUe === Infinity ? '∞'
+  : fmt(agg.winnerToUe, 2);
+
+const votesDisplay = sealed && agg.votes === null ? '🔒' : agg.votes === null ? '—' : String(agg.votes);
+const votesSub = sealed && agg.votes === null ? 'sealed until awards night'
+  : agg.votesPerGame === null ? 'not recorded'
+  : `${fmt(agg.votesPerGame, 2)} / game`;
+---
+<div>
+  <p class="finenote" style="margin:0 0 10px">{scopeLabel}</p>
+  <div class="stat-tiles">
+    <div class="tile"><div class="k">Games</div><div class="v">{agg.games}</div></div>
+    <div class="tile"><div class="k">Win–Loss</div><div class="v">{agg.wins}–{agg.losses}</div><div class="sub">{fmt(agg.winPct * 100, 0)}% win rate</div></div>
+    <div class="tile"><div class="k">Winners</div><div class="v">{agg.winners}</div><div class="sub">{agg.games ? fmt(agg.winners / agg.games, 2) : '0'} / game</div></div>
+    <div class="tile"><div class="k">Unforced Errors</div><div class="v">{agg.unforcedErrors}</div><div class="sub">{agg.games ? fmt(agg.unforcedErrors / agg.games, 2) : '0'} / game</div></div>
+    <div class="tile"><div class="k">Winner : UE</div><div class="v">{ratio}</div><div class="sub">higher is cleaner</div></div>
+    <div class="tile"><div class="k">Aces</div><div class="v">{agg.aces}</div></div>
+    <div class="tile"><div class="k">Double Faults</div><div class="v">{agg.doubleFaults}</div></div>
+    {agg.errorsForced !== null && (
+      <div class="tile"><div class="k">Errors Forced</div><div class="v">{agg.errorsForced}</div><div class="sub">S2+ · {agg.errorsForcedGames} games</div></div>
+    )}
+    <div class="tile"><div class="k">Votes</div><div class="v">{votesDisplay}</div><div class="sub">{votesSub}</div></div>
+    <div class="tile"><div class="k">Best on Ground</div><div class="v">{agg.bog}</div></div>
+    {agg.servePct !== null && (
+      <div class="tile"><div class="k">1st Serve In</div><div class="v">{fmt(agg.servePct * 100, 0)}%</div><div class="sub">S1 only</div></div>
+    )}
+  </div>
+</div>

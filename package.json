@@ -1,0 +1,25 @@
+{
+  "name": "tnt-website",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tuesday Night Tennis — static league site built from data/alltimestats.csv",
+  "scripts": {
+    "predev": "node scripts/copy-assets.mjs",
+    "dev": "astro dev",
+    "prebuild": "node scripts/copy-assets.mjs",
+    "build": "astro build",
+    "preview": "astro preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "ladder": "node --experimental-strip-types scripts/print-ladder.ts",
+    "check-data": "node --experimental-strip-types scripts/check-data.ts"
+  },
+  "dependencies": {
+    "astro": "^5.6.0",
+    "marked": "^15.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}
