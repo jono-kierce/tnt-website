@@ -1,1 +1,0 @@
-Hume has had arguably one of the best careers of any TNT draftee. Across 3 seasons (missing season 3), Hume has never missed the championship match, earning his maiden championship in season 4 with [Luke Sharrock](luke-sharrock.qmd). Hume sports an impressive 75% career win rate.
