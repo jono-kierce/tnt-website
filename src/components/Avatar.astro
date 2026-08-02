@@ -1,0 +1,14 @@
+---
+import { teamMeta } from '../config/site.ts';
+import { playerPhotos } from '../lib/content.ts';
+
+interface Props { slug: string; name: string; team: string }
+const { slug, name, team } = Astro.props;
+const m = teamMeta(team);
+const style = `--team-color:${m.color};--team-color-2:${m.color2};--team-ink:${m.ink}`;
+const photo = playerPhotos(slug)[0] ?? null;
+const initials = name.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]).join('');
+---
+<div class="avatar" style={style}>
+  {photo ? <img src={photo} alt={name} loading="lazy" /> : <span>{initials}</span>}
+</div>

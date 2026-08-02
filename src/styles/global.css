@@ -1,0 +1,303 @@
+/* ==========================================================================
+   Tuesday Night Tennis — design system
+   Grand-slam prestige, played straight, with tabloid headlines.
+   ========================================================================== */
+
+:root {
+  /* Base palette — Wimbledon-adjacent, dark by default */
+  --grass-900: #0a130d;
+  --grass-800: #0e1c13;
+  --grass-700: #12271a;
+  --grass-600: #1a3a27;
+  --court: #14351f;
+  --card: #14140f;
+  --card-2: #1b1b14;
+  --line: #2c2c22;
+  --line-soft: #23231b;
+
+  --ivory: #f4efe2;
+  --ivory-dim: #cdc7b6;
+  --muted: #8f8a78;
+  --gold: #c8a24a;
+  --gold-soft: #e0c987;
+
+  --win: #6fce8f;
+  --loss: #d98a8a;
+
+  /* Type */
+  --serif: 'Cormorant Garamond', 'Cormorant', Georgia, 'Times New Roman', serif;
+  --display: 'Anton', 'Arial Narrow', 'Helvetica Neue', sans-serif;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  --maxw: 1080px;
+  --radius: 14px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+
+  /* Default team accent (overridden per-page via inline --team-color) */
+  --team-color: var(--gold);
+  --team-color-2: var(--gold-soft);
+  --team-ink: #0d0d0d;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  color: var(--ivory);
+  background:
+    radial-gradient(1200px 700px at 50% -200px, var(--grass-600), transparent 60%),
+    linear-gradient(180deg, var(--grass-900), var(--grass-800) 40%, var(--grass-900));
+  background-attachment: fixed;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+a { color: var(--gold-soft); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+img { max-width: 100%; display: block; }
+
+/* --- Layout ---------------------------------------------------------------- */
+.container { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 20px; }
+.section { margin: 48px 0; }
+.section-lg { margin: 72px 0; }
+
+/* --- Type ------------------------------------------------------------------ */
+.eyebrow {
+  font-family: var(--serif);
+  text-transform: uppercase;
+  letter-spacing: 0.32em;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--gold);
+  margin: 0 0 8px;
+}
+.serif-title {
+  font-family: var(--serif);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+  margin: 0;
+  color: var(--ivory);
+}
+h1.serif-title { font-size: clamp(2.1rem, 5vw, 3.4rem); }
+h2.serif-title { font-size: clamp(1.6rem, 3.5vw, 2.2rem); }
+
+.smallcaps {
+  font-variant: small-caps;
+  letter-spacing: 0.08em;
+}
+
+/* Tabloid headline — big bold condensed */
+.tabloid {
+  font-family: var(--display);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 0.92;
+  font-size: clamp(2.4rem, 8vw, 5.5rem);
+  margin: 0;
+  color: var(--ivory);
+}
+.tabloid--accent { color: var(--team-color, var(--gold)); }
+
+.lead { font-size: 1.1rem; color: var(--ivory-dim); font-family: var(--serif); }
+.muted { color: var(--muted); }
+.center { text-align: center; }
+
+/* --- Cards ----------------------------------------------------------------- */
+.card {
+  background: linear-gradient(180deg, var(--card), var(--card-2));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 22px;
+}
+.card--dark { background: #0d0d0b; }
+
+.grid { display: grid; gap: 18px; }
+.grid-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-auto { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+@media (max-width: 760px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+}
+
+/* --- Team chip ------------------------------------------------------------- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 10px 3px 8px;
+  border-radius: 999px;
+  color: var(--team-ink);
+  background: linear-gradient(135deg, var(--team-color), var(--team-color-2));
+}
+.dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--team-color), var(--team-color-2));
+  display: inline-block; flex: none;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.08);
+}
+.bar {
+  width: 6px; align-self: stretch; border-radius: 999px;
+  background: linear-gradient(180deg, var(--team-color), var(--team-color-2));
+}
+
+/* --- Buttons / links ------------------------------------------------------- */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--serif); font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase; font-size: 0.85rem;
+  padding: 10px 18px; border-radius: 999px;
+  border: 1px solid var(--gold); color: var(--gold-soft);
+  background: transparent; cursor: pointer; transition: all .15s ease;
+}
+.btn:hover { background: var(--gold); color: #14140f; text-decoration: none; }
+.btn--sm { padding: 6px 12px; font-size: 0.75rem; }
+
+/* --- Tables (scoreboard style) --------------------------------------------- */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); }
+table.stat {
+  width: 100%; border-collapse: collapse; min-width: 520px;
+  font-variant-numeric: tabular-nums;
+}
+table.stat thead th {
+  font-family: var(--serif);
+  text-transform: uppercase; letter-spacing: 0.12em;
+  font-size: 0.68rem; color: var(--muted); font-weight: 600;
+  text-align: right; padding: 10px 12px; border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+table.stat thead th:first-child, table.stat tbody td:first-child { text-align: left; }
+table.stat tbody td { padding: 11px 12px; text-align: right; border-bottom: 1px solid var(--line-soft); }
+table.stat tbody tr:hover { background: rgba(255,255,255,0.02); }
+table.stat .num { font-weight: 700; }
+table.stat th.sortable { cursor: pointer; user-select: none; }
+table.stat th.sortable:hover { color: var(--ivory); }
+table.stat th[aria-sort="descending"]::after { content: " ▾"; color: var(--gold); }
+table.stat th[aria-sort="ascending"]::after { content: " ▴"; color: var(--gold); }
+
+.rank { color: var(--muted); font-family: var(--serif); font-size: 1rem; }
+.win { color: var(--win); } .loss { color: var(--loss); }
+
+/* small-print note like the Insta graphics */
+.finenote { font-size: 0.72rem; color: var(--muted); font-style: italic; margin-top: 8px; }
+
+.badge {
+  display: inline-block; font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line);
+  color: var(--ivory-dim); background: rgba(255,255,255,0.03);
+}
+.badge--bog { color: #14140f; background: var(--gold); border-color: var(--gold); }
+.badge--fill { color: var(--gold-soft); }
+.badge--sealed { color: var(--gold-soft); border-color: var(--gold); }
+
+/* --- Scoreboard / set scores ----------------------------------------------- */
+.score { font-family: var(--serif); font-weight: 700; font-size: 1.2rem; letter-spacing: 0.04em; }
+.tiebreak { font-size: 0.62em; vertical-align: super; color: var(--gold-soft); }
+
+/* --- Header ---------------------------------------------------------------- */
+.site-header {
+  position: sticky; top: 0; z-index: 50;
+  backdrop-filter: blur(10px);
+  background: rgba(8, 16, 11, 0.82);
+  border-bottom: 1px solid var(--line-soft);
+}
+.site-header .inner {
+  display: flex; align-items: center; gap: 16px;
+  height: 62px; max-width: var(--maxw); margin: 0 auto; padding: 0 20px;
+}
+.brand { display: flex; align-items: center; gap: 10px; color: var(--ivory); }
+.brand:hover { text-decoration: none; }
+.brand .crest { width: 34px; height: 34px; color: var(--gold); display: inline-block; flex: none; }
+.crest svg { width: 100%; height: 100%; display: block; }
+.site-footer .crest { width: 26px; height: 26px; color: var(--gold); display: inline-block; flex: none; }
+.brand .name {
+  font-family: var(--serif); font-weight: 700; letter-spacing: 0.18em;
+  text-transform: uppercase; font-size: 0.95rem;
+}
+.nav { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+.nav a {
+  font-family: var(--serif); font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; font-size: 0.78rem; color: var(--ivory-dim);
+  padding: 6px 10px; border-radius: 8px;
+}
+.nav a:hover { color: var(--ivory); background: rgba(255,255,255,0.05); text-decoration: none; }
+.nav a[aria-current="page"] { color: var(--gold-soft); }
+
+@media (max-width: 640px) {
+  .site-header .inner { height: auto; flex-wrap: wrap; padding: 10px 16px; gap: 8px 16px; }
+  .nav { width: 100%; margin: 0; justify-content: flex-start; }
+  .brand .name { font-size: 0.85rem; }
+}
+
+/* --- Watermark crest ------------------------------------------------------- */
+.watermark {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0.035; color: var(--ivory);
+}
+.watermark svg { width: min(70vw, 640px); height: auto; }
+main { position: relative; z-index: 1; }
+
+/* --- Footer ---------------------------------------------------------------- */
+.site-footer {
+  border-top: 1px solid var(--line-soft); margin-top: 72px;
+  padding: 28px 0 44px; color: var(--muted);
+}
+.site-footer .inner {
+  max-width: var(--maxw); margin: 0 auto; padding: 0 20px;
+  display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center;
+  font-size: 0.82rem;
+}
+.site-footer a { color: var(--ivory-dim); }
+
+/* --- Avatars --------------------------------------------------------------- */
+.avatar {
+  aspect-ratio: 1; width: 100%; border-radius: 12px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(150deg, var(--team-color), var(--team-color-2));
+  color: var(--team-ink);
+  font-family: var(--serif); font-weight: 700; letter-spacing: 0.04em;
+  font-size: clamp(1.4rem, 6vw, 2.6rem);
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* --- Stat tiles ------------------------------------------------------------ */
+.stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+.tile {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 16px; text-align: left;
+}
+.tile .k {
+  font-family: var(--serif); text-transform: uppercase; letter-spacing: 0.1em;
+  font-size: 0.66rem; color: var(--muted);
+}
+.tile .v { font-size: 1.7rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.tile .sub { font-size: 0.72rem; color: var(--muted); }
+
+/* --- Utilities ------------------------------------------------------------- */
+.flex { display: flex; }
+.items-center { align-items: center; }
+.gap-8 { gap: 8px; } .gap-12 { gap: 12px; } .gap-16 { gap: 16px; }
+.wrap { flex-wrap: wrap; }
+.mt-8 { margin-top: 8px; } .mt-16 { margin-top: 16px; } .mt-24 { margin-top: 24px; }
+.mb-0 { margin-bottom: 0; }
+.hidden { display: none !important; }
+.pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Visually-hidden but screen-reader available */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}

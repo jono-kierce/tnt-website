@@ -1,0 +1,52 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import TeamChip from '../../components/TeamChip.astro';
+import { seasonLabel, isVotesSealed } from '../../config/site.ts';
+import { seasonHref } from '../../lib/url.ts';
+import { allSeasons } from '../../lib/stats.ts';
+import { rows } from '../../lib/site-data.ts';
+import { getSeasonConfig } from '../../config/seasons/index.ts';
+
+const seasons = allSeasons(rows).slice().reverse();
+---
+<Layout title="Seasons">
+  <section class="section container">
+    <p class="eyebrow">The Archive</p>
+    <h1 class="serif-title">Seasons</h1>
+    <p class="lead" style="max-width:620px">
+      Final ladders, finals brackets, MVP podiums and the honour roll — every
+      TNT campaign on record.
+    </p>
+
+    <div class="grid grid-2 mt-24">
+      {seasons.map((s) => {
+        const cfg = getSeasonConfig(s);
+        const champ = cfg?.honours.find((h) => /champion/i.test(h.title));
+        const mvp = cfg?.honours.find((h) => /season mvp/i.test(h.title));
+        return (
+          <a class="card season-card" href={seasonHref(s)}>
+            <div class="flex items-center gap-12 wrap" style="justify-content:space-between">
+              <h2 class="serif-title mb-0">{seasonLabel(s)}</h2>
+              {isVotesSealed(s) && <span class="badge badge--sealed">Votes sealed 🔒</span>}
+            </div>
+            {champ && (
+              <p class="season-champ">
+                <span class="muted">Champions</span> {champ.team && <TeamChip team={champ.team} plain />}
+                <strong>{champ.detail}</strong>
+              </p>
+            )}
+            {mvp && <p class="finenote" style="margin:0">MVP: {mvp.detail}</p>}
+            <span class="season-go">View season →</span>
+          </a>
+        );
+      })}
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .season-card { display: flex; flex-direction: column; gap: 10px; transition: transform .15s ease, border-color .15s ease; }
+  .season-card:hover { transform: translateY(-3px); border-color: var(--gold); text-decoration: none; }
+  .season-champ { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; font-family: var(--serif); font-size: 1.05rem; }
+  .season-go { color: var(--gold-soft); font-family: var(--serif); letter-spacing: 0.08em; font-size: 0.85rem; }
+</style>

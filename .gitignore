@@ -1,5 +1,17 @@
+# Build output
+/dist/
+/.astro/
+node_modules/
+
+# Generated public assets (copied from data/ and content/photos/ at build time)
+/public/data/
+/public/photos/
+
+# OS
+.DS_Store
+
+# Legacy Quarto attempt
 /.quarto/
 **/*.quarto_ipynb
 *.qmd
-*.html
 /_site/

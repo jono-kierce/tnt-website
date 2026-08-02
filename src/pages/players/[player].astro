@@ -1,0 +1,174 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Avatar from '../../components/Avatar.astro';
+import TeamChip from '../../components/TeamChip.astro';
+import VotesNote from '../../components/VotesNote.astro';
+import StatSummary from '../../components/StatSummary.astro';
+import TrendChart from '../../components/TrendChart.astro';
+import { SITE, seasonLabel, teamMeta, isVotesSealed } from '../../config/site.ts';
+import { withBase } from '../../lib/url.ts';
+import { allPlayers, playerAgg, playerRows, playerTrend } from '../../lib/stats.ts';
+import { rows, playerLatestTeam, playerSeasons } from '../../lib/site-data.ts';
+import { bioHtml, playerPhotos } from '../../lib/content.ts';
+
+export function getStaticPaths() {
+  return allPlayers(rows).map((name) => ({
+    params: { player: playerAgg(name, rows).slug },
+    props: { name },
+  }));
+}
+
+const { name } = Astro.props;
+const team = playerLatestTeam(name);
+const accent = teamMeta(team);
+const seasons = playerSeasons(name);
+const slug = playerAgg(name, rows).slug;
+
+// All-time (fill-ins excluded, matching leaderboard convention) + per season.
+const allTime = playerAgg(name, rows);
+const perSeason = seasons.map((s) => ({ season: s, agg: playerAgg(name, rows, { season: s }) }));
+const trend = playerTrend(name, rows);
+
+// Match log (includes fill-in games, flagged).
+const log = playerRows(name, rows, { includeFillIns: true }).sort(
+  (a, b) => a.season - b.season || a.round - b.round
+);
+
+const bio = bioHtml(slug);
+const photos = playerPhotos(slug);
+---
+<Layout
+  title={name}
+  accent={{ color: accent.color, color2: accent.color2, ink: accent.ink }}
+>
+  <section class="section container player-head">
+    <div class="head-avatar"><Avatar slug={slug} name={name} team={team} /></div>
+    <div>
+      <p class="eyebrow">Player Profile</p>
+      <h1 class="serif-title" style="font-size:clamp(2rem,5vw,3rem)">{name}</h1>
+      <div class="pill-row mt-8">
+        <TeamChip team={team} />
+        <span class="badge">{allTime.games} career games</span>
+        <span class="badge">{allTime.wins}W–{allTime.losses}L</span>
+        {allTime.bog > 0 && <span class="badge badge--bog">{allTime.bog}× BOG</span>}
+      </div>
+    </div>
+  </section>
+
+  {photos.length > 0 && (
+    <section class="section container">
+      <div class="gallery">
+        {photos.slice(0, 4).map((src) => <img src={src} alt={name} loading="lazy" />)}
+      </div>
+    </section>
+  )}
+
+  <section class="section container grid grid-2" style="align-items:start">
+    <div>
+      <p class="eyebrow">Bio</p>
+      {bio ? (
+        <div class="prose" set:html={bio} />
+      ) : (
+        <p class="muted">No bio written yet. Drop <code>{slug}.md</code> into <code>content/bios/</code>.</p>
+      )}
+    </div>
+    <div>
+      <p class="eyebrow">Per-season form</p>
+      <h2 class="serif-title" style="margin-bottom:12px">Winners &amp; errors per game</h2>
+      <TrendChart trend={trend} />
+    </div>
+  </section>
+
+  <section class="section container">
+    <div class="flex items-center gap-16 wrap" style="justify-content:space-between">
+      <div>
+        <p class="eyebrow">Career &amp; season splits</p>
+        <h2 class="serif-title mb-0">Statistics</h2>
+      </div>
+      <label class="season-select">
+        <span class="sr-only">Filter by season</span>
+        <select id="seasonFilter">
+          <option value="all">All-time</option>
+          {seasons.map((s) => <option value={String(s)}>{seasonLabel(s)}</option>)}
+        </select>
+      </label>
+    </div>
+
+    <div class="mt-16 stat-scope" data-scope="all">
+      <StatSummary agg={allTime} scopeLabel="All-time" />
+    </div>
+    {perSeason.map(({ season, agg }) => (
+      <div class="mt-16 stat-scope hidden" data-scope={String(season)}>
+        <StatSummary agg={agg} scopeLabel={seasonLabel(season)} sealed={isVotesSealed(season)} season={season} />
+      </div>
+    ))}
+    <VotesNote compact />
+  </section>
+
+  <section class="section container">
+    <p class="eyebrow">Every match</p>
+    <h2 class="serif-title" style="margin-bottom:12px">Match Log</h2>
+    <div class="card card--dark">
+      <div class="table-wrap">
+        <table class="stat">
+          <thead>
+            <tr>
+              <th>Season</th><th>Rd</th><th>Opponent</th><th>Result</th>
+              <th title="Winners">W</th><th title="Unforced errors">UE</th>
+              <th title="Aces">Ace</th><th title="Double faults">DF</th>
+              <th title="Errors forced (S2+)">EF</th><th title="Votes">V</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {log.map((r) => (
+              <tr>
+                <td>{r.season}</td>
+                <td>{r.round}</td>
+                <td>{r.opponent}</td>
+                <td class={r.win ? 'win' : 'loss'}>{r.win ? 'W' : 'L'} {r.teamScore}–{r.opponentScore}</td>
+                <td class="num">{r.winners}</td>
+                <td>{r.unforcedErrors}</td>
+                <td>{r.aces}</td>
+                <td>{r.doubleFaults}</td>
+                <td>{r.errorsForced ?? '—'}</td>
+                <td>{r.votes ?? (isVotesSealed(r.season) ? '🔒' : '—')}</td>
+                <td>
+                  {r.bog && <span class="badge badge--bog">BOG</span>}
+                  {r.isFillIn && <span class="badge badge--fill">Fill-in</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="mt-16"><a href={withBase('/players/')}>← All players</a></p>
+  </section>
+</Layout>
+
+<script>
+  const sel = document.getElementById('seasonFilter');
+  const scopes = document.querySelectorAll('.stat-scope');
+  sel?.addEventListener('change', () => {
+    const v = (sel as HTMLSelectElement).value;
+    scopes.forEach((el) => {
+      el.classList.toggle('hidden', (el as HTMLElement).dataset.scope !== v);
+    });
+  });
+</script>
+
+<style>
+  .player-head { display: grid; grid-template-columns: 120px 1fr; gap: 20px; align-items: center; }
+  .head-avatar { width: 120px; }
+  @media (max-width: 520px) { .player-head { grid-template-columns: 84px 1fr; } .head-avatar { width: 84px; } }
+  .gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .gallery img { aspect-ratio: 3/4; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
+  @media (max-width: 640px) { .gallery { grid-template-columns: repeat(2, 1fr); } }
+  .prose :global(p) { color: var(--ivory-dim); }
+  .prose :global(a) { color: var(--gold-soft); }
+  .season-select select {
+    font-family: var(--serif); font-size: 0.95rem; color: var(--ivory);
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 16px; letter-spacing: 0.05em;
+  }
+</style>
