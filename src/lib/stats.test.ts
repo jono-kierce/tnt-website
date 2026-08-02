@@ -3,10 +3,6 @@ import { normalizeRows } from './normalize.ts';
 import { ladder, playerAgg, teamRoster, matchSides } from './stats.ts';
 import { canonicalName, shortName, stripFillIn } from '../config/aliases.ts';
 
-const H = [
-  'Team,Opponent,Season,Round,Player,Aces,Unforced Errors,Forced Errors,1st Serve In,1st Serve Out,Double Faults,Winners,Errors Forced,win?,Team Score,Opponent Score,votes,BOG?,',
-];
-
 /** Helper to build a raw CSV record object. */
 function raw(o: Partial<Record<string, string>>): Record<string, string> {
   return {
@@ -14,7 +10,7 @@ function raw(o: Partial<Record<string, string>>): Record<string, string> {
     Aces: '0', 'Unforced Errors': '0', 'Forced Errors': '0',
     '1st Serve In': '', '1st Serve Out': '', 'Double Faults': '0',
     Winners: '0', 'Errors Forced': '', 'win?': 'FALSE',
-    'Team Score': '0', 'Opponent Score': '0', votes: '', 'BOG?': 'FALSE',
+    'Team Score': '0', 'Opponent Score': '0', votes: '',
     ...o,
   };
 }
@@ -197,5 +193,58 @@ describe('roster derivation', () => {
     });
     expect(r.pairingName).toBe('L. Jenkin & J. Virgona');
     expect(r.captain).toBe('Lachlan Jenkin');
+  });
+});
+
+describe('BOG derivation (from votes)', () => {
+  // One fixture = both sides of a (season, round, {team, opponent}) pairing.
+  const fixture = (rows: { player: string; team: string; opp: string; votes: string; fill?: boolean }[]) =>
+    normalizeRows(
+      rows.map((r) =>
+        raw({
+          Team: r.team, Opponent: r.opp, Season: '4', Round: '1',
+          Player: r.fill ? `${r.player} (Fill-in)` : r.player, votes: r.votes,
+        })
+      )
+    );
+
+  it('flags the top vote-getter across BOTH sides of the match', () => {
+    const rows = fixture([
+      { player: 'Winner Guy', team: 'Pink', opp: 'Navy', votes: '6' },
+      { player: 'Mid Pink', team: 'Pink', opp: 'Navy', votes: '2' },
+      { player: 'Mid Navy', team: 'Navy', opp: 'Pink', votes: '4' },
+      { player: 'Low Navy', team: 'Navy', opp: 'Pink', votes: '0' },
+    ]);
+    expect(rows.filter((r) => r.bog).map((r) => r.player)).toEqual(['Winner Guy']);
+  });
+
+  it('shares BOG on a tie', () => {
+    const rows = fixture([
+      { player: 'A', team: 'Pink', opp: 'Navy', votes: '5' },
+      { player: 'B', team: 'Navy', opp: 'Pink', votes: '5' },
+      { player: 'C', team: 'Navy', opp: 'Pink', votes: '1' },
+    ]);
+    expect(rows.filter((r) => r.bog).map((r) => r.player).sort()).toEqual(['A', 'B']);
+  });
+
+  it('no BOG when votes are unrecorded or all zero', () => {
+    const blank = fixture([
+      { player: 'A', team: 'Pink', opp: 'Navy', votes: '' },
+      { player: 'B', team: 'Navy', opp: 'Pink', votes: '' },
+    ]);
+    expect(blank.some((r) => r.bog)).toBe(false);
+    const zeros = fixture([
+      { player: 'A', team: 'Pink', opp: 'Navy', votes: '0' },
+      { player: 'B', team: 'Navy', opp: 'Pink', votes: '0' },
+    ]);
+    expect(zeros.some((r) => r.bog)).toBe(false);
+  });
+
+  it('a fill-in can win BOG', () => {
+    const rows = fixture([
+      { player: 'Sub', team: 'Pink', opp: 'Navy', votes: '6', fill: true },
+      { player: 'Reg', team: 'Navy', opp: 'Pink', votes: '3' },
+    ]);
+    expect(rows.filter((r) => r.bog).map((r) => r.player)).toEqual(['Sub']);
   });
 });

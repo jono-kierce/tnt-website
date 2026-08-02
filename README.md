@@ -60,11 +60,14 @@ Columns (a stray unnamed 19th column is ignored):
 Team, Opponent, Season, Round, Player,
 Aces, Unforced Errors, Forced Errors, 1st Serve In, 1st Serve Out,
 Double Faults, Winners, Errors Forced, win?, Team Score, Opponent Score,
-votes, BOG?
+votes
 ```
 
-One row = one player's stat line in one match. `win?` and `BOG?` are
-`TRUE`/`FALSE`.
+One row = one player's stat line in one match. `win?` is `TRUE`/`FALSE`.
+
+**Best on Ground (BOG) is not a column** — it's derived: the player(s) with the
+most votes in a match. Ties share it; a match with no recorded votes has no BOG.
+Just record votes and BOG follows automatically.
 
 ### Data quirks — all handled in one place (`src/lib/normalize.ts`)
 

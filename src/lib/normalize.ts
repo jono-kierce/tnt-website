@@ -34,7 +34,7 @@ function bool(v: string | undefined): boolean {
  * else — the rest of the site consumes clean `StatRow`s.
  */
 export function normalizeRows(raw: Record<string, string>[]): StatRow[] {
-  return raw
+  const out: StatRow[] = raw
     .filter((r) => (r['Player'] ?? '').trim() !== '' && (r['Season'] ?? '').trim() !== '')
     .map((r): StatRow => {
       const season = num(r['Season']);
@@ -74,9 +74,36 @@ export function normalizeRows(raw: Record<string, string>[]): StatRow[] {
         opponentScore: num(r['Opponent Score']),
 
         votes: numOrNull(r['votes']),
-        bog: bool(r['BOG?']),
+        // BOG is not stored — it's derived from votes below.
+        bog: false,
       };
     });
+
+  deriveBog(out);
+  return out;
+}
+
+/**
+ * Best on Ground is defined as the player(s) with the most votes in a match.
+ * We group rows into fixtures — one match is both sides of a
+ * (season, round, {team, opponent}) pairing — and flag the top vote-getter(s).
+ * Ties share the honour (as the historical data did). A fixture with no
+ * recorded votes, or where the best is zero, has no BOG.
+ */
+export function deriveBog(rows: StatRow[]): void {
+  const groups = new Map<string, StatRow[]>();
+  for (const r of rows) {
+    const pair = [r.team, r.opponent].sort().join('~');
+    const key = `${r.season}|${r.round}|${pair}`;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(r);
+  }
+  for (const group of groups.values()) {
+    const candidates = group.filter((r) => !r.isSingles && r.votes !== null);
+    if (!candidates.length) continue;
+    const max = Math.max(...candidates.map((r) => r.votes as number));
+    if (max <= 0) continue;
+    for (const r of candidates) if (r.votes === max) r.bog = true;
+  }
 }
 
 let _cache: StatRow[] | null = null;
