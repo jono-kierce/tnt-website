@@ -35,6 +35,7 @@ const pct = (h2h.winPct * 100).toFixed(0);
           </span>
           <span class="colours">
             <TeamChip team={g.team} plain />
+            {g.fillIn && <span class="badge badge--fill">Fill-in</span>}
             <span class="v-sep">v</span>
             <TeamChip team={g.opponentTeam} plain />
           </span>
@@ -106,7 +107,12 @@ const pct = (h2h.winPct * 100).toFixed(0);
   .opp-pop-list li:first-child { border-top: 0; padding-top: 0; }
   .when { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .when--finals { color: var(--gold-soft); }
-  .colours { display: flex; align-items: center; gap: 8px; color: var(--ivory-dim); }
+  .colours {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px;
+    color: var(--ivory-dim);
+  }
+  /* The tile is narrow — let the tag drop to its own line rather than break. */
+  .colours .badge { white-space: nowrap; }
   .v-sep { color: var(--muted); font-style: italic; }
   .opp-pop-list .win, .opp-pop-list .loss { font-variant-numeric: tabular-nums; font-weight: 600; }
 
