@@ -48,7 +48,12 @@ const scopes = [
     finals: playerAgg(name, rows, { season: sc.season, includeFillIns, scope: 'finals' }),
     ranks: playerRanks(name, rows, sc.season),
     sealed: sc.season !== undefined && isVotesSealed(sc.season),
-    fillIns: includeFillIns ? undefined : fillInRecord(name, rows, sc.season),
+    fillIns: includeFillIns
+      ? undefined
+      : {
+          regular: fillInRecord(name, rows, sc.season, 'regular'),
+          finals: fillInRecord(name, rows, sc.season, 'finals'),
+        },
   };
 });
 

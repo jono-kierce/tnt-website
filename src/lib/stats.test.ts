@@ -65,11 +65,15 @@ describe('name merging', () => {
       raw({ Team: 'Red', Season: '3', Round: '1', Player: 'Lachlan Jenkin', 'win?': 'TRUE' }),
       raw({ Team: 'Navy', Season: '3', Round: '2', Player: 'Lachlan Jenkin (Fill-in)', 'win?': 'TRUE' }),
       raw({ Team: 'Navy', Season: '3', Round: '3', Player: 'Lachlan Jenkin (Fill-in)', 'win?': 'FALSE' }),
+      raw({ Team: 'Navy', Season: '3', Round: 'F', Score: '6-4 6-2', Player: 'Lachlan Jenkin (Fill-in)', 'win?': 'TRUE' }),
       raw({ Team: 'Navy', Season: '4', Round: '1', Player: 'Lachlan Jenkin (Fill-in)', 'win?': 'TRUE' }),
     ]);
-    expect(fillInRecord('Lachlan Jenkin', rows, 3)).toEqual({ matches: 2, wins: 1, losses: 1 });
+    // Split the way the two win-rate tiles are, so each owns up to its own.
+    expect(fillInRecord('Lachlan Jenkin', rows, 3, 'regular')).toEqual({ matches: 2, wins: 1, losses: 1 });
+    expect(fillInRecord('Lachlan Jenkin', rows, 3, 'finals')).toEqual({ matches: 1, wins: 1, losses: 0 });
+    expect(fillInRecord('Lachlan Jenkin', rows, 3)).toEqual({ matches: 3, wins: 2, losses: 1 });
     // No season given: the whole career, which is where fill-ins do count.
-    expect(fillInRecord('Lachlan Jenkin', rows)).toEqual({ matches: 3, wins: 2, losses: 1 });
+    expect(fillInRecord('Lachlan Jenkin', rows)).toEqual({ matches: 4, wins: 3, losses: 1 });
   });
 
   it('produces broadcast short names', () => {

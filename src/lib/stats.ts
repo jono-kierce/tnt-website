@@ -402,13 +402,15 @@ export function playerAgg(
 export function fillInRecord(
   player: string,
   rows: StatRow[],
-  season?: number
+  season?: number,
+  scope: StatScope = 'all'
 ): { matches: number; wins: number; losses: number } {
   const played = rows.filter(
     (r) =>
       !r.isSingles &&
       r.player === player &&
       r.isFillIn &&
+      inScope(r, scope) &&
       (season === undefined || r.season === season)
   );
   const wins = played.filter((r) => r.win).length;

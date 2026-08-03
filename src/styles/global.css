@@ -288,6 +288,9 @@ main { position: relative; z-index: 1; }
 }
 .tile .v { font-size: 1.7rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .tile .sub { font-size: 0.72rem; color: var(--muted); }
+/* A caveat about the number above it — quieter again than the sub-line. */
+.tile .sub--fine { font-size: 0.64rem; font-style: italic; opacity: 0.85; margin-top: 2px; }
+.nowrap { white-space: nowrap; }
 
 /* Rank badges on the stat tiles — the gold ladder. Every tier wears the same
    pill; only the colour says where in the field the player sits. */

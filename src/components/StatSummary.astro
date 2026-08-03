@@ -20,13 +20,19 @@ interface Props {
   sealed?: boolean;
   season?: number;
   /**
-   * Fill-in appearances left out of this panel, and how they went. Season
-   * scopes only — a career panel counts them, so it passes nothing.
+   * Fill-in appearances left out of this panel, split the way the two win-rate
+   * tiles are. Season scopes only — a career panel counts them, so it passes
+   * nothing.
    */
-  fillIns?: { matches: number; wins: number; losses: number };
+  fillIns?: {
+    regular: { matches: number; wins: number; losses: number };
+    finals: { matches: number; wins: number; losses: number };
+  };
 }
 const { agg, regular, finals, mode, ranks, scopeShort, sealed = false, fillIns } = Astro.props;
-const excluded = fillIns && fillIns.matches > 0 ? fillIns : null;
+
+const anyExcluded =
+  fillIns !== undefined && fillIns.regular.matches + fillIns.finals.matches > 0;
 
 const rateMode = mode === 'rate';
 const fmt = (n: number, d = 0) => n.toFixed(d);
@@ -97,6 +103,11 @@ const ranked = Object.keys(ranks).length > 0;
       <div class="sub">
         {regular.games ? `${regular.wins}–${regular.losses}` : 'no home-and-away matches'}
       </div>
+      {fillIns && fillIns.regular.matches > 0 && (
+        <div class="sub sub--fine">
+          Fill-ins excluded <span class="nowrap">({fillIns.regular.wins}–{fillIns.regular.losses})</span>
+        </div>
+      )}
     </div>
 
     {finals.games > 0 && (
@@ -105,6 +116,11 @@ const ranked = Object.keys(ranks).length > 0;
         <div class="v">{fmt(finals.winPct * 100, 0)}%</div>
         <RankChip {...chip('finalsWinPct', 'finals win rate')} scopeShort={scopeShort} />
         <div class="sub">{finals.wins}–{finals.losses}</div>
+        {fillIns && fillIns.finals.matches > 0 && (
+          <div class="sub sub--fine">
+            Fill-ins excluded <span class="nowrap">({fillIns.finals.wins}–{fillIns.finals.losses})</span>
+          </div>
+        )}
       </div>
     )}
 
@@ -211,13 +227,12 @@ const ranked = Object.keys(ranks).length > 0;
       </>
     )}
     The Finals MVP is voted separately (4-3-2-1) and never counts toward MVP votes.
-    {excluded && (
+    {fillIns === undefined && <>{' '}Fill-in appearances count toward these career numbers.</>}
+    {anyExcluded && (
       <>
-        {' '}Fill-in matches excluded ({excluded.wins}–{excluded.losses}) — they were
-        played for another team, so they sit outside this season's record. They still
-        count all-time.
+        {' '}A fill-in match was played for another team, so it sits outside this
+        season — the tiles above show what was left out. It still counts all-time.
       </>
     )}
-    {fillIns === undefined && <>{' '}Fill-in appearances count toward these career numbers.</>}
   </p>
 </div>
