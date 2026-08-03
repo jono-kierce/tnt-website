@@ -52,6 +52,66 @@ function sets(scores: string[] | undefined) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Bracket geometry. Ties are laid out on a grid so each match sits vertically
+// centred between the two it feeds from — 1v8 above 4v5, their semi centred on
+// the pair, and so on. Every leaf gets two grid rows so that a span's midpoint
+// always lands exactly on a row line, which is what the connector lines hang
+// off. Nothing here is season-specific; it's derived from the winnerOf/loserOf
+// references, so any bracket shape lays itself out.
+// ---------------------------------------------------------------------------
+const byId = new Map(allMatches.map((m) => [m.id, m]));
+
+function feeders(m: FinalsMatch): (FinalsMatch | undefined)[] {
+  return [m.home, m.away].map((s) => {
+    if ('winnerOf' in s) return byId.get(s.winnerOf);
+    if ('loserOf' in s) return byId.get(s.loserOf);
+    return undefined;
+  });
+}
+
+/** Leaf-unit span [first, last] each match occupies, keyed by match id. */
+const span = new Map<string, [number, number]>();
+let leaves = 0;
+
+function assign(m: FinalsMatch): [number, number] {
+  const existing = span.get(m.id);
+  if (existing) return existing;
+  // Claim the id first so a malformed self/cyclic reference can't loop forever.
+  span.set(m.id, [leaves, leaves]);
+  const parts = feeders(m).map((f) => (f && f.id !== m.id ? assign(f) : ([leaves++, leaves - 1] as [number, number])));
+  const s: [number, number] = [Math.min(...parts.map((p) => p[0])), Math.max(...parts.map((p) => p[1]))];
+  span.set(m.id, s);
+  return s;
+}
+
+// Walk back from the last round so the first round falls into bracket order.
+for (const m of [...finals].reverse().flatMap((r) => r.matches)) assign(m);
+const rows = Math.max(leaves, 1) * 2;
+
+const rowStart = (m: FinalsMatch) => (span.get(m.id)?.[0] ?? 0) * 2 + 1;
+const rowEnd = (m: FinalsMatch) => (span.get(m.id)?.[1] ?? 0) * 2 + 3;
+/** Row line the tie's own centre sits on. */
+const centreRow = (m: FinalsMatch) => {
+  const s = span.get(m.id) ?? [0, 0];
+  return s[0] + s[1] + 2;
+};
+
+/** Vertical line joining this match's two feeders, or null if it has none. */
+function connector(m: FinalsMatch): [number, number] | null {
+  const fed = feeders(m).filter((f): f is FinalsMatch => !!f);
+  if (fed.length < 2) return null;
+  const centres = fed.map(centreRow);
+  return [Math.min(...centres), Math.max(...centres)];
+}
+
+// Render each round top-to-bottom in bracket order rather than declared order.
+const orderedRounds = finals.map((r) => ({
+  ...r,
+  matches: [...r.matches].sort((a, b) => rowStart(a) - rowStart(b)),
+}));
+const lastRound = finals.length - 1;
+
 function side(m: FinalsMatch, which: 'home' | 'away') {
   const slot = m[which];
   const team = slotTeam(slot);
@@ -66,14 +126,21 @@ function side(m: FinalsMatch, which: 'home' | 'away') {
 ) : (
   <div class="bracket-wrap">
     <div class="bracket">
-      {finals.map((round) => (
+      {orderedRounds.map((round, ri) => (
         <div class="bracket-col">
-          <p class="finenote bracket-round">{round.name}</p>
-          {round.format && <p class="finenote bracket-format">{round.format}</p>}
+          <div class="bracket-head">
+            <p class="finenote bracket-round">{round.name}</p>
+            {round.format && <p class="finenote bracket-format">{round.format}</p>}
+          </div>
+          <div class="bracket-ties" style={`grid-template-rows: repeat(${rows}, 1fr)`}>
+          {round.matches.map((m) => connector(m)).map((c) => (
+            c && <span class="connector" style={`grid-row: ${c[0]} / ${c[1]}`}></span>
+          ))}
           {round.matches.map((m) => {
             const h = side(m, 'home'), a = side(m, 'away');
             return (
-              <div class="tie card">
+              <div class:list={['tie', 'card', { 'has-in': ri > 0, 'has-out': ri < lastRound }]}
+                style={`grid-row: ${rowStart(m)} / ${rowEnd(m)}`}>
                 {m.label && <span class="tie-label">{m.label}</span>}
                 {[h, a].map((s) => (
                   <div class={`tie-side ${s.won ? 'won' : ''}`}
@@ -90,6 +157,7 @@ function side(m: FinalsMatch, which: 'home' | 'away') {
               </div>
             );
           })}
+          </div>
         </div>
       ))}
     </div>
@@ -98,8 +166,20 @@ function side(m: FinalsMatch, which: 'home' | 'away') {
 
 <style>
   .bracket-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .bracket { display: flex; gap: 18px; min-width: min-content; align-items: flex-start; }
-  .bracket-col { display: flex; flex-direction: column; gap: 16px; justify-content: space-around; min-width: 230px; }
+  /* --gap is split either side of the column boundary by the connector lines. */
+  /* --line-soft reads as card borders but vanishes against the page, so the
+     bracket lines get their own slightly brighter tone. */
+  .bracket { display: flex; gap: var(--gap); min-width: min-content; align-items: stretch; --gap: 26px; --bracket-line: color-mix(in srgb, var(--muted) 42%, transparent); }
+  .bracket-col { display: flex; flex-direction: column; min-width: 230px; }
+  /* Explicit rows + spans put every tie on its feeders' midpoint. */
+  .bracket-ties { flex: 1; display: grid; }
+  .tie { align-self: center; margin: 5px 0; }
+  .connector { justify-self: start; width: 1px; margin-left: calc(var(--gap) / -2); background: var(--bracket-line); }
+  .tie.has-in::before, .tie.has-out::after {
+    content: ''; position: absolute; top: 50%; width: calc(var(--gap) / 2); height: 1px; background: var(--bracket-line);
+  }
+  .tie.has-in::before { left: calc(var(--gap) / -2); }
+  .tie.has-out::after { right: calc(var(--gap) / -2); }
   .bracket-round { text-align: center; text-transform: uppercase; letter-spacing: 0.16em; margin: 0; }
   .bracket-format { text-align: center; text-transform: none; letter-spacing: 0.02em; font-size: 0.68rem; opacity: 0.7; margin: 2px 0 2px; }
   .tie { padding: 10px 12px; position: relative; }
