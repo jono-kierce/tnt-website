@@ -88,10 +88,17 @@ scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/buil
 ## Current state / open TODOs (owner to fill)
 
 - S4 (2025) votes are loaded and **unsealed**; `sealedVoteSeasons` is empty.
-- All four brackets have full results. S1/S3/S4 finals are in the CSV as
-  **scorelines only** — no player stats yet. S2's bracket is internally
-  inconsistent (its recorded results make Light Blue champion, contradicting the
-  Orange honours), so its 28 finals rows are blank templates awaiting the owner.
+- All four brackets have full results, and all four seasons' finals are in the
+  CSV as **scorelines only** — no player stats yet.
+- S1–S3 finals (line-ups and scores) came from the owner's sheet
+  `~/Documents/TNT/alltime_with_finalsresv2.csv`; **S4's are derived from the
+  bracket** and its line-ups assume the regular-season pairings — check them
+  against the real sheet when it turns up.
+- **Tiebreak sets:** the owner's sheet records them level (`6-6`, `5-5`); the
+  brackets normalise to `7-6(4)` etc. where the breaker score is known. Both
+  live in the repo — S1 F, S3 QF4 and S3 SF1 use the normalised form; the S2
+  final keeps `6-6`/`3-3` because nobody recorded those two breakers. A level
+  set is a `check-data` warning, never an error: `win?` settles the match.
 - Most team **captains** are blank except S4 and Kierce's teams.
 - Some Season MVP / Finals MVP honours and finals scores are marked `TODO`.
 - `npm run check-data` flags 2 ambiguous S1 R8 rows (Hume, Dickson — two

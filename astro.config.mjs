@@ -11,6 +11,8 @@ export default defineConfig({
   site: SITE_URL,
   base: SITE_BASE,
   trailingSlash: 'always',
+  // Honour PORT so tooling can assign a free port when 4321 is taken.
+  server: { port: Number(process.env.PORT) || 4321 },
   build: { format: 'directory' },
   // Static site — no adapter needed; `astro build` emits plain HTML to dist/.
 });

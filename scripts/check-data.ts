@@ -83,10 +83,19 @@ for (const r of rows) {
         `say ${r.teamScore}-${r.opponentScore}: ${where(r)}`
     );
   }
-  if (r.isFinals && r.setsWon === r.setsLost) {
-    errors.push(`Finals scoreline "${r.score}" has no winner: ${where(r)}`);
+  // A set recorded level (6-6, 5-5) was decided on a breaker the sheet didn't
+  // record. That's incomplete, not wrong: `win?` still settles the match, and
+  // the set still counts toward per-set rates. Warn so it can be finished
+  // later, and only call the win flag an error when the sets actually
+  // contradict it.
+  const undecided = r.setScores.filter((s) => s.for === s.against).length;
+  if (r.isFinals && undecided) {
+    warnings.push(
+      `${undecided} set${undecided > 1 ? 's' : ''} recorded level in "${r.score}" ` +
+        `— tiebreak result not captured: ${where(r)}`
+    );
   }
-  if (r.isFinals && r.win !== r.setsWon > r.setsLost) {
+  if (r.isFinals && !undecided && r.win !== r.setsWon > r.setsLost) {
     errors.push(
       `win? says ${r.win} but the scoreline "${r.score}" says otherwise: ${where(r)}`
     );
