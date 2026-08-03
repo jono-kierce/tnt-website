@@ -102,6 +102,32 @@ for (const r of rows) {
   }
 }
 
+// 2b(ii). A finals row for someone who never played a home-and-away game for
+//    that team is a fill-in — easy to miss, because a finals sheet usually just
+//    lists who turned up. Unflagged, the cameo counts toward their leaderboard
+//    rates and win streaks as if it were their own team.
+const homeTeams = new Map<string, Set<string>>();
+for (const r of rows) {
+  if (r.isFinals || r.isSingles || r.isFillIn) continue;
+  const k = `${r.season}|${r.player}`;
+  (homeTeams.get(k) ?? homeTeams.set(k, new Set()).get(k)!).add(r.team);
+}
+for (const r of rows) {
+  if (!r.isFinals || r.isSingles || r.isFillIn) continue;
+  const own = homeTeams.get(`${r.season}|${r.player}`);
+  if (!own) {
+    warnings.push(
+      `Finals row not marked (Fill-in) and ${r.player} played no S${r.season} ` +
+        `home-and-away games at all: ${where(r)}`
+    );
+  } else if (!own.has(r.team)) {
+    warnings.push(
+      `Finals row not marked (Fill-in) but ${r.player} played the S${r.season} ` +
+        `season for ${[...own].join('/')}, not ${r.team}: ${where(r)}`
+    );
+  }
+}
+
 // 2c. Each finals tie needs both sides present, or the head-to-head is one-eyed.
 const finalsTies = new Map<string, Set<string>>();
 for (const r of rows) {
