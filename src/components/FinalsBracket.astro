@@ -44,13 +44,21 @@ function label(slot: FinalsSlot): string {
 function ladderName(team: string) { return ladder.find((l) => l.team === team)?.pairingName; }
 function slotTeam(slot: FinalsSlot): string { return resolveTeam(slot); }
 
+// "6(4)" -> 6 games with the tiebreak points shown small, tennis-style.
+function sets(scores: string[] | undefined) {
+  return (scores ?? []).map((s) => {
+    const m = /^(\d+)\((\d+)\)$/.exec(s.trim());
+    return m ? { games: m[1], tb: m[2] } : { games: s, tb: null };
+  });
+}
+
 function side(m: FinalsMatch, which: 'home' | 'away') {
   const slot = m[which];
   const team = slotTeam(slot);
   const meta = team ? teamMeta(team) : null;
   const won = m.result ? m.result.winner === which : false;
   const scores = m.result ? (which === 'home' ? m.result.homeScore : m.result.awayScore) : undefined;
-  return { label: label(slot), team, meta, won, scores };
+  return { label: label(slot), team, meta, won, sets: sets(scores) };
 }
 ---
 {finals.length === 0 ? (
@@ -61,6 +69,7 @@ function side(m: FinalsMatch, which: 'home' | 'away') {
       {finals.map((round) => (
         <div class="bracket-col">
           <p class="finenote bracket-round">{round.name}</p>
+          {round.format && <p class="finenote bracket-format">{round.format}</p>}
           {round.matches.map((m) => {
             const h = side(m, 'home'), a = side(m, 'away');
             return (
@@ -71,7 +80,11 @@ function side(m: FinalsMatch, which: 'home' | 'away') {
                     style={s.meta ? `--team-color:${s.meta.color};--team-color-2:${s.meta.color2}` : ''}>
                     <span class="bar"></span>
                     <span class="tie-name">{s.label}</span>
-                    <span class="tie-score">{s.scores ? s.scores.join(' ') : ''}</span>
+                    <span class="tie-score">
+                      {s.sets.map((set) => (
+                        <span class="set">{set.games}{set.tb && <sup>{set.tb}</sup>}</span>
+                      ))}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -87,7 +100,8 @@ function side(m: FinalsMatch, which: 'home' | 'away') {
   .bracket-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .bracket { display: flex; gap: 18px; min-width: min-content; align-items: flex-start; }
   .bracket-col { display: flex; flex-direction: column; gap: 16px; justify-content: space-around; min-width: 230px; }
-  .bracket-round { text-align: center; text-transform: uppercase; letter-spacing: 0.16em; margin: 0 0 2px; }
+  .bracket-round { text-align: center; text-transform: uppercase; letter-spacing: 0.16em; margin: 0; }
+  .bracket-format { text-align: center; text-transform: none; letter-spacing: 0.02em; font-size: 0.68rem; opacity: 0.7; margin: 2px 0 2px; }
   .tie { padding: 10px 12px; position: relative; }
   .tie-label { position: absolute; top: -9px; left: 12px; font-size: 0.6rem; letter-spacing: 0.1em; color: var(--muted); background: var(--card); padding: 0 6px; text-transform: uppercase; }
   .tie-side { display: grid; grid-template-columns: 6px 1fr auto; align-items: center; gap: 10px; padding: 8px 2px; }
@@ -96,5 +110,8 @@ function side(m: FinalsMatch, which: 'home' | 'away') {
   .tie-name { font-family: var(--serif); font-size: 0.98rem; white-space: nowrap; }
   .tie-side:not(.won) .tie-name { color: var(--ivory-dim); }
   .tie-side.won .tie-name { color: var(--ivory); font-weight: 700; }
-  .tie-score { font-variant-numeric: tabular-nums; color: var(--gold-soft); font-weight: 700; }
+  .tie-score { font-variant-numeric: tabular-nums; color: var(--gold-soft); font-weight: 700; display: flex; gap: 9px; }
+  /* Fixed-width sets + out-of-flow tiebreak so both sides' columns line up. */
+  .set { position: relative; min-width: 0.75em; text-align: right; }
+  .set sup { position: absolute; left: 100%; top: -0.15em; font-size: 0.62em; font-weight: 600; }
 </style>

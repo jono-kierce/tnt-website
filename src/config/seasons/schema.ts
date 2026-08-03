@@ -20,7 +20,13 @@ export interface FinalsMatch {
    */
   home: FinalsSlot;
   away: FinalsSlot;
-  /** Optional recorded result. Scores are set strings, e.g. ["6-4", "7-6"]. */
+  /**
+   * Optional recorded result. Each score array is that side's games per set, in
+   * order — one entry for a single-set tie, up to three for a first-to-two tie.
+   * A set decided by a tiebreak puts the *loser's* tiebreak points in
+   * parentheses on the loser's side, tennis-style: 7-6(4) is
+   * `homeScore: ['7'], awayScore: ['6(4)']`.
+   */
   result?: {
     /** Team name (colour) that won, or seed if you prefer. */
     winner: 'home' | 'away';
@@ -37,6 +43,11 @@ export type FinalsSlot =
 export interface FinalsRound {
   /** e.g. "Qualifying Round", "Semi Finals", "Final". */
   name: string;
+  /**
+   * Match length for this round, shown under the round heading. TNT plays the
+   * qualifying round over one set and the semis + final as first to two sets.
+   */
+  format?: string;
   matches: FinalsMatch[];
 }
 

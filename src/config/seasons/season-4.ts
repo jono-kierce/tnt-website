@@ -36,6 +36,7 @@ const season4: SeasonConfig = {
   finals: [
     {
       name: 'Qualifying Round',
+      format: 'One set',
       matches: [
         { id: 'QF1', label: '1 v 8', home: { seed: 1 }, away: { seed: 8 } },
         { id: 'QF2', label: '2 v 7', home: { seed: 2 }, away: { seed: 7 } },
@@ -45,6 +46,7 @@ const season4: SeasonConfig = {
     },
     {
       name: 'Semi Finals',
+      format: 'First to two sets',
       matches: [
         { id: 'SF1', home: { winnerOf: 'QF1' }, away: { winnerOf: 'QF4' } },
         { id: 'SF2', home: { winnerOf: 'QF2' }, away: { winnerOf: 'QF3' } },
@@ -52,6 +54,7 @@ const season4: SeasonConfig = {
     },
     {
       name: 'Final',
+      format: 'First to two sets',
       matches: [
         {
           id: 'F',

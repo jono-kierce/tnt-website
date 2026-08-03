@@ -23,6 +23,8 @@ const season3: SeasonConfig = {
   ],
 
   // TODO: add the finals bracket + results for Season 3.
+  // Copy the `finals` block out of season-1.ts and swap in the scores — the
+  // seeding (1 v 8, 2 v 7, 3 v 6, 4 v 5) and round formats are the same.
   finals: [],
 };
 
