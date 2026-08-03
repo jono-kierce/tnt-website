@@ -5,7 +5,7 @@ import { playerHref } from '../lib/url.ts';
 import type { HeadToHead } from '../lib/stats.ts';
 
 interface Props {
-  /** Tile heading — "Best" or "Worst". */
+  /** Tile heading — "Easiest" or "Hardest". */
   label: string;
   h2h: HeadToHead;
   /** Opponent's team, for the avatar colours. */
@@ -70,8 +70,8 @@ const pct = (h2h.winPct * 100).toFixed(0);
     font-family: var(--serif); text-transform: uppercase; letter-spacing: 0.1em;
     font-size: 0.66rem; color: var(--muted);
   }
-  .opp-tile--worst .k { color: var(--loss); }
-  .opp-tile--best .k { color: var(--win); }
+  .opp-tile--hardest .k { color: var(--loss); }
+  .opp-tile--easiest .k { color: var(--win); }
   .opp-name {
     display: block; font-size: 1.05rem; color: var(--ivory);
     letter-spacing: 0.04em; overflow-wrap: anywhere;

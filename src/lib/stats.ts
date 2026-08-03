@@ -425,7 +425,7 @@ export function allPlayers(rows: StatRow[] = loadStatRows()): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Head to head (best / worst opponent)
+// Head to head (the "easiest" / "hardest" opponent tiles)
 // ---------------------------------------------------------------------------
 
 /** One meeting between two players, from the first player's point of view. */
@@ -549,17 +549,21 @@ export function headToHead(
   );
 }
 
-/** Win% first, then games ratio; more meetings breaks a dead heat. */
+/**
+ * Win% first, then meetings — 5–0 beats 4–0 beats 3–0 — and the games ratio
+ * only settles a dead heat on both.
+ */
 const bestFirst = (a: HeadToHead, b: HeadToHead) =>
   b.winPct - a.winPct ||
-  b.ratio - a.ratio ||
   b.meetings - a.meetings ||
+  b.ratio - a.ratio ||
   a.opponent.localeCompare(b.opponent);
 
+/** Same shape inverted: 0–5 is a worse hoodoo than 0–3. */
 const worstFirst = (a: HeadToHead, b: HeadToHead) =>
   a.winPct - b.winPct ||
-  a.ratio - b.ratio ||
   b.meetings - a.meetings ||
+  a.ratio - b.ratio ||
   a.opponent.localeCompare(b.opponent);
 
 export interface OpponentSplit {

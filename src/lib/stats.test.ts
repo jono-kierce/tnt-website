@@ -341,7 +341,41 @@ describe('head to head', () => {
     expect(split.worst.opponent).toBe('Bogey');
   });
 
-  it('breaks a win-rate tie on games for vs against', () => {
+  it('breaks a win-rate tie on meetings before games', () => {
+    const rows = season(
+      // 3–0, but scrappier scorelines than the 2–0 below.
+      meeting(1, 'Sweep', 6, 4),
+      meeting(2, 'Sweep', 6, 4),
+      meeting(3, 'Sweep', 6, 4),
+      meeting(4, 'Neat', 6, 0),
+      meeting(5, 'Neat', 6, 0),
+      meeting(6, 'Bogey', 2, 6),
+      meeting(7, 'Bogey', 3, 6)
+    );
+    const split = bestWorstOpponent('Hero', rows)!;
+    expect(split.minMeetings).toBe(2);
+    expect(split.best.opponent).toBe('Sweep');
+    expect(split.worst.opponent).toBe('Bogey');
+  });
+
+  it('makes the longer losing run the worse hoodoo', () => {
+    const rows = season(
+      meeting(1, 'Bogey', 4, 6),
+      meeting(2, 'Bogey', 4, 6),
+      meeting(3, 'Bogey', 4, 6),
+      // 0–2, and thrashed both times — still not as bad as 0–3.
+      meeting(4, 'Thrash', 0, 6),
+      meeting(5, 'Thrash', 0, 6),
+      meeting(6, 'Bunny', 6, 2),
+      meeting(7, 'Bunny', 6, 3)
+    );
+    const split = bestWorstOpponent('Hero', rows)!;
+    expect(split.minMeetings).toBe(2);
+    expect(split.worst.opponent).toBe('Bogey');
+    expect(split.best.opponent).toBe('Bunny');
+  });
+
+  it('breaks a win-rate and meetings tie on games for vs against', () => {
     const rows = season(
       meeting(1, 'Tidy', 6, 0),
       meeting(2, 'Tidy', 6, 1),

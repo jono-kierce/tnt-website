@@ -181,15 +181,14 @@ const photos = playerPhotos(slug);
   {h2h && (
     <section class="section container">
       <p class="eyebrow">Head to head</p>
-      <h2 class="serif-title" style="margin-bottom:12px">Best &amp; Worst Opponent</h2>
+      <h2 class="serif-title" style="margin-bottom:12px">Easiest &amp; Hardest Opponent</h2>
       <div class="grid grid-2 opp-grid">
-        <OpponentTile label="Best" h2h={h2h.best} team={playerLatestTeam(h2h.best.opponent)} player={name} />
-        <OpponentTile label="Worst" h2h={h2h.worst} team={playerLatestTeam(h2h.worst.opponent)} player={name} />
+        <OpponentTile label="Easiest" h2h={h2h.best} team={playerLatestTeam(h2h.best.opponent)} player={name} />
+        <OpponentTile label="Hardest" h2h={h2h.worst} team={playerLatestTeam(h2h.worst.opponent)} player={name} />
       </div>
       <p class="finenote">
-        Minimum {h2h.minMeetings} meetings. Ranked on win rate, then games won vs
-        lost. Fill-in appearances and finals both count. Hover or tap a tile for
-        every meeting.
+        Minimum {h2h.minMeetings} meetings. Fill-in appearances and finals both
+        count. Hover or tap a tile for every meeting.
       </p>
     </section>
   )}
