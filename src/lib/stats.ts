@@ -394,6 +394,27 @@ export function playerAgg(
   return aggregateRows(player, slug, filtered, opts.scope ?? 'all');
 }
 
+/**
+ * A player's fill-in appearances in a window — the matches a season panel
+ * leaves out, so it can own up to leaving them out. Career-wide they count:
+ * a night on court is a night on court.
+ */
+export function fillInRecord(
+  player: string,
+  rows: StatRow[],
+  season?: number
+): { matches: number; wins: number; losses: number } {
+  const played = rows.filter(
+    (r) =>
+      !r.isSingles &&
+      r.player === player &&
+      r.isFillIn &&
+      (season === undefined || r.season === season)
+  );
+  const wins = played.filter((r) => r.win).length;
+  return { matches: played.length, wins, losses: played.length - wins };
+}
+
 /** Canonical list of real players (excludes SINGLES GAME). */
 export function allPlayers(rows: StatRow[] = loadStatRows()): string[] {
   return [...new Set(rows.filter((r) => !r.isSingles).map((r) => r.player))].sort(

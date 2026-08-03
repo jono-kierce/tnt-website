@@ -80,7 +80,7 @@ export const SITE = {
    */
   rankMinMatches: 5,
   rankMinField: 6,
-  rankTiers: { elite: 0.1, above: 0.35, average: 0.65, below: 0.9 },
+  rankTiers: { elite: 0.15, above: 0.35, average: 0.65, below: 0.85 },
   /** On a tiered board, ranks this good are shown as a number, not a tier. */
   rankPodium: 3,
   /** On the untiered totals boards, the only badge worth showing. */

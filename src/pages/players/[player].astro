@@ -8,7 +8,7 @@ import TrendChart from '../../components/TrendChart.astro';
 import OpponentTile from '../../components/OpponentTile.astro';
 import { SITE, seasonLabel, teamMeta, isVotesSealed } from '../../config/site.ts';
 import { withBase } from '../../lib/url.ts';
-import { allPlayers, bestWorstOpponent, playerAgg, playerRows, playerTrend } from '../../lib/stats.ts';
+import { allPlayers, bestWorstOpponent, fillInRecord, playerAgg, playerRows, playerTrend } from '../../lib/stats.ts';
 import { playerRanks } from '../../lib/ranks.ts';
 import { rows, playerLatestTeam, playerSeasons } from '../../lib/site-data.ts';
 import { bioHtml, playerPhotos } from '../../lib/content.ts';
@@ -32,18 +32,25 @@ const slug = playerAgg(name, rows).slug;
 // leaderboards) and finals on their own (the September record, Finals MVP).
 // Each scope also carries the player's standing in that same window, so a badge
 // on a season panel ranks the season, not the career.
-const allTime = playerAgg(name, rows);
+// Fill-ins count career-wide — you still turned up and played — but not inside
+// a season, where they were played for another team. A season panel that drops
+// them says so, and shows what it dropped.
+const allTime = playerAgg(name, rows, { includeFillIns: true });
 const scopes = [
   { key: 'all', short: 'all-time', season: undefined as number | undefined },
   ...seasons.map((s) => ({ key: String(s), short: `in S${s}`, season: s as number | undefined })),
-].map((sc) => ({
-  ...sc,
-  agg: playerAgg(name, rows, { season: sc.season }),
-  regular: playerAgg(name, rows, { season: sc.season, scope: 'regular' }),
-  finals: playerAgg(name, rows, { season: sc.season, scope: 'finals' }),
-  ranks: playerRanks(name, rows, sc.season),
-  sealed: sc.season !== undefined && isVotesSealed(sc.season),
-}));
+].map((sc) => {
+  const includeFillIns = sc.season === undefined;
+  return {
+    ...sc,
+    agg: playerAgg(name, rows, { season: sc.season, includeFillIns }),
+    regular: playerAgg(name, rows, { season: sc.season, includeFillIns, scope: 'regular' }),
+    finals: playerAgg(name, rows, { season: sc.season, includeFillIns, scope: 'finals' }),
+    ranks: playerRanks(name, rows, sc.season),
+    sealed: sc.season !== undefined && isVotesSealed(sc.season),
+    fillIns: includeFillIns ? undefined : fillInRecord(name, rows, sc.season),
+  };
+});
 
 /**
  * Per set leads: it's the view that compares players fairly, and the only one
@@ -158,6 +165,7 @@ const photos = playerPhotos(slug);
             scopeShort={sc.short}
             sealed={sc.sealed}
             season={sc.season}
+            fillIns={sc.fillIns}
           />
         </div>
       ))

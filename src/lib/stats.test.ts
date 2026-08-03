@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { loadStatRows, normalizeRows, parseScore } from './normalize.ts';
 import {
   bestWorstOpponent,
+  fillInRecord,
   headToHead,
   ladder,
   leaderboard,
@@ -57,6 +58,18 @@ describe('name merging', () => {
     expect(agg.winners).toBe(8);
     const noFill = playerAgg('Lachlan Jenkin', rows);
     expect(noFill.winners).toBe(5); // fill-in excluded by default
+  });
+
+  it('reports the fill-in record a season panel leaves out', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'Red', Season: '3', Round: '1', Player: 'Lachlan Jenkin', 'win?': 'TRUE' }),
+      raw({ Team: 'Navy', Season: '3', Round: '2', Player: 'Lachlan Jenkin (Fill-in)', 'win?': 'TRUE' }),
+      raw({ Team: 'Navy', Season: '3', Round: '3', Player: 'Lachlan Jenkin (Fill-in)', 'win?': 'FALSE' }),
+      raw({ Team: 'Navy', Season: '4', Round: '1', Player: 'Lachlan Jenkin (Fill-in)', 'win?': 'TRUE' }),
+    ]);
+    expect(fillInRecord('Lachlan Jenkin', rows, 3)).toEqual({ matches: 2, wins: 1, losses: 1 });
+    // No season given: the whole career, which is where fill-ins do count.
+    expect(fillInRecord('Lachlan Jenkin', rows)).toEqual({ matches: 3, wins: 2, losses: 1 });
   });
 
   it('produces broadcast short names', () => {

@@ -8,7 +8,8 @@ import { rows, playerLatestTeam } from '../../lib/site-data.ts';
 
 const players = allPlayers(rows)
   .map((name) => {
-    const agg = playerAgg(name, rows); // all-time, fill-ins excluded
+    // Career numbers, fill-ins included — the same basis as the profile page.
+    const agg = playerAgg(name, rows, { includeFillIns: true });
     return { name, agg, team: playerLatestTeam(name) };
   })
   .filter((p) => p.agg.games > 0)
@@ -19,8 +20,8 @@ const players = allPlayers(rows)
     <p class="eyebrow">The Field</p>
     <h1 class="serif-title">Players</h1>
     <p class="lead" style="max-width:620px">
-      Every competitor to have logged a stat line. Fill-in appearances are
-      excluded from these headline numbers.
+      Every competitor to have logged a stat line. Fill-in appearances count
+      toward these career numbers — a night on court is a night on court.
     </p>
 
     <div class="grid grid-auto mt-24">

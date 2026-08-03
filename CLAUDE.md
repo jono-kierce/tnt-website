@@ -74,6 +74,11 @@ scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/buil
 - **Serve stats:** S1 only. **Errors Forced:** S2+ only.
 - **BOG = most votes in a match** (both sides of the fixture); ties share it.
 - **Fill-in games** are excluded from leaderboards by default (toggle to include).
+  On a **player page it depends on the window**: career numbers count them (a
+  night on court is a night on court), a season panel doesn't — that match was
+  played for another team — and says so, with the record it dropped
+  ("Fill-in matches excluded (1–0)"). Rank badges follow the same rule, so a
+  badge always ranks the number printed above it (`fillInRecord` in `stats.ts`).
 - **Every blank stat cell is `null`, not 0** — coverage is tracked per stat
   (`PlayerAgg.tally[stat].{total,games,sets}`), so a partial finals entry never
   drags an average toward zero. Don't reintroduce `num()` for a stat column.
@@ -84,11 +89,13 @@ scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/buil
 - **Rank badges** (`ranks.ts`) rank a player inside the window the panel is
   showing — all-time or one season, totals or per set — against everyone with
   `SITE.rankMinMatches`+ matches in it. Short samples get no badge and are kept
-  out of everyone else's field. **Only the per-set boards are graded**: tiers
-  are shares of the field (`rankTiers`), shown as a tier word except for the
-  podium, which keeps its number. **Totals are ranked but never graded** — a
-  career total is half a record of how many seasons you've played — so they
-  badge the top `rankTopTotals` and nothing else. `#1` always means the biggest
+  out of everyone else's field. **A tier is only ever put on a normalised
+  number**: the per-set boards always, win rate / finals win rate / winner-to-UE
+  in both modes (they don't change with the switch, so their badge mustn't
+  either), and matches played never — turnout is ranked, not graded. Tiers are
+  shares of the field (`rankTiers`), shown as a tier word except for the podium,
+  which keeps its number. **Ungraded boards** — every total, plus matches played
+  — badge the top `rankTopTotals` and stay quiet about the rest. `#1` always means the biggest
   number: for unforced errors and double faults the colour flips instead, so
   leading that board reads as the disgrace it is. Per set is the default view.
 - **The UI says "matches", not "games"** — "games" is reserved for game scores

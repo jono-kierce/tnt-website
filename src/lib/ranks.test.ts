@@ -49,6 +49,20 @@ describe('rank badges', () => {
     expect(table.rate.get('Player A')!.winners!.tier).toBe('elite');
   });
 
+  it('grades what is already a rate in both modes, and turnout in neither', () => {
+    const rows = normalizeRows([
+      ...['A', 'B', 'C', 'D', 'E'].flatMap((p) => career(`Player ${p}`, 8, { 'win?': 'TRUE' })),
+      ...career('Player F', 6, { 'win?': 'FALSE' }),
+    ]);
+    for (const mode of ['total', 'rate'] as const) {
+      // Win rate reads the same whichever way the switch is thrown, so its
+      // badge does too — no flipping between a rank and a tier.
+      expect(rankTable(rows)[mode].get('Player F')!.winPct!.tier).toBe('shocking');
+      // Matches played is turnout, not a standard: ranked, never graded.
+      expect(rankTable(rows)[mode].get('Player A')!.games).toMatchObject({ rank: 1, tier: null });
+    }
+  });
+
   it('tiers the field best-first, guaranteeing a leader', () => {
     const { rate } = rankTable(field());
     const tier = (p: string) => rate.get(`Player ${p}`)!.winners!.tier;
@@ -106,6 +120,23 @@ describe('rank badges', () => {
     for (const p of ['A', 'B', 'F']) {
       expect(total.get(`Player ${p}`)!.winners).toMatchObject({ rank: 1, of: 6 });
     }
+  });
+
+  it('counts a fill-in night all-time but not inside the season', () => {
+    const regulars = ['A', 'B', 'C', 'D', 'E', 'F'].flatMap((p) =>
+      career(`Player ${p}`, 6, { Winners: '5', Season: '4' })
+    );
+    const rows = normalizeRows([
+      ...regulars,
+      ...career('Sub', 6, { Winners: '5', Season: '4' }),
+      // One extra night for another team, filling in.
+      ...career('Sub (Fill-in)', 1, { Winners: '30', Season: '4' }, 7),
+    ]);
+    // Career: the fill-in night is on the board (30 more winners takes top spot).
+    expect(rankTable(rows).total.get('Sub')!.winners!.rank).toBe(1);
+    // Season 4: it isn't — they're level with the other regulars.
+    expect(rankTable(rows, 4).total.get('Sub')!.winners).toMatchObject({ rank: 1, of: 7 });
+    expect(rankTable(rows, 4).total.get('Player A')!.winners!.rank).toBe(1);
   });
 
   it('ranks a season within that season', () => {

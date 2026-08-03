@@ -9,9 +9,10 @@
  *    that they get no badges AND they're kept out of everyone else's field, so
  *    a one-night cameo can't flatter or dent anybody's percentile.
  *  - Totals rank on the home-and-away season and rates rank across everything
- *    per set, exactly as the leaderboards do. Only the rates carry tiers: a
- *    total says as much about how many seasons you've played as how well, so
- *    its board is worth a top-five mention and no grade.
+ *    per set, exactly as the leaderboards do. Only normalised numbers carry a
+ *    tier (see ALWAYS_GRADED / NEVER_GRADED below): a career total says as much
+ *    about how many seasons you've played as how well, so its board is worth a
+ *    top-five mention and no grade.
  */
 import { SITE } from '../config/site.ts';
 import { allPlayers, perSet, playerAgg, type CountingStat, type PlayerAgg } from './stats.ts';
@@ -46,6 +47,20 @@ export type RankMetric = (typeof RANK_METRICS)[number];
  * flips, so leading this field is styled as the disgrace it is.
  */
 const LOWER_IS_BETTER = new Set<RankMetric>(['unforcedErrors', 'doubleFaults']);
+
+/**
+ * What can be graded, and when. The rule is that a tier means something only
+ * once the number has been normalised:
+ *
+ *  - `ALWAYS_GRADED` are rates whatever the switch says — they read the same in
+ *    both modes, so their badge should too.
+ *  - `NEVER_GRADED` is raw turnout. Playing the most Tuesdays isn't a standard
+ *    to be measured against; it's still ranked, so a top-five gets its number.
+ *  - Everything else is a count in totals mode and a rate per set, and is
+ *    graded only in the latter.
+ */
+const ALWAYS_GRADED = new Set<RankMetric>(['winPct', 'finalsWinPct', 'winnerToUe']);
+const NEVER_GRADED = new Set<RankMetric>(['games']);
 
 /** Counting stats that simply switch between their total and their per-set rate. */
 const PER_SET_STATS = new Set<RankMetric>([
@@ -132,14 +147,16 @@ function tierFor(rank: number, of: number, lowerIsBetter: boolean): Tier | null 
 }
 
 function buildTable(rows: StatRow[], season: number | undefined): RankTable {
-  // Fill-in appearances are excluded, as everywhere else a player is compared
-  // with the field. One aggregate set per player, reused by every metric.
+  // Career-wide a fill-in night still counts; inside a season it doesn't — it
+  // was played for somebody else's team. The panel follows the same rule, so a
+  // badge always ranks exactly the number printed above it.
+  const includeFillIns = season === undefined;
   const field: PlayerAggs[] = allPlayers(rows)
     .map((player) => ({
       player,
-      all: playerAgg(player, rows, { season }),
-      regular: playerAgg(player, rows, { season, scope: 'regular' }),
-      finals: playerAgg(player, rows, { season, scope: 'finals' }),
+      all: playerAgg(player, rows, { season, includeFillIns }),
+      regular: playerAgg(player, rows, { season, includeFillIns, scope: 'regular' }),
+      finals: playerAgg(player, rows, { season, includeFillIns, scope: 'finals' }),
     }))
     .filter((a) => a.all.games >= SITE.rankMinMatches);
 
@@ -155,6 +172,8 @@ function buildTable(rows: StatRow[], season: number | undefined): RankTable {
 
       const of = scored.length;
       const lowerIsBetter = LOWER_IS_BETTER.has(metric);
+      const graded =
+        !NEVER_GRADED.has(metric) && (mode === 'rate' || ALWAYS_GRADED.has(metric));
       scored.forEach((e, i) => {
         // Ties share the better rank: 1, 2, 2, 4.
         const rank = i > 0 && scored[i - 1].value === e.value
@@ -164,7 +183,7 @@ function buildTable(rows: StatRow[], season: number | undefined): RankTable {
           metric,
           rank,
           of,
-          tier: mode === 'rate' ? tierFor(rank, of, lowerIsBetter) : null,
+          tier: graded ? tierFor(rank, of, lowerIsBetter) : null,
           lowerIsBetter,
         };
       });
