@@ -48,6 +48,15 @@ const log = playerRows(name, rows, { includeFillIns: true }).sort(
   (a, b) => a.season - b.season || a.round - b.round
 );
 
+// Match log display helpers. The Round column never needs more than two
+// characters — a home-and-away round number, or the stage code for a final
+// (`Final` is spelled out elsewhere, but not in a column this narrow).
+const roundCell = (r: (typeof log)[number]) => r.stage ?? r.roundLabel;
+// One set per line: it keeps the Result column narrow and makes a three-setter
+// (finals, mostly) stand out at a glance.
+const scoreLines = (r: (typeof log)[number]) =>
+  r.score ? r.score.split(/\s+/) : [`${r.teamScore}–${r.opponentScore}`];
+
 const bio = bioHtml(slug);
 const photos = playerPhotos(slug);
 ---
@@ -135,15 +144,17 @@ const photos = playerPhotos(slug);
     </section>
   )}
 
-  <section class="section container">
+  <section class="section container" id="match-log">
     <p class="eyebrow">Every match</p>
     <h2 class="serif-title" style="margin-bottom:12px">Match Log</h2>
     <div class="card card--dark">
       <div class="table-wrap">
-        <table class="stat">
+        <table class="stat matchlog">
           <thead>
             <tr>
-              <th>Season</th><th>Rd</th><th>Opponent</th><th>Result</th>
+              <th class="c-tight" title="Season">S</th>
+              <th class="c-tight" title="Round">Rd</th>
+              <th>Opponent</th><th class="c-res">Result</th>
               <th title="Winners">W</th><th title="Unforced errors">UE</th>
               <th title="Aces">Ace</th><th title="Double faults">DF</th>
               <th title="Errors forced (S2+)">EF</th>
@@ -152,12 +163,15 @@ const photos = playerPhotos(slug);
           </thead>
           <tbody>
             {log.map((r) => (
-              <tr>
-                <td>{r.season}</td>
-                <td class={r.isFinals ? 'finals-rd' : ''}>{r.roundLabel}</td>
-                <td>{r.opponent}</td>
-                <td class={r.win ? 'win' : 'loss'}>
-                  {r.win ? 'W' : 'L'} {r.score || `${r.teamScore}–${r.opponentScore}`}
+              <tr class={r.isFinals ? 'is-finals' : ''}>
+                <td class="c-tight">{r.season}</td>
+                <td class={`c-tight ${r.isFinals ? 'finals-rd' : ''}`}>{roundCell(r)}</td>
+                <td class="c-opp">{r.opponent}</td>
+                <td class="c-res">
+                  <span class={`res ${r.win ? 'win' : 'loss'}`}>{r.win ? 'W' : 'L'}</span>
+                  <span class="sets">
+                    {scoreLines(r).map((s) => <span class="set">{s}</span>)}
+                  </span>
                 </td>
                 <td class="num">{r.winners ?? '—'}</td>
                 <td>{r.unforcedErrors ?? '—'}</td>
@@ -165,10 +179,9 @@ const photos = playerPhotos(slug);
                 <td>{r.doubleFaults ?? '—'}</td>
                 <td>{r.errorsForced ?? '—'}</td>
                 <td>{r.votes ?? (isVotesSealed(r.season) ? '🔒' : '—')}</td>
-                <td>
+                <td class="c-tags">
                   {r.bog && <span class="badge badge--bog">BOG</span>}
                   {r.isFillIn && <span class="badge badge--fill">Fill-in</span>}
-                  {r.sets > 1 && <span class="badge">{r.sets} sets</span>}
                 </td>
               </tr>
             ))}
@@ -193,6 +206,32 @@ const photos = playerPhotos(slug);
 
 <style>
   .finals-rd { color: var(--gold-soft); font-weight: 600; letter-spacing: 0.04em; }
+
+  /* Match log: tightened so the eleven columns read as one block rather than a
+     sprawl. Season and Round are one/two characters, so they get no more room
+     than that, and the scoreline stacks a set per line — which keeps Result
+     narrow and makes a three-setter (a final, usually) obvious at a glance. */
+  .matchlog { min-width: 460px; }
+  .matchlog thead th, .matchlog tbody td { padding: 8px 7px; vertical-align: top; }
+  .matchlog thead th:first-child, .matchlog tbody td:first-child { padding-left: 12px; }
+  .matchlog thead th:last-child, .matchlog tbody td:last-child { padding-right: 12px; }
+  .matchlog .c-tight, .matchlog thead th.c-tight { width: 1%; text-align: center; white-space: nowrap; }
+  .matchlog .c-opp { text-align: left; white-space: nowrap; }
+  /* Result reads W/L then the scoreline. The W/L is pinned to the left of the
+     cell rather than flowing with the sets, so both stay on the same two
+     columns whether the match went one set or three. */
+  .matchlog td.c-res { position: relative; white-space: nowrap; padding-left: 30px; }
+  .matchlog .res { position: absolute; left: 7px; top: 8px; font-weight: 700; }
+  .matchlog .sets { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.35; }
+  /* Every column hugs its content; the badge column soaks up the leftover
+     width, so the data reads as one tight block instead of stretching to fill
+     the card. */
+  .matchlog .c-tags { width: 100%; text-align: left; white-space: nowrap; }
+  .matchlog tbody tr.is-finals td { background: rgba(200, 162, 74, 0.06); }
+  .matchlog tbody tr.is-finals:hover td { background: rgba(200, 162, 74, 0.1); }
+  @media (max-width: 640px) {
+    .matchlog thead th, .matchlog tbody td { padding: 8px 5px; }
+  }
   .player-head { display: grid; grid-template-columns: 120px 1fr; gap: 20px; align-items: center; }
   .head-avatar { width: 120px; }
   @media (max-width: 520px) { .player-head { grid-template-columns: 84px 1fr; } .head-avatar { width: 84px; } }
