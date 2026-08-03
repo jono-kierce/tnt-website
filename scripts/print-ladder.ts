@@ -22,7 +22,13 @@ for (const season of allSeasons(rows)) {
   }
 }
 
-console.log(`\n${'='.repeat(60)}\nTop winners/game (all-time, min games), fill-ins excluded\n${'='.repeat(60)}`);
-for (const e of leaderboard('winners', rows, { perGame: true }).slice(0, 8)) {
-  console.log(`${e.player.padEnd(20)} ${e.value.toFixed(2)}/g  (${e.games} games)`);
+console.log(`\n${'='.repeat(60)}\nTop winners/set (all-time incl. finals, min games), fill-ins excluded\n${'='.repeat(60)}`);
+for (const e of leaderboard('winners', rows, { perSet: true }).slice(0, 8)) {
+  // Denominators are the games/sets that actually recorded winners, which is
+  // why a finals appearance with no stats yet doesn't move the rate.
+  const t = e.agg.tally.winners;
+  const gap = t.games < e.games ? ` [${e.games - t.games} games w/o stats]` : '';
+  console.log(
+    `${e.player.padEnd(20)} ${e.value.toFixed(2)}/set  (${t.games} games, ${t.sets} sets)${gap}`
+  );
 }

@@ -1,13 +1,16 @@
 ---
-import type { PlayerAgg } from '../lib/stats.ts';
+import { isPartial, perSet, type CountingStat, type PlayerAgg } from '../lib/stats.ts';
 
 interface Props {
+  /** All matches, finals included — the source of every rate and the record. */
   agg: PlayerAgg;
+  /** Home-and-away only — the source of every raw total. */
+  regular: PlayerAgg;
   scopeLabel: string;
   sealed?: boolean;
   season?: number;
 }
-const { agg, scopeLabel, sealed = false } = Astro.props;
+const { agg, regular, scopeLabel, sealed = false } = Astro.props;
 
 const fmt = (n: number, d = 0) => n.toFixed(d);
 const ratio =
@@ -15,23 +18,45 @@ const ratio =
   : agg.winnerToUe === Infinity ? '∞'
   : fmt(agg.winnerToUe, 2);
 
-const votesDisplay = sealed && agg.votes === null ? '🔒' : agg.votes === null ? '—' : String(agg.votes);
-const votesSub = sealed && agg.votes === null ? 'sealed until awards night'
+/** Totals come from the home-and-away season; a dash means never recorded. */
+const total = (stat: CountingStat) => {
+  const v = regular[stat] as number | null;
+  return v === null ? '—' : String(v);
+};
+
+/**
+ * Rates count finals too, normalised per set so a three-set final doesn't read
+ * as a monster night. The sub-line owns up to any games the stat is missing
+ * from, so a partial total is never mistaken for a complete one.
+ */
+const rate = (stat: CountingStat) => {
+  const v = perSet(agg, stat);
+  if (v === null) return 'not recorded';
+  const coverage = isPartial(agg, stat)
+    ? ` · ${agg.tally[stat].games} of ${agg.games} games`
+    : '';
+  return `${fmt(v, 2)} / set${coverage}`;
+};
+
+// Votes are a home-and-away award (the MVP count), so the total follows the
+// same rule as the other totals — but the rate stays per match, not per set.
+const votesDisplay = sealed && regular.votes === null ? '🔒' : regular.votes === null ? '—' : String(regular.votes);
+const votesSub = sealed && regular.votes === null ? 'sealed until awards night'
   : agg.votesPerGame === null ? 'not recorded'
   : `${fmt(agg.votesPerGame, 2)} / game`;
 ---
 <div>
   <p class="finenote" style="margin:0 0 10px">{scopeLabel}</p>
   <div class="stat-tiles">
-    <div class="tile"><div class="k">Games</div><div class="v">{agg.games}</div></div>
+    <div class="tile"><div class="k">Games</div><div class="v">{agg.games}</div>{agg.finalsGames > 0 && <div class="sub">{agg.finalsGames} finals · {agg.sets} sets</div>}</div>
     <div class="tile"><div class="k">Win–Loss</div><div class="v">{agg.wins}–{agg.losses}</div><div class="sub">{fmt(agg.winPct * 100, 0)}% win rate</div></div>
-    <div class="tile"><div class="k">Winners</div><div class="v">{agg.winners}</div><div class="sub">{agg.games ? fmt(agg.winners / agg.games, 2) : '0'} / game</div></div>
-    <div class="tile"><div class="k">Unforced Errors</div><div class="v">{agg.unforcedErrors}</div><div class="sub">{agg.games ? fmt(agg.unforcedErrors / agg.games, 2) : '0'} / game</div></div>
+    <div class="tile"><div class="k">Winners</div><div class="v">{total('winners')}</div><div class="sub">{rate('winners')}</div></div>
+    <div class="tile"><div class="k">Unforced Errors</div><div class="v">{total('unforcedErrors')}</div><div class="sub">{rate('unforcedErrors')}</div></div>
     <div class="tile"><div class="k">Winner : UE</div><div class="v">{ratio}</div><div class="sub">higher is cleaner</div></div>
-    <div class="tile"><div class="k">Aces</div><div class="v">{agg.aces}</div></div>
-    <div class="tile"><div class="k">Double Faults</div><div class="v">{agg.doubleFaults}</div></div>
+    <div class="tile"><div class="k">Aces</div><div class="v">{total('aces')}</div></div>
+    <div class="tile"><div class="k">Double Faults</div><div class="v">{total('doubleFaults')}</div></div>
     {agg.errorsForced !== null && (
-      <div class="tile"><div class="k">Errors Forced</div><div class="v">{agg.errorsForced}</div><div class="sub">S2+ · {agg.errorsForcedGames} games</div></div>
+      <div class="tile"><div class="k">Errors Forced</div><div class="v">{total('errorsForced')}</div><div class="sub">S2+ · {rate('errorsForced')}</div></div>
     )}
     <div class="tile"><div class="k">Votes</div><div class="v">{votesDisplay}</div><div class="sub">{votesSub}</div></div>
     <div class="tile"><div class="k">Best on Ground</div><div class="v">{agg.bog}</div></div>
@@ -39,4 +64,8 @@ const votesSub = sealed && agg.votes === null ? 'sealed until awards night'
       <div class="tile"><div class="k">1st Serve In</div><div class="v">{fmt(agg.servePct * 100, 0)}%</div><div class="sub">S1 only</div></div>
     )}
   </div>
+  <p class="finenote" style="margin:10px 0 0">
+    Totals cover the home-and-away season. Win–loss and per-set rates include
+    finals — a three-set final counts as three sets, not one big night.
+  </p>
 </div>

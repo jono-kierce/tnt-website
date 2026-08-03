@@ -14,8 +14,9 @@ on push to `main`.
 1. **The CSV is the single source of truth.** Don't hardcode stats anywhere.
 2. **All data quirks live in one place:** `src/lib/normalize.ts`. If you're
    special-casing data anywhere else, move it here.
-3. **Derived, never stored:** BOG (from votes) and team pairings (from games
-   played) are computed — there is no BOG column and no roster list in the CSV.
+3. **Derived, never stored:** BOG (from votes), team pairings (from games
+   played) and sets played (from the `Score` column) are computed — there is no
+   BOG column, no roster list and no set count in the CSV.
 4. **Adding a season needs zero code changes:** new CSV rows + a
    `src/config/seasons/season-N.ts` (auto-discovered by glob) + optional
    `content/seasons/season-N.md`. Update `currentSeason`/`seasonYears`/
@@ -42,7 +43,8 @@ plain Node — `ladder`/`check-data` deliberately avoid importing them.
 ```
 src/lib/normalize.ts     THE normalization layer: CSV -> StatRow[], all quirks here
                          (name merge, fill-in, SINGLES GAME, serve S1-only,
-                          errors-forced S2+, votes null-if-blank, BOG derivation)
+                          errors-forced S2+, EVERY stat null-if-blank, BOG
+                          derivation, Round->stage, Score->sets)
 src/lib/stats.ts         ladder, rosters/pairings, player aggregates, leaderboards, records
 src/lib/site-data.ts     page-facing helpers (season ladder, MVP tally, fun stats)
 src/lib/stats.test.ts    unit tests — keep these green
@@ -66,12 +68,23 @@ scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/buil
 - **Serve stats:** S1 only. **Errors Forced:** S2+ only.
 - **BOG = most votes in a match** (both sides of the fixture); ties share it.
 - **Fill-in games** are excluded from leaderboards by default (toggle to include).
+- **Every blank stat cell is `null`, not 0** — coverage is tracked per stat
+  (`PlayerAgg.tally[stat].{total,games,sets}`), so a partial finals entry never
+  drags an average toward zero. Don't reintroduce `num()` for a stat column.
+- **Finals** live in the CSV with `Round` = `QF`/`SF`/`F` and the scoreline in
+  `Score`. They count for win-loss, H2H, streaks and per-set rates; they're
+  excluded from the ladder, career totals, the record books and MVP votes
+  (`StatScope` in `stats.ts` is the switch — `'regular'` vs `'all'`).
+- **Rates are per set, never per match** — a semi or final runs to three sets.
+  Votes are the exception: awarded once a match, so `votesPerGame` stays.
 
 ## Current state / open TODOs (owner to fill)
 
 - S4 (2025) votes are loaded and **unsealed**; `sealedVoteSeasons` is empty.
-- Finals brackets for S1–S3 are empty `finals: []`; S4 has the structure only
-  (no scores).
+- All four brackets have full results. S1/S3/S4 finals are in the CSV as
+  **scorelines only** — no player stats yet. S2's bracket is internally
+  inconsistent (its recorded results make Light Blue champion, contradicting the
+  Orange honours), so its 28 finals rows are blank templates awaiting the owner.
 - Most team **captains** are blank except S4 and Kierce's teams.
 - Some Season MVP / Finals MVP honours and finals scores are marked `TODO`.
 - `npm run check-data` flags 2 ambiguous S1 R8 rows (Hume, Dickson — two

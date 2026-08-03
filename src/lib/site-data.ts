@@ -31,23 +31,41 @@ export function seasonLadder(season: number): LadderRow[] {
 export interface Fixture {
   winner: string;
   loser: string;
-  winnerScore: number;
-  loserScore: number;
+  /** Scoreline from the winner's point of view, e.g. "6-4" or "6-4 7-6(3)". */
+  score: string;
+  /** Sets won–lost by the winner. Only worth showing for a multi-set tie. */
+  setsWon: number;
+  setsLost: number;
 }
 
-/** Latest round's results for a season, one row per fixture (winner first). */
-export function latestRound(season: number): { round: number; fixtures: Fixture[] } {
-  const seasonRows = rows.filter((r) => r.season === season);
-  if (!seasonRows.length) return { round: 0, fixtures: [] };
-  const maxRound = Math.max(...seasonRows.map((r) => r.round));
+/** Heading for the round, e.g. "Round 7", "Qualifying Finals", "The Final". */
+const ROUND_HEADING: Record<string, string> = {
+  QF: 'Qualifying Finals',
+  SF: 'Semi Finals',
+  F: 'The Final',
+};
 
-  const sides = new Map<string, { team: string; opponent: string; teamScore: number; opponentScore: number; win: boolean }>();
-  for (const r of seasonRows) {
-    if (r.round !== maxRound) continue;
+/**
+ * The latest round's results for a season, one row per fixture (winner first).
+ * Finals sort after the home-and-away rounds, so once they're in the CSV this
+ * follows the season through to the final.
+ */
+export function latestRound(season: number): {
+  round: number;
+  label: string;
+  fixtures: Fixture[];
+} {
+  const seasonRows = rows.filter((r) => r.season === season);
+  if (!seasonRows.length) return { round: 0, label: '', fixtures: [] };
+  const maxRound = Math.max(...seasonRows.map((r) => r.round));
+  const latest = seasonRows.filter((r) => r.round === maxRound);
+  const stage = latest[0].stage;
+  const label = stage ? ROUND_HEADING[stage] : `Round ${maxRound}`;
+
+  const sides = new Map<string, StatRow>();
+  for (const r of latest) {
     const key = `${r.team}|${r.opponent}`;
-    if (!sides.has(key)) {
-      sides.set(key, { team: r.team, opponent: r.opponent, teamScore: r.teamScore, opponentScore: r.opponentScore, win: r.win });
-    }
+    if (!sides.has(key)) sides.set(key, r);
   }
 
   const fixtures: Fixture[] = [];
@@ -56,13 +74,18 @@ export function latestRound(season: number): { round: number; fixtures: Fixture[
     const pairKey = [s.team, s.opponent].sort().join('|');
     if (used.has(pairKey)) continue;
     used.add(pairKey);
-    fixtures.push(
-      s.win
-        ? { winner: s.team, loser: s.opponent, winnerScore: s.teamScore, loserScore: s.opponentScore }
-        : { winner: s.opponent, loser: s.team, winnerScore: s.opponentScore, loserScore: s.teamScore }
-    );
+    // Always describe the fixture from the winning side's row, so the
+    // scoreline reads in the winner's favour.
+    const w = s.win ? s : sides.get(`${s.opponent}|${s.team}`) ?? s;
+    fixtures.push({
+      winner: w.win ? w.team : w.opponent,
+      loser: w.win ? w.opponent : w.team,
+      score: w.score,
+      setsWon: w.win ? w.setsWon : w.setsLost,
+      setsLost: w.win ? w.setsLost : w.setsWon,
+    });
   }
-  return { round: maxRound, fixtures };
+  return { round: maxRound, label, fixtures };
 }
 
 export interface FunStat { kicker: string; headline: string; detail: string; }
@@ -107,7 +130,7 @@ export function funStats(): FunStat[] {
     detail: `${ue.player} sprayed ${ue.value} unforced errors in one match — ${seasonLabel(ue.season)}, Round ${ue.round}. It happens to everyone.`,
   });
 
-  const wtu = leaderboard('winnerToUe', rows, { perGame: false }).filter(e => e.games >= 8)[0];
+  const wtu = leaderboard('winnerToUe', rows).filter((e) => e.games >= 8)[0];
   if (wtu) out.push({
     kicker: 'Clean hitter',
     headline: `${wtu.value.toFixed(2)} WINNERS PER ERROR.`,
@@ -143,11 +166,11 @@ export function playerSeasons(player: string): number[] {
 
 export interface MvpRow { player: string; slug: string; team: string; votes: number; games: number }
 
-/** Season MVP vote tally (sum of votes), highest first. */
+/** Season MVP vote tally (sum of votes), highest first. Home-and-away only. */
 export function seasonMvp(season: number): MvpRow[] {
   const byPlayer = new Map<string, { votes: number; games: number; team: string }>();
   for (const r of rows) {
-    if (r.season !== season || r.isSingles || r.votes === null) continue;
+    if (r.season !== season || r.isSingles || r.isFinals || r.votes === null) continue;
     const e = byPlayer.get(r.player) ?? { votes: 0, games: 0, team: r.team };
     e.votes += r.votes;
     e.games += 1;

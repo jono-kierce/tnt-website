@@ -9,7 +9,7 @@ import { seasonLadder, latestRound, rotatingFunStat } from '../lib/site-data.ts'
 const season = SITE.currentSeason;
 const table = seasonLadder(season);
 const snapshot = table.slice(0, 8);
-const { round, fixtures } = latestRound(season);
+const { label: roundLabel, fixtures } = latestRound(season);
 const fun = rotatingFunStat();
 ---
 <Layout title="Home">
@@ -47,13 +47,13 @@ const fun = rotatingFunStat();
       </div>
       <div>
         <p class="eyebrow">Latest results</p>
-        <h2 class="serif-title" style="margin-bottom:14px">Round {round}</h2>
+        <h2 class="serif-title" style="margin-bottom:14px">{roundLabel}</h2>
         <div class="card card--dark results">
           {fixtures.length === 0 && <p class="muted">No results recorded yet.</p>}
           {fixtures.map((f) => (
             <div class="result-row">
               <span class="result-team win"><TeamChip team={f.winner} plain /></span>
-              <span class="score">{f.winnerScore}–{f.loserScore}</span>
+              <span class="score">{f.score}</span>
               <span class="result-team muted"><TeamChip team={f.loser} plain /></span>
             </div>
           ))}

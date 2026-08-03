@@ -57,13 +57,30 @@ except for the logo files.
 Columns (a stray unnamed 19th column is ignored):
 
 ```
-Team, Opponent, Season, Round, Player,
+Team, Opponent, Season, Round, Score, Player,
 Aces, Unforced Errors, Forced Errors, 1st Serve In, 1st Serve Out,
 Double Faults, Winners, Errors Forced, win?, Team Score, Opponent Score,
 votes
 ```
 
 One row = one player's stat line in one match. `win?` is `TRUE`/`FALSE`.
+
+**`Round`** is the round number for the home-and-away season, or a finals stage:
+`QF`, `SF`, `F`. Finals always sort after the home-and-away rounds.
+
+**`Score`** is the scoreline from that row's team's point of view: sets separated
+by spaces, a lost tiebreak in parentheses on the loser's side.
+
+```
+6-4                 a normal Tuesday
+4-6 7-6(4) 6-1      a three-set final, from the winner's side
+6-4 6(4)-7 1-6      the same match, on the other team's rows
+```
+
+`Team Score` / `Opponent Score` stay as **games won across the whole match** (so
+`17` and `13` for that final). The number of sets is read off `Score`, and it's
+what every per-set average divides by — which is how a three-set final avoids
+flattering everyone who played it.
 
 **Best on Ground (BOG) is not a column** — it's derived: the player(s) with the
 most votes in a match. Ties share it; a match with no recorded votes has no BOG.
@@ -80,10 +97,33 @@ Just record votes and BOG follows automatically.
   ladder.
 - **Serve stats** (`1st Serve In/Out`) were only tracked in Season 1 — never
   shown elsewhere; labelled "S1 only".
-- **`Errors Forced`** only exists from Season 2; per-game figures use the correct
+- **`Errors Forced`** only exists from Season 2; per-set figures use the correct
   denominator.
-- **Votes** may be blank (a sealed season, or simply unrecorded) — treated as
-  missing, never zero. Averages only cover games that actually have votes.
+- **Any blank stat cell means "not recorded", never zero.** This is what lets you
+  add a finals night as a scoreline now and its stats later — or add only the
+  winners and unforced errors you can get off a post. Every average divides by
+  the games that actually have that stat, and the site shows the coverage
+  (`5.44 / set · 32 of 41 games`) whenever a total is missing games.
+- **Votes** may be blank (a sealed season, or simply unrecorded) — same rule.
+
+### Finals, and what counts where
+
+Finals rows are ordinary CSV rows with a stage in `Round`. Once the scoreline is
+in, that match counts for **win-loss, head-to-head, win streaks and the ladder
+you see on a profile** — no stats required.
+
+| Where | Finals? | Why |
+| --- | --- | --- |
+| Season ladder | **No** | It's what seeds the finals in the first place. |
+| Win-loss, head-to-head, streaks | **Yes** | They're the matches people remember. |
+| Career total leaderboards | **No** | Only eight teams play finals; whoever went deepest would top every counting board on volume. |
+| Per-set rate boards | **Yes** | Normalised by sets, so a three-set semi doesn't inflate anyone. |
+| Record books (most winners in a match, …) | **No** | A semi runs to three sets and would own every board on court time alone. |
+| Season MVP votes | **No** | It's a home-and-away award. |
+
+`npm run check-data` reports finals coverage per season, and `npm test`
+cross-checks every finals row in the CSV against the bracket in the season
+config — scoreline, winner and sets all have to agree.
 
 ### Votes systems
 

@@ -3,7 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import VotesNote from '../components/VotesNote.astro';
 import { SITE, seasonLabel, teamMeta, isVotesSealed } from '../config/site.ts';
 import { withBase } from '../lib/url.ts';
-import { allPlayers, playerAgg, playerRows, allSeasons } from '../lib/stats.ts';
+import { allPlayers, allSeasons, perSet, playerAgg, COUNTING_STATS } from '../lib/stats.ts';
 import { rows, playerLatestTeam } from '../lib/site-data.ts';
 
 const seasons = allSeasons(rows);
@@ -17,24 +17,44 @@ function scopeTeam(name: string, season?: number): string {
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
 }
 
-// Precompute per-player aggregates for every (scope, fill-in mode).
+// Precompute per-player aggregates for every (season, fill-in mode).
+//
+// Each entry carries two numbers per stat, because the two boards answer
+// different questions. `totals` is the home-and-away season: finals are played
+// by eight teams out of nine, so whoever went deepest would top every counting
+// board on volume alone. `rates` is per set across everything including finals,
+// where the extra matches belong and the set denominator cancels out the fact
+// that a semi runs to three.
 const players = allPlayers(rows);
 type Entry = {
-  player: string; slug: string; team: string; games: number;
-  winners: number; unforcedErrors: number; aces: number; doubleFaults: number;
-  errorsForced: number; errorsForcedGames: number; votes: number | null; votedGames: number;
+  player: string; slug: string; team: string;
+  games: number; gamesRegular: number; finalsGames: number;
+  totals: Record<string, number | null>;
+  rates: Record<string, number | null>;
+  /** Games behind each rate — a partial stat gets its own honest denominator. */
+  coverage: Record<string, number>;
   bog: number; winPct: number; winnerToUe: number | null;
 };
 function buildScope(season: number | undefined, includeFillIns: boolean): Entry[] {
   return players
     .map((name) => {
-      const a = playerAgg(name, rows, { season, includeFillIns });
+      const all = playerAgg(name, rows, { season, includeFillIns });
+      const reg = playerAgg(name, rows, { season, includeFillIns, scope: 'regular' });
+      const totals: Record<string, number | null> = { bog: reg.bog };
+      const rates: Record<string, number | null> = { bog: null };
+      const coverage: Record<string, number> = { bog: reg.games };
+      for (const stat of COUNTING_STATS) {
+        totals[stat] = reg[stat];
+        // Votes are awarded once per match however many sets it ran to.
+        rates[stat] = stat === 'votes' ? all.votesPerGame : perSet(all, stat);
+        coverage[stat] = all.tally[stat].games;
+      }
       return {
-        player: name, slug: a.slug, team: scopeTeam(name, season), games: a.games,
-        winners: a.winners, unforcedErrors: a.unforcedErrors, aces: a.aces, doubleFaults: a.doubleFaults,
-        errorsForced: a.errorsForced ?? 0, errorsForcedGames: a.errorsForcedGames,
-        votes: a.votes, votedGames: a.votedGames, bog: a.bog, winPct: a.winPct,
-        winnerToUe: a.winnerToUe === Infinity ? a.winners : a.winnerToUe,
+        player: name, slug: all.slug, team: scopeTeam(name, season),
+        games: all.games, gamesRegular: reg.games, finalsGames: all.finalsGames,
+        totals, rates, coverage,
+        bog: reg.bog, winPct: all.winPct,
+        winnerToUe: all.winnerToUe === Infinity ? all.winners : all.winnerToUe,
       };
     })
     .filter((e) => e.games > 0);
@@ -62,8 +82,9 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
     <p class="eyebrow">Who's really the best?</p>
     <h1 class="serif-title">Leaderboards</h1>
     <p class="lead" style="max-width:640px">
-      Argue responsibly. Filter by season, flip between totals and per-game, and
-      mind the minimum-games threshold on per-game boards.
+      Argue responsibly. Filter by season, flip between totals and per-set, and
+      mind the minimum-games threshold on rate boards. Totals are the
+      home-and-away season; rates count finals, per set.
     </p>
 
     <div class="card controls">
@@ -89,7 +110,7 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
       <label>Mode
         <select id="lbMode">
           <option value="total">Totals</option>
-          <option value="perGame">Per game</option>
+          <option value="perSet">Per set</option>
         </select>
       </label>
       <label class="check"><input type="checkbox" id="lbFill" /> Include fill-in games</label>
@@ -127,8 +148,7 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
   const body = document.getElementById('lbBody')!, note = document.getElementById('lbNote')!;
   const valHead = document.getElementById('lbValHead')!;
 
-  const COUNTS = ['winners', 'unforcedErrors', 'aces', 'doubleFaults', 'errorsForced', 'votes', 'bog'];
-  const PER_GAME_ONLY_TOTAL = ['winPct', 'winnerToUe']; // already rates
+  const RATES_ONLY = ['winPct', 'winnerToUe']; // already rates
   const LABELS: Record<string, string> = {
     winners: 'Winners', unforcedErrors: 'Unforced Errors', aces: 'Aces',
     doubleFaults: 'Double Faults', errorsForced: 'Errors Forced', votes: 'Votes',
@@ -137,44 +157,45 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
 
   let current: { rows: any[]; valLabel: string } = { rows: [], valLabel: '' };
 
-  function metric(e: Entry, stat: string, perGame: boolean): number | null {
+  function metric(e: Entry, stat: string, perSet: boolean): number | null {
     if (stat === 'winPct') return e.winPct as number;
     if (stat === 'winnerToUe') return e.winnerToUe as number | null;
-    if (stat === 'votes') {
-      if (e.votes === null) return null;
-      return perGame ? (e.votedGames ? (e.votes as number) / (e.votedGames as number) : null) : (e.votes as number);
-    }
-    const total = e[stat] as number;
-    if (!perGame) return total;
-    const denom = stat === 'errorsForced' ? (e.errorsForcedGames as number) : e.games;
-    return denom ? total / denom : null;
+    return (perSet ? (e as any).rates : (e as any).totals)[stat] ?? null;
   }
 
-  function fmt(v: number, stat: string, perGame: boolean): string {
+  /** Games behind the number shown — the rate's own coverage, or the H&A season. */
+  function denom(e: Entry, stat: string, perSet: boolean): number {
+    if (RATES_ONLY.includes(stat)) return e.games;
+    return perSet ? ((e as any).coverage[stat] ?? 0) : (e as any).gamesRegular;
+  }
+
+  function fmt(v: number, stat: string, perSet: boolean): string {
     if (stat === 'winPct') return (v * 100).toFixed(0) + '%';
-    if (perGame || stat === 'winnerToUe') return v.toFixed(2);
+    if (perSet || stat === 'winnerToUe') return v.toFixed(2);
     return String(v);
   }
 
   function render() {
     const scope = seasonSel.value, stat = statSel.value;
-    const perGame = modeSel.value === 'perGame' && !PER_GAME_ONLY_TOTAL.includes(stat);
-    modeSel.disabled = PER_GAME_ONLY_TOTAL.includes(stat);
+    const perSet = modeSel.value === 'perSet' && !RATES_ONLY.includes(stat);
+    modeSel.disabled = RATES_ONLY.includes(stat);
     const data: Entry[] = cfg.datasets[`${scope}|${fillChk.checked}`] ?? [];
 
     let rows = data
-      .map((e) => ({ e, value: metric(e, stat, perGame) }))
-      .filter((r) => r.value !== null) as { e: Entry; value: number }[];
+      .map((e) => ({ e, value: metric(e, stat, perSet), games: denom(e, stat, perSet) }))
+      .filter((r) => r.value !== null && r.games > 0) as
+        { e: Entry; value: number; games: number }[];
 
     const minGames = cfg.minGames;
-    const applyMin = perGame || stat === 'winPct' || stat === 'winnerToUe';
-    if (applyMin) rows = rows.filter((r) => r.e.games >= minGames);
+    const applyMin = perSet || RATES_ONLY.includes(stat);
+    if (applyMin) rows = rows.filter((r) => r.games >= minGames);
 
-    rows.sort((a, b) => b.value - a.value || b.e.games - a.e.games);
+    rows.sort((a, b) => b.value - a.value || b.games - a.games);
 
-    const rateLabel = perGame ? ' / game' : '';
+    // Votes are the one rate that isn't per set — they're awarded once a match.
+    const rateLabel = perSet ? (stat === 'votes' ? ' / game' : ' / set') : '';
     valHead.textContent = LABELS[stat] + rateLabel;
-    current = { rows: rows.map((r) => ({ ...r.e, value: r.value })), valLabel: LABELS[stat] + rateLabel };
+    current = { rows: rows.map((r) => ({ ...r.e, value: r.value, games: r.games })), valLabel: LABELS[stat] + rateLabel };
 
     body.innerHTML = rows.map((r, i) => {
       const c = cfg.teamColors[r.e.team];
@@ -185,12 +206,17 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
         <td class="rank">${i + 1}</td>
         <td><a href="${cfg.playerBase}${r.e.slug}/">${r.e.player}</a></td>
         <td>${chip}</td>
-        <td class="num">${fmt(r.value, stat, perGame)}</td>
-        <td>${r.e.games}</td>
+        <td class="num">${fmt(r.value, stat, perSet)}</td>
+        <td>${r.games}</td>
       </tr>`;
     }).join('') || `<tr><td colspan="5" class="muted">No qualifying players.</td></tr>`;
 
     const notes: string[] = ['All fill-in games excluded' + (fillChk.checked ? ' — currently INCLUDED' : ' by default') + '.'];
+    if (perSet && stat === 'votes') notes.push('Votes are awarded per match, so this rate stays per game.');
+    else if (perSet) notes.push('Per-set rates include finals, normalised by sets played.');
+    else if (!RATES_ONLY.includes(stat)) notes.push('Totals cover the home-and-away season — finals excluded, since only eight teams play them.');
+    else notes.push('Win-loss counts finals.');
+    notes.push('Games shown is the number behind the figure — a stat missing from a night is left out, not counted as zero.');
     if (applyMin) notes.push(`Minimum ${minGames} games to qualify.`);
     if (stat === 'votes' && cfg.sealedSeasons.includes(Number(scope))) notes.push('Votes for this season are sealed 🔒 — board will populate after awards night.');
     if (stat === 'errorsForced') notes.push('Errors Forced only tracked from Season 2.');

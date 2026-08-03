@@ -8,8 +8,9 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadStatRows } from '../src/lib/normalize.ts';
-import { allPlayers, allSeasons } from '../src/lib/stats.ts';
+import { CSV_PATH, loadStatRows } from '../src/lib/normalize.ts';
+import { readCsvFile } from '../src/lib/csv.ts';
+import { allPlayers, allSeasons, COUNTING_STATS } from '../src/lib/stats.ts';
 import { NAME_ALIASES } from '../src/config/aliases.ts';
 import { SITE, isVotesSealed } from '../src/config/site.ts';
 
@@ -17,12 +18,15 @@ const rows = loadStatRows();
 const errors: string[] = [];
 const warnings: string[] = [];
 
+const where = (r: { player: string; season: number; roundLabel: string }) =>
+  `${r.player} S${r.season} ${r.roundLabel}`;
+
 // 1. Votes within the legal per-match maximum for the S2+ era (two voters × 3-2-1).
 for (const r of rows) {
   if (r.votes === null) continue;
-  if (r.votes < 0) errors.push(`Negative votes: ${r.player} S${r.season} R${r.round} = ${r.votes}`);
+  if (r.votes < 0) errors.push(`Negative votes: ${where(r)} = ${r.votes}`);
   if (r.season >= SITE.errorsForcedFromSeason && r.votes > 6) {
-    errors.push(`Votes > 6 (S2+ max): ${r.player} S${r.season} R${r.round} = ${r.votes}`);
+    errors.push(`Votes > 6 (S2+ max): ${where(r)} = ${r.votes}`);
   }
 }
 
@@ -39,6 +43,65 @@ for (const r of rows) {
 }
 for (const [k, e] of byPR) {
   if (e.nonFill > 1) warnings.push(`Player has ${e.nonFill} non-fill-in rows in one round (ambiguous): ${k}`);
+}
+
+// 2b. Finals rows. The scoreline is the source of truth for how many sets were
+//     played, so an unreadable one silently becomes a one-set match — which
+//     would quietly inflate that player's per-set rates. Catch it here.
+const STAGES = new Set(['QF', 'SF', 'F']);
+const rawRows = readCsvFile(CSV_PATH);
+
+for (const raw of rawRows) {
+  const round = (raw['Round'] ?? '').trim();
+  const player = (raw['Player'] ?? '').trim();
+  // Rows with no player are templates awaiting data — counted, not checked.
+  if (!player || !round) continue;
+  if (!/^\d+$/.test(round) && !STAGES.has(round.toUpperCase())) {
+    errors.push(
+      `Unknown Round "${round}" (expected a number or ${[...STAGES].join('/')}): ` +
+        `${player} S${raw['Season']}`
+    );
+  }
+}
+
+for (const r of rows) {
+  if (!r.score) {
+    if (r.isFinals) errors.push(`Finals row has no Score: ${where(r)}`);
+    continue;
+  }
+  if (!r.setScores.length) {
+    errors.push(`Unreadable Score "${r.score}": ${where(r)}`);
+    continue;
+  }
+  const games = r.setScores.reduce(
+    (acc, s) => ({ f: acc.f + s.for, a: acc.a + s.against }),
+    { f: 0, a: 0 }
+  );
+  if (games.f !== r.teamScore || games.a !== r.opponentScore) {
+    errors.push(
+      `Score "${r.score}" sums to ${games.f}-${games.a} but the game columns ` +
+        `say ${r.teamScore}-${r.opponentScore}: ${where(r)}`
+    );
+  }
+  if (r.isFinals && r.setsWon === r.setsLost) {
+    errors.push(`Finals scoreline "${r.score}" has no winner: ${where(r)}`);
+  }
+  if (r.isFinals && r.win !== r.setsWon > r.setsLost) {
+    errors.push(
+      `win? says ${r.win} but the scoreline "${r.score}" says otherwise: ${where(r)}`
+    );
+  }
+}
+
+// 2c. Each finals tie needs both sides present, or the head-to-head is one-eyed.
+const finalsTies = new Map<string, Set<string>>();
+for (const r of rows) {
+  if (!r.isFinals || r.isSingles) continue;
+  const key = `S${r.season} ${r.roundLabel} ${[r.team, r.opponent].sort().join(' v ')}`;
+  (finalsTies.get(key) ?? finalsTies.set(key, new Set()).get(key)!).add(r.team);
+}
+for (const [tie, teams] of finalsTies) {
+  if (teams.size !== 2) warnings.push(`Finals tie has only one side entered: ${tie}`);
 }
 
 // 3. Bios present?
@@ -64,6 +127,35 @@ for (const s of allSeasons(rows)) {
   console.log(`  S${s}: ${sr.length} player-rows, ${votes} with votes${isVotesSealed(s) ? ' (SEALED)' : ''}, ${bog} BOG (derived)`);
 }
 console.log(`bios: ${players.length - missingBios.length}/${players.length} written` + (missingBios.length ? ` — missing: ${missingBios.join(', ')}` : ''));
+
+// 5. Finals coverage. Scorelines make a finals count for win-loss and
+//    head-to-head on their own; the stats can arrive later, one post at a time.
+console.log('\nFinals\n' + '-'.repeat(40));
+const templates = rawRows.filter(
+  (r) => !(r['Player'] ?? '').trim() && (r['Round'] ?? '').trim()
+);
+for (const s of allSeasons(rows)) {
+  const fr = rows.filter((r) => r.season === s && r.isFinals && !r.isSingles);
+  const waiting = templates.filter((r) => Number(r['Season']) === s).length;
+  if (!fr.length) {
+    console.log(`  S${s}: no finals rows${waiting ? ` (${waiting} blank template rows waiting)` : ''}`);
+    continue;
+  }
+  const ties = new Map<string, number>();
+  for (const r of fr) {
+    ties.set(`${r.roundLabel}|${[r.team, r.opponent].sort().join()}`, r.sets);
+  }
+  const sets = [...ties.values()].reduce((n, v) => n + v, 0);
+  const covered = COUNTING_STATS.map((stat) => {
+    const n = fr.filter((r) => r[stat] !== null).length;
+    return n ? `${stat} ${n}/${fr.length}` : null;
+  }).filter(Boolean);
+  console.log(
+    `  S${s}: ${ties.size} ties, ${fr.length} player-rows, ${sets} sets` +
+      `\n       stats: ${covered.length ? covered.join(', ') : 'none recorded yet (scorelines only)'}` +
+      (waiting ? `\n       ${waiting} blank template rows waiting` : '')
+  );
+}
 
 if (warnings.length) {
   console.log('\nWarnings:');

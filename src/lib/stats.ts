@@ -15,18 +15,47 @@ const matchKey = (r: { season: number; round: number; team: string; opponent: st
   `${r.season}|${r.round}|${r.team}|${r.opponent}`;
 
 /**
+ * Which matches an aggregate is built from.
+ *
+ * `regular` is the home-and-away season only. It's the scope for anything that
+ * ranks players against each other on a raw total — career leaderboards, the
+ * record books — because finals are played by eight teams, not eighteen, and
+ * whoever went deepest would top every counting board on volume alone.
+ *
+ * `all` includes finals. It's the scope for win-loss, head-to-head, streaks and
+ * every per-set rate, where the extra matches are the point and the set-based
+ * denominator already handles the multi-set inflation.
+ */
+export type StatScope = 'regular' | 'all';
+
+export const inScope = (r: StatRow, scope: StatScope): boolean =>
+  scope === 'all' || !r.isFinals;
+
+/**
  * Collapse per-player rows into one record per team-side of each match. Uses all
  * rows (including SINGLES GAME) so singles matches still count for the ladder.
+ * Defaults to the home-and-away season: the ladder is what seeds the finals, so
+ * it must never contain them.
  */
-export function matchSides(rows: StatRow[], season?: number): MatchSide[] {
+export function matchSides(
+  rows: StatRow[],
+  season?: number,
+  scope: StatScope = 'regular'
+): MatchSide[] {
   const seen = new Map<string, MatchSide>();
   for (const r of rows) {
     if (season !== undefined && r.season !== season) continue;
+    if (!inScope(r, scope)) continue;
     const key = matchKey(r);
     if (seen.has(key)) continue;
     seen.set(key, {
       season: r.season,
       round: r.round,
+      stage: r.stage,
+      roundLabel: r.roundLabel,
+      score: r.score,
+      setScores: r.setScores,
+      sets: r.sets,
       team: r.team,
       opponent: r.opponent,
       teamScore: r.teamScore,
@@ -66,8 +95,10 @@ export function teamRoster(
   rows: StatRow[],
   override?: { pair?: string[]; captain?: string }
 ): TeamRoster {
+  // Home-and-away only: the regular pairing is who turned up on Tuesdays, and
+  // adding up to three finals would skew the core-member threshold.
   const teamRows = rows.filter(
-    (r) => r.season === season && r.team === team && !r.isSingles
+    (r) => r.season === season && r.team === team && !r.isSingles && !r.isFinals
   );
   const matches = new Set(teamRows.map((r) => `${r.round}`)).size;
   const threshold = Math.max(2, Math.ceil(matches * SITE.coreMemberMinShare));
@@ -159,26 +190,63 @@ export function ladder(
 // Player aggregates
 // ---------------------------------------------------------------------------
 
+/** Stats that accumulate during play, and can be missing from a given game. */
+export const COUNTING_STATS = [
+  'winners',
+  'unforcedErrors',
+  'aces',
+  'doubleFaults',
+  'forcedErrors',
+  'errorsForced',
+  'votes',
+] as const;
+
+export type CountingStat = (typeof COUNTING_STATS)[number];
+
+/**
+ * A running total plus its own denominators.
+ *
+ * Coverage varies per stat, not just per game: Errors Forced only exists from
+ * S2, serve stats only in S1, and a finals night reconstructed from an
+ * Instagram post might give up winners and unforced errors and nothing else.
+ * Carrying the denominators alongside the total is what stops a missing cell
+ * from quietly reading as a zero.
+ */
+export interface StatTally {
+  /** Sum across the games where this stat was recorded. */
+  total: number;
+  /** Games that contributed to `total`. */
+  games: number;
+  /** Sets that contributed to `total` — the denominator for a per-set rate. */
+  sets: number;
+}
+
+export type StatTallies = Record<CountingStat, StatTally>;
+
 export interface PlayerAgg {
   player: string;
   slug: string;
+  scope: StatScope;
   games: number;
+  /** Sets played across those games. Two or three for a semi or final. */
+  sets: number;
+  /** How many of `games` were finals (0 when scope is 'regular'). */
+  finalsGames: number;
   wins: number;
   losses: number;
   winPct: number;
-  winners: number;
-  unforcedErrors: number;
-  winnerToUe: number | null;
-  aces: number;
-  doubleFaults: number;
-  forcedErrors: number;
-  /** Errors Forced (S2+). null when no qualifying games in scope. */
+  /** Per-stat totals with their own coverage. The source of every rate. */
+  tally: StatTallies;
+  /** Flat totals for convenience. null means "never recorded", not zero. */
+  winners: number | null;
+  unforcedErrors: number | null;
+  aces: number | null;
+  doubleFaults: number | null;
+  forcedErrors: number | null;
   errorsForced: number | null;
-  /** games in scope that are S2+ (denominator for errorsForced/game). */
-  errorsForcedGames: number;
-  /** Votes total across games where votes are recorded (not sealed/blank). */
   votes: number | null;
-  votedGames: number;
+  winnerToUe: number | null;
+  /** Votes are awarded per match, not per set, so this rate stays per game. */
   votesPerGame: number | null;
   bog: number;
   /** Serve % (S1 only): firstServeIn / (in + out). null outside S1 scope. */
@@ -191,41 +259,61 @@ export interface AggOptions {
   season?: number; // undefined = all-time
   includeFillIns?: boolean; // default false
   team?: string;
+  /** Default 'all' — finals included. See StatScope. */
+  scope?: StatScope;
 }
 
+/** Per-set rate for a counting stat. null when the stat was never recorded. */
+export function perSet(agg: PlayerAgg, stat: CountingStat): number | null {
+  const t = agg.tally[stat];
+  return t.sets ? t.total / t.sets : null;
+}
+
+/**
+ * True when a stat is missing from some of the games in scope — the cue for the
+ * UI to show coverage rather than let a partial total pass as a complete one.
+ */
+export function isPartial(agg: PlayerAgg, stat: CountingStat): boolean {
+  const t = agg.tally[stat];
+  return t.games > 0 && t.games < agg.games;
+}
+
+const emptyTallies = (): StatTallies =>
+  Object.fromEntries(
+    COUNTING_STATS.map((s) => [s, { total: 0, games: 0, sets: 0 }])
+  ) as StatTallies;
+
 /** Aggregate a set of already-filtered rows for one player into a PlayerAgg. */
-function aggregateRows(player: string, slug: string, rows: StatRow[]): PlayerAgg {
+function aggregateRows(
+  player: string,
+  slug: string,
+  rows: StatRow[],
+  scope: StatScope
+): PlayerAgg {
+  const tally = emptyTallies();
   let wins = 0,
-    winners = 0,
-    ue = 0,
-    aces = 0,
-    df = 0,
-    fe = 0,
+    sets = 0,
+    finalsGames = 0,
     bog = 0;
-  let ef = 0,
-    efGames = 0;
-  let votes = 0,
-    votedGames = 0;
   let fsIn = 0,
     fsOut = 0,
     serveGames = 0;
 
   for (const r of rows) {
     if (r.win) wins++;
-    winners += r.winners;
-    ue += r.unforcedErrors;
-    aces += r.aces;
-    df += r.doubleFaults;
-    fe += r.forcedErrors;
+    sets += r.sets;
+    if (r.isFinals) finalsGames++;
     if (r.bog) bog++;
-    if (r.errorsForced !== null) {
-      ef += r.errorsForced;
-      efGames++;
+
+    for (const stat of COUNTING_STATS) {
+      const v = r[stat];
+      if (v === null) continue;
+      const t = tally[stat];
+      t.total += v;
+      t.games += 1;
+      t.sets += r.sets;
     }
-    if (r.votes !== null) {
-      votes += r.votes;
-      votedGames++;
-    }
+
     if (r.firstServeIn !== null || r.firstServeOut !== null) {
       fsIn += r.firstServeIn ?? 0;
       fsOut += r.firstServeOut ?? 0;
@@ -233,25 +321,32 @@ function aggregateRows(player: string, slug: string, rows: StatRow[]): PlayerAgg
     }
   }
 
+  const total = (s: CountingStat) => (tally[s].games ? tally[s].total : null);
   const games = rows.length;
+  const winners = total('winners');
+  const ue = total('unforcedErrors');
+
   return {
     player,
     slug,
+    scope,
     games,
+    sets,
+    finalsGames,
     wins,
     losses: games - wins,
     winPct: games ? wins / games : 0,
+    tally,
     winners,
     unforcedErrors: ue,
-    winnerToUe: ue ? winners / ue : winners > 0 ? Infinity : null,
-    aces,
-    doubleFaults: df,
-    forcedErrors: fe,
-    errorsForced: efGames ? ef : null,
-    errorsForcedGames: efGames,
-    votes: votedGames ? votes : null,
-    votedGames,
-    votesPerGame: votedGames ? votes / votedGames : null,
+    aces: total('aces'),
+    doubleFaults: total('doubleFaults'),
+    forcedErrors: total('forcedErrors'),
+    errorsForced: total('errorsForced'),
+    votes: total('votes'),
+    winnerToUe:
+      winners === null ? null : ue ? winners / ue : winners > 0 ? Infinity : null,
+    votesPerGame: tally.votes.games ? tally.votes.total / tally.votes.games : null,
     bog,
     firstServeIn: fsIn,
     firstServeOut: fsOut,
@@ -264,11 +359,12 @@ export function playerRows(
   rows: StatRow[],
   opts: AggOptions = {}
 ): StatRow[] {
-  const { season, includeFillIns = false, team } = opts;
+  const { season, includeFillIns = false, team, scope = 'all' } = opts;
   return rows.filter(
     (r) =>
       !r.isSingles &&
       r.player === player &&
+      inScope(r, scope) &&
       (season === undefined || r.season === season) &&
       (includeFillIns || !r.isFillIn) &&
       (team === undefined || r.team === team)
@@ -282,7 +378,7 @@ export function playerAgg(
 ): PlayerAgg {
   const filtered = playerRows(player, rows, opts);
   const slug = filtered[0]?.slug ?? '';
-  return aggregateRows(player, slug, filtered);
+  return aggregateRows(player, slug, filtered, opts.scope ?? 'all');
 }
 
 /** Canonical list of real players (excludes SINGLES GAME). */
@@ -300,6 +396,14 @@ export function allPlayers(rows: StatRow[] = loadStatRows()): string[] {
 export interface H2HGame {
   season: number;
   round: number;
+  /** "5", "QF", "SF", "Final". */
+  roundLabel: string;
+  isFinals: boolean;
+  /** Scoreline from this player's point of view, e.g. "4-6 7-6(4) 6-1". */
+  score: string;
+  sets: number;
+  setsWon: number;
+  setsLost: number;
   /** The player's team that night. */
   team: string;
   /** The opponent's team that night. */
@@ -342,7 +446,8 @@ function fixtureSides(rows: StatRow[]): Map<string, StatRow[]> {
 
 /**
  * A player's record against every opponent they've faced. Fill-in games count
- * on both sides — you still played them. Sorted by meetings desc.
+ * on both sides — you still played them — and so do finals, which are the
+ * meetings people actually remember. Sorted by meetings desc.
  */
 export function headToHead(
   player: string,
@@ -380,6 +485,12 @@ export function headToHead(
       h.games.push({
         season: r.season,
         round: r.round,
+        roundLabel: r.roundLabel,
+        isFinals: r.isFinals,
+        score: r.score,
+        sets: r.sets,
+        setsWon: r.setsWon,
+        setsLost: r.setsLost,
         team: r.team,
         opponentTeam: r.opponent,
         teamScore: r.teamScore,
@@ -471,8 +582,8 @@ export function playerTrend(
       return {
         season,
         games: agg.games,
-        winnersPerGame: agg.games ? agg.winners / agg.games : 0,
-        uePerGame: agg.games ? agg.unforcedErrors / agg.games : 0,
+        winnersPerSet: perSet(agg, 'winners') ?? 0,
+        uePerSet: perSet(agg, 'unforcedErrors') ?? 0,
       };
     })
     .filter((t) => t.games > 0);
@@ -482,37 +593,38 @@ export function playerTrend(
 // Leaderboards
 // ---------------------------------------------------------------------------
 
-export type LeaderStat =
-  | 'winners'
-  | 'unforcedErrors'
-  | 'aces'
-  | 'doubleFaults'
-  | 'errorsForced'
-  | 'votes'
-  | 'winPct'
-  | 'winnerToUe'
-  | 'bog';
+export type LeaderStat = CountingStat | 'winPct' | 'winnerToUe' | 'bog';
+
+/** Rates are compared across all matches; raw totals only over the H&A season. */
+export const defaultScope = (stat: LeaderStat, perSet: boolean): StatScope =>
+  perSet || stat === 'winPct' || stat === 'winnerToUe' ? 'all' : 'regular';
 
 export interface LeaderOptions extends AggOptions {
-  perGame?: boolean;
-  minGames?: number; // for perGame boards
+  /** Rank on the per-set rate rather than the raw total. */
+  perSet?: boolean;
+  minGames?: number; // for rate boards
 }
 
 /**
  * Build a leaderboard for a stat. Returns players ranked desc by the metric.
- * Per-game boards apply a minimum-games threshold so 2-game wonders don't win.
+ * Rate boards apply a minimum-games threshold so 2-game wonders don't win.
+ *
+ * Scope follows the metric unless you override it: a raw total counts the
+ * home-and-away season only (finals would reward whoever went deepest), while
+ * rates and win-loss metrics count everything, normalised per set.
  */
 export function leaderboard(
   stat: LeaderStat,
   rows: StatRow[],
   opts: LeaderOptions = {}
 ): { player: string; slug: string; value: number; games: number; agg: PlayerAgg }[] {
-  const { perGame = false, minGames = SITE.perGameMinGames } = opts;
+  const { perSet: rate = false, minGames = SITE.perGameMinGames } = opts;
+  const scope = opts.scope ?? defaultScope(stat, rate);
   const players = allPlayers(rows);
 
   const entries = players
     .map((p) => {
-      const agg = playerAgg(p, rows, opts);
+      const agg = playerAgg(p, rows, { ...opts, scope });
       return { player: p, slug: agg.slug, agg, games: agg.games };
     })
     .filter((e) => e.games > 0);
@@ -523,17 +635,13 @@ export function leaderboard(
         return agg.winPct;
       case 'winnerToUe':
         return agg.winnerToUe === Infinity ? agg.winners : agg.winnerToUe;
-      case 'errorsForced':
-        return agg.errorsForced;
+      case 'bog':
+        return agg.bog;
+      // Votes are awarded once per match however many sets it ran to.
       case 'votes':
-        return agg.votes;
-      default: {
-        const total = agg[stat] as number;
-        if (!perGame) return total;
-        const denom =
-          stat === 'errorsForced' ? agg.errorsForcedGames : agg.games;
-        return denom ? total / denom : null;
-      }
+        return rate ? agg.votesPerGame : agg.votes;
+      default:
+        return rate ? perSet(agg, stat) : agg[stat];
     }
   };
 
@@ -541,8 +649,7 @@ export function leaderboard(
     .map((e) => ({ ...e, value: metric(e.agg) }))
     .filter(
       (e): e is typeof e & { value: number } =>
-        e.value !== null &&
-        (!perGame || e.games >= minGames)
+        e.value !== null && (!rate || e.games >= minGames)
     )
     .sort((a, b) => b.value - a.value || b.games - a.games);
 }
@@ -561,12 +668,17 @@ export interface GameRecord {
   opponent: string;
 }
 
+/**
+ * Best single-match performances. Home-and-away only: a semi or final runs to
+ * three sets, so those nights would own every board on court time alone.
+ * Games where the stat wasn't recorded are skipped, not counted as zero.
+ */
 function bestSingleGame(
   rows: StatRow[],
-  pick: (r: StatRow) => number
+  pick: (r: StatRow) => number | null
 ): GameRecord[] {
   return rows
-    .filter((r) => !r.isSingles && !r.isFillIn)
+    .filter((r) => !r.isSingles && !r.isFillIn && !r.isFinals)
     .map((r) => ({
       player: r.player,
       slug: r.slug,
@@ -576,14 +688,15 @@ function bestSingleGame(
       team: r.team,
       opponent: r.opponent,
     }))
+    .filter((r): r is GameRecord => r.value !== null)
     .sort((a, b) => b.value - a.value);
 }
 
-/** Longest win streak per player across chronological (season, round) order. */
+/**
+ * Longest win streak per player in chronological order. Finals count — a run
+ * that survives September is the whole point of a streak.
+ */
 export function winStreaks(rows: StatRow[]) {
-  const sides = matchSides(rows).sort(
-    (a, b) => a.season - b.season || a.round - b.round
-  );
   // Map each player to their team-side results in order.
   const byPlayer = new Map<string, { win: boolean; season: number; round: number }[]>();
   const playerRowsAll = rows.filter((r) => !r.isSingles && !r.isFillIn);

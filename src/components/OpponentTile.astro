@@ -30,13 +30,17 @@ const pct = (h2h.winPct * 100).toFixed(0);
     <ul class="opp-pop-list">
       {h2h.games.map((g) => (
         <li>
-          <span class="when">S{g.season} R{g.round}</span>
+          <span class={g.isFinals ? 'when when--finals' : 'when'}>
+            S{g.season} {g.isFinals ? g.roundLabel : `R${g.roundLabel}`}
+          </span>
           <span class="colours">
             <TeamChip team={g.team} plain />
             <span class="v-sep">v</span>
             <TeamChip team={g.opponentTeam} plain />
           </span>
-          <span class={g.win ? 'win' : 'loss'}>{g.win ? 'W' : 'L'} {g.teamScore}–{g.opponentScore}</span>
+          <span class={g.win ? 'win' : 'loss'}>
+            {g.win ? 'W' : 'L'} {g.score || `${g.teamScore}–${g.opponentScore}`}
+          </span>
         </li>
       ))}
     </ul>
@@ -100,7 +104,8 @@ const pct = (h2h.winPct * 100).toFixed(0);
     border-top: 1px solid var(--line-soft); padding-top: 6px;
   }
   .opp-pop-list li:first-child { border-top: 0; padding-top: 0; }
-  .when { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .when { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .when--finals { color: var(--gold-soft); }
   .colours { display: flex; align-items: center; gap: 8px; color: var(--ivory-dim); }
   .v-sep { color: var(--muted); font-style: italic; }
   .opp-pop-list .win, .opp-pop-list .loss { font-variant-numeric: tabular-nums; font-weight: 600; }

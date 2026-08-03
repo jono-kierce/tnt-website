@@ -1,10 +1,10 @@
 ---
-interface TrendPoint { season: number; games: number; winnersPerGame: number; uePerGame: number }
+interface TrendPoint { season: number; games: number; winnersPerSet: number; uePerSet: number }
 interface Props { trend: TrendPoint[] }
 const { trend } = Astro.props;
 
 const W = 480, H = 200, padB = 34, padT = 16, padL = 8, padR = 8;
-const max = Math.max(1, ...trend.flatMap((t) => [t.winnersPerGame, t.uePerGame]));
+const max = Math.max(1, ...trend.flatMap((t) => [t.winnersPerSet, t.uePerSet]));
 const groupW = trend.length ? (W - padL - padR) / trend.length : 0;
 const barW = Math.min(26, groupW / 3.2);
 const y = (v: number) => padT + (H - padT - padB) * (1 - v / max);
@@ -14,7 +14,7 @@ const h = (v: number) => (H - padT - padB) * (v / max);
   <p class="muted">Not enough data yet.</p>
 ) : (
   <div class="card">
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Winners and unforced errors per game by season">
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Winners and unforced errors per set by season">
       {[0.25, 0.5, 0.75, 1].map((f) => (
         <line x1={padL} x2={W - padR} y1={y(max * f)} y2={y(max * f)} stroke="var(--line-soft)" stroke-width="1" />
       ))}
@@ -22,16 +22,16 @@ const h = (v: number) => (H - padT - padB) * (v / max);
         const cx = padL + groupW * i + groupW / 2;
         return (
           <g>
-            <rect x={cx - barW - 2} y={y(t.winnersPerGame)} width={barW} height={h(t.winnersPerGame)} rx="2" fill="var(--gold)" />
-            <rect x={cx + 2} y={y(t.uePerGame)} width={barW} height={h(t.uePerGame)} rx="2" fill="var(--loss)" opacity="0.8" />
+            <rect x={cx - barW - 2} y={y(t.winnersPerSet)} width={barW} height={h(t.winnersPerSet)} rx="2" fill="var(--gold)" />
+            <rect x={cx + 2} y={y(t.uePerSet)} width={barW} height={h(t.uePerSet)} rx="2" fill="var(--loss)" opacity="0.8" />
             <text x={cx} y={H - 14} text-anchor="middle" font-size="12" fill="var(--muted)" font-family="var(--serif)">S{t.season}</text>
           </g>
         );
       })}
     </svg>
     <div class="legend">
-      <span><i style="background:var(--gold)"></i> Winners / game</span>
-      <span><i style="background:var(--loss)"></i> Unforced errors / game</span>
+      <span><i style="background:var(--gold)"></i> Winners / set</span>
+      <span><i style="background:var(--loss)"></i> Unforced errors / set</span>
     </div>
   </div>
 )}

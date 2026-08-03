@@ -26,8 +26,15 @@ const seasons = playerSeasons(name);
 const slug = playerAgg(name, rows).slug;
 
 // All-time (fill-ins excluded, matching leaderboard convention) + per season.
+// Two aggregates per scope: everything including finals (win-loss, rates) and
+// the home-and-away season on its own (raw totals, as on the leaderboards).
 const allTime = playerAgg(name, rows);
-const perSeason = seasons.map((s) => ({ season: s, agg: playerAgg(name, rows, { season: s }) }));
+const allTimeRegular = playerAgg(name, rows, { scope: 'regular' });
+const perSeason = seasons.map((s) => ({
+  season: s,
+  agg: playerAgg(name, rows, { season: s }),
+  regular: playerAgg(name, rows, { season: s, scope: 'regular' }),
+}));
 const trend = playerTrend(name, rows);
 
 // Best/worst opponent (all meetings count, fill-ins included on both sides).
@@ -78,7 +85,7 @@ const photos = playerPhotos(slug);
     </div>
     <div>
       <p class="eyebrow">Per-season form</p>
-      <h2 class="serif-title" style="margin-bottom:12px">Winners &amp; errors per game</h2>
+      <h2 class="serif-title" style="margin-bottom:12px">Winners &amp; errors per set</h2>
       <TrendChart trend={trend} />
     </div>
   </section>
@@ -99,11 +106,11 @@ const photos = playerPhotos(slug);
     </div>
 
     <div class="mt-16 stat-scope" data-scope="all">
-      <StatSummary agg={allTime} scopeLabel="All-time" />
+      <StatSummary agg={allTime} regular={allTimeRegular} scopeLabel="All-time" />
     </div>
-    {perSeason.map(({ season, agg }) => (
+    {perSeason.map(({ season, agg, regular }) => (
       <div class="mt-16 stat-scope hidden" data-scope={String(season)}>
-        <StatSummary agg={agg} scopeLabel={seasonLabel(season)} sealed={isVotesSealed(season)} season={season} />
+        <StatSummary agg={agg} regular={regular} scopeLabel={seasonLabel(season)} sealed={isVotesSealed(season)} season={season} />
       </div>
     ))}
     <VotesNote compact />
@@ -119,7 +126,8 @@ const photos = playerPhotos(slug);
       </div>
       <p class="finenote">
         Minimum {h2h.minMeetings} meetings. Ranked on win rate, then games won vs
-        lost. Fill-in appearances count. Hover or tap a tile for every meeting.
+        lost. Fill-in appearances and finals both count. Hover or tap a tile for
+        every meeting.
       </p>
     </section>
   )}
@@ -142,18 +150,21 @@ const photos = playerPhotos(slug);
             {log.map((r) => (
               <tr>
                 <td>{r.season}</td>
-                <td>{r.round}</td>
+                <td class={r.isFinals ? 'finals-rd' : ''}>{r.roundLabel}</td>
                 <td>{r.opponent}</td>
-                <td class={r.win ? 'win' : 'loss'}>{r.win ? 'W' : 'L'} {r.teamScore}–{r.opponentScore}</td>
-                <td class="num">{r.winners}</td>
-                <td>{r.unforcedErrors}</td>
-                <td>{r.aces}</td>
-                <td>{r.doubleFaults}</td>
+                <td class={r.win ? 'win' : 'loss'}>
+                  {r.win ? 'W' : 'L'} {r.score || `${r.teamScore}–${r.opponentScore}`}
+                </td>
+                <td class="num">{r.winners ?? '—'}</td>
+                <td>{r.unforcedErrors ?? '—'}</td>
+                <td>{r.aces ?? '—'}</td>
+                <td>{r.doubleFaults ?? '—'}</td>
                 <td>{r.errorsForced ?? '—'}</td>
                 <td>{r.votes ?? (isVotesSealed(r.season) ? '🔒' : '—')}</td>
                 <td>
                   {r.bog && <span class="badge badge--bog">BOG</span>}
                   {r.isFillIn && <span class="badge badge--fill">Fill-in</span>}
+                  {r.sets > 1 && <span class="badge">{r.sets} sets</span>}
                 </td>
               </tr>
             ))}
@@ -177,6 +188,7 @@ const photos = playerPhotos(slug);
 </script>
 
 <style>
+  .finals-rd { color: var(--gold-soft); font-weight: 600; letter-spacing: 0.04em; }
   .player-head { display: grid; grid-template-columns: 120px 1fr; gap: 20px; align-items: center; }
   .head-avatar { width: 120px; }
   @media (max-width: 520px) { .player-head { grid-template-columns: 84px 1fr; } .head-avatar { width: 84px; } }

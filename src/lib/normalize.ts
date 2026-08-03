@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { readCsvFile } from './csv.ts';
-import type { StatRow } from './types.ts';
+import type { FinalsStage, SetScore, StatRow } from './types.ts';
 import { SITE } from '../config/site.ts';
 import {
   SINGLES_PLAYER,
@@ -30,8 +30,75 @@ function bool(v: string | undefined): boolean {
 }
 
 /**
+ * Finals sort after every home-and-away round. The gap is deliberate: it leaves
+ * room for a season that ever runs more than nine rounds.
+ */
+const STAGE_SORT: Record<FinalsStage, number> = { QF: 100, SF: 101, F: 102 };
+const STAGE_LABEL: Record<FinalsStage, string> = {
+  QF: 'QF',
+  SF: 'SF',
+  F: 'Final',
+};
+
+/**
+ * The Round column holds either a home-and-away round number or a finals stage
+ * — `QF`, `SF`, `F`. Anything else is treated as a regular round for sorting
+ * purposes; `check-data` is what tells you about a typo.
+ */
+/** One set: `6`, `6(4)` — a set lost on a breaker carries the loser's points. */
+const SET_RE = /^(\d+)(?:\((\d+)\))?-(\d+)(?:\((\d+)\))?$/;
+
+/**
+ * Parse a scoreline written from this team's point of view: sets separated by
+ * spaces, a lost tiebreak in parentheses on the loser's side.
+ *
+ *   "6-4"              -> one set won
+ *   "4-6 7-6(4) 6-1"   -> three sets, won 2-1
+ *
+ * Returns an empty array for a blank or malformed scoreline; `check-data` is
+ * what reports it, so a typo degrades to "unknown" rather than crashing a build.
+ */
+export function parseScore(v: string | undefined): SetScore[] {
+  const s = (v ?? '').trim();
+  if (!s) return [];
+  const sets: SetScore[] = [];
+  for (const token of s.split(/\s+/)) {
+    const m = SET_RE.exec(token);
+    if (!m) return [];
+    const [, f, tbF, a, tbA] = m;
+    sets.push({
+      for: Number(f),
+      against: Number(a),
+      tiebreakFor: tbF === undefined ? null : Number(tbF),
+      tiebreakAgainst: tbA === undefined ? null : Number(tbA),
+      won: Number(f) > Number(a),
+    });
+  }
+  return sets;
+}
+
+export function parseRound(v: string | undefined): {
+  round: number;
+  stage: FinalsStage | null;
+  roundLabel: string;
+} {
+  const s = (v ?? '').trim().toUpperCase();
+  if (s in STAGE_SORT) {
+    const stage = s as FinalsStage;
+    return { round: STAGE_SORT[stage], stage, roundLabel: STAGE_LABEL[stage] };
+  }
+  const round = num(v);
+  return { round, stage: null, roundLabel: String(round) };
+}
+
+/**
  * The single normalization layer. Every data quirk is handled here and nowhere
  * else — the rest of the site consumes clean `StatRow`s.
+ *
+ * Two of those quirks matter most for finals: the Round column may hold a stage
+ * (`QF`/`SF`/`F`) instead of a number, and every counting stat is nullable, so a
+ * finals match entered as a scoreline with no stats contributes to win-loss and
+ * head-to-head without dragging anyone's averages toward zero.
  */
 export function normalizeRows(raw: Record<string, string>[]): StatRow[] {
   const out: StatRow[] = raw
@@ -40,6 +107,9 @@ export function normalizeRows(raw: Record<string, string>[]): StatRow[] {
       const season = num(r['Season']);
       const rawPlayer = (r['Player'] ?? '').trim();
       const isSingles = rawPlayer === SINGLES_PLAYER;
+      const { round, stage, roundLabel } = parseRound(r['Round']);
+      const score = (r['Score'] ?? '').trim();
+      const setScores = parseScore(score);
 
       const { name: stripped, isFillIn } = stripFillIn(rawPlayer);
       const player = isSingles ? SINGLES_PLAYER : canonicalName(stripped);
@@ -53,17 +123,27 @@ export function normalizeRows(raw: Record<string, string>[]): StatRow[] {
         team: (r['Team'] ?? '').trim(),
         opponent: (r['Opponent'] ?? '').trim(),
         season,
-        round: num(r['Round']),
+        round,
+        stage,
+        roundLabel,
+        isFinals: stage !== null,
+        score,
+        setScores,
+        // An unreadable scoreline counts as one set: every home-and-away round
+        // is a single set, so that's the safe assumption for a rate denominator.
+        sets: setScores.length || 1,
+        setsWon: setScores.filter((s) => s.won).length,
+        setsLost: setScores.filter((s) => !s.won).length,
         player,
         slug: isSingles ? 'singles-game' : playerSlug(player),
         isFillIn: isSingles ? false : isFillIn,
         isSingles,
 
-        aces: num(r['Aces']),
-        unforcedErrors: num(r['Unforced Errors']),
-        forcedErrors: num(r['Forced Errors']),
-        doubleFaults: num(r['Double Faults']),
-        winners: num(r['Winners']),
+        aces: numOrNull(r['Aces']),
+        unforcedErrors: numOrNull(r['Unforced Errors']),
+        forcedErrors: numOrNull(r['Forced Errors']),
+        doubleFaults: numOrNull(r['Double Faults']),
+        winners: numOrNull(r['Winners']),
 
         firstServeIn: serveSeason ? numOrNull(r['1st Serve In']) : null,
         firstServeOut: serveSeason ? numOrNull(r['1st Serve Out']) : null,
