@@ -323,11 +323,13 @@ main { position: relative; z-index: 1; }
   opacity: 0; visibility: hidden; transform: translateY(-4px);
   transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s;
 }
-.rankchip:hover .rankpop,
-.rankchip:focus .rankpop,
-.rankchip:focus-within .rankpop {
+/* The whole tile is the target — the chip is small, and the detail is about
+   the number above it as much as the badge itself. */
+.tile:hover .rankpop,
+.tile:focus-within .rankpop {
   opacity: 1; visibility: visible; transform: translateY(0);
 }
+.tile:has(.rankchip) { cursor: help; }
 .rankpop-head {
   font-family: var(--serif); text-transform: uppercase; letter-spacing: 0.1em;
   font-size: 0.6rem; color: var(--gold);

@@ -26,8 +26,8 @@ const accent = teamMeta(team);
 const seasons = playerSeasons(name);
 const slug = playerAgg(name, rows).slug;
 
-// All-time (fill-ins excluded, matching leaderboard convention) + per season.
-// Three aggregates per scope: everything including finals (rates), the
+// All-time + per season. Three aggregates per scope: everything including
+// finals (rates), the
 // home-and-away season on its own (raw totals and the season record, as on the
 // leaderboards) and finals on their own (the September record, Finals MVP).
 // Each scope also carries the player's standing in that same window, so a badge
@@ -84,6 +84,12 @@ const roundCell = (r: (typeof log)[number]) => r.stage ?? r.roundLabel;
 // (finals, mostly) stand out at a glance.
 const scoreLines = (r: (typeof log)[number]) =>
   r.score ? r.score.split(/\s+/) : [`${r.teamScore}–${r.opponentScore}`];
+// The Final is the one match where the letter undersells the result: a win is a
+// premiership, a loss is a runner-up. Every other round keeps its W/L.
+const resultMark = (r: (typeof log)[number]) =>
+  r.stage === 'F'
+    ? { text: r.win ? '🏆' : '🥈', label: r.win ? 'Premiers' : 'Runners-up' }
+    : { text: r.win ? 'W' : 'L', label: r.win ? 'Win' : 'Loss' };
 
 const bio = bioHtml(slug);
 const photos = playerPhotos(slug);
@@ -217,7 +223,10 @@ const photos = playerPhotos(slug);
                 <td class={`c-tight ${r.isFinals ? 'finals-rd' : ''}`}>{roundCell(r)}</td>
                 <td class="c-opp">{r.opponent}</td>
                 <td class="c-res">
-                  <span class={`res ${r.win ? 'win' : 'loss'}`}>{r.win ? 'W' : 'L'}</span>
+                  <span
+                    class={`res ${r.win ? 'win' : 'loss'} ${r.stage === 'F' ? 'res--medal' : ''}`}
+                    title={resultMark(r).label}
+                  >{resultMark(r).text}</span>
                   <span class="sets">
                     {scoreLines(r).map((s) => <span class="set">{s}</span>)}
                   </span>
@@ -287,6 +296,9 @@ const photos = playerPhotos(slug);
      columns whether the match went one set or three. */
   .matchlog td.c-res { position: relative; white-space: nowrap; padding-left: 30px; }
   .matchlog .res { position: absolute; left: 7px; top: 8px; font-weight: 700; }
+  /* A Final trades the letter for a trophy or a silver medal — colour glyphs, so
+     the win/loss tint does nothing and the bold weight only smudges them. */
+  .matchlog .res--medal { font-weight: 400; font-size: 0.95em; line-height: 1.2; }
   .matchlog .sets { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.35; }
   /* Every column hugs its content; the badge column soaks up the leftover
      width, so the data reads as one tight block instead of stretching to fill
