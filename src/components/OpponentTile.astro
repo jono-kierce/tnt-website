@@ -1,0 +1,113 @@
+---
+import Avatar from './Avatar.astro';
+import TeamChip from './TeamChip.astro';
+import { playerHref } from '../lib/url.ts';
+import type { HeadToHead } from '../lib/stats.ts';
+
+interface Props {
+  /** Tile heading — "Best" or "Worst". */
+  label: string;
+  h2h: HeadToHead;
+  /** Opponent's team, for the avatar colours. */
+  team: string;
+  /** Name of the player whose page this is (for the popover heading). */
+  player: string;
+}
+const { label, h2h, team, player } = Astro.props;
+const pct = (h2h.winPct * 100).toFixed(0);
+---
+<div class={`opp-tile opp-tile--${label.toLowerCase()}`} tabindex="0">
+  <div class="opp-face"><Avatar slug={h2h.slug} name={h2h.opponent} team={team} /></div>
+  <div class="opp-body">
+    <div class="k">{label} opponent</div>
+    <a class="opp-name serif-title" href={playerHref(h2h.slug)}>{h2h.opponent}</a>
+    <div class="v">{h2h.wins}–{h2h.losses}</div>
+    <div class="sub">{pct}% · {h2h.gamesFor}–{h2h.gamesAgainst} games</div>
+  </div>
+
+  <div class="opp-pop" role="note">
+    <p class="opp-pop-head">{player} vs {h2h.opponent} — {h2h.meetings} meeting{h2h.meetings === 1 ? '' : 's'}</p>
+    <ul class="opp-pop-list">
+      {h2h.games.map((g) => (
+        <li>
+          <span class="when">S{g.season} R{g.round}</span>
+          <span class="colours">
+            <TeamChip team={g.team} plain />
+            <span class="v-sep">v</span>
+            <TeamChip team={g.opponentTeam} plain />
+          </span>
+          <span class={g.win ? 'win' : 'loss'}>{g.win ? 'W' : 'L'} {g.teamScore}–{g.opponentScore}</span>
+        </li>
+      ))}
+    </ul>
+    {h2h.games.some((g) => g.fillIn || g.opponentFillIn) && (
+      <p class="finenote" style="margin-top:6px">Includes fill-in appearances.</p>
+    )}
+  </div>
+</div>
+
+<style>
+  .opp-tile {
+    position: relative;
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 14px;
+    align-items: center;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .opp-tile:hover, .opp-tile:focus-visible, .opp-tile:focus-within { border-color: var(--gold); }
+  .opp-tile:focus-visible { outline: none; }
+  .opp-face { width: 64px; }
+  .opp-body { min-width: 0; }
+  .k {
+    font-family: var(--serif); text-transform: uppercase; letter-spacing: 0.1em;
+    font-size: 0.66rem; color: var(--muted);
+  }
+  .opp-tile--worst .k { color: var(--loss); }
+  .opp-tile--best .k { color: var(--win); }
+  .opp-name {
+    display: block; font-size: 1.05rem; color: var(--ivory);
+    letter-spacing: 0.04em; overflow-wrap: anywhere;
+  }
+  .opp-name:hover { color: var(--gold-soft); }
+  .v { font-size: 1.7rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .sub { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  /* --- Hover / focus detail ------------------------------------------------ */
+  .opp-pop {
+    position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 8px);
+    background: #0d0d0b; border: 1px solid var(--gold);
+    border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow);
+    opacity: 0; visibility: hidden; transform: translateY(-4px);
+    transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s;
+  }
+  .opp-tile:hover .opp-pop,
+  .opp-tile:focus .opp-pop,
+  .opp-tile:focus-within .opp-pop {
+    opacity: 1; visibility: visible; transform: translateY(0);
+  }
+  .opp-pop-head {
+    font-family: var(--serif); text-transform: uppercase; letter-spacing: 0.1em;
+    font-size: 0.66rem; color: var(--gold); margin: 0 0 8px;
+  }
+  .opp-pop-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .opp-pop-list li {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 10px;
+    align-items: center; font-size: 0.8rem;
+    border-top: 1px solid var(--line-soft); padding-top: 6px;
+  }
+  .opp-pop-list li:first-child { border-top: 0; padding-top: 0; }
+  .when { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .colours { display: flex; align-items: center; gap: 8px; color: var(--ivory-dim); }
+  .v-sep { color: var(--muted); font-style: italic; }
+  .opp-pop-list .win, .opp-pop-list .loss { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  @media (max-width: 560px) {
+    .opp-pop-list li { grid-template-columns: auto 1fr; row-gap: 2px; }
+    .colours { grid-column: 2; }
+    .opp-pop-list li > :last-child { grid-column: 2; }
+  }
+</style>

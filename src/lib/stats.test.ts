@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeRows } from './normalize.ts';
-import { ladder, playerAgg, teamRoster, matchSides } from './stats.ts';
+import {
+  bestWorstOpponent,
+  headToHead,
+  ladder,
+  matchSides,
+  playerAgg,
+  teamRoster,
+} from './stats.ts';
 import { canonicalName, shortName, stripFillIn } from '../config/aliases.ts';
 
 /** Helper to build a raw CSV record object. */
@@ -246,5 +253,118 @@ describe('BOG derivation (from votes)', () => {
       { player: 'Reg', team: 'Navy', opp: 'Pink', votes: '3' },
     ]);
     expect(rows.filter((r) => r.bog).map((r) => r.player)).toEqual(['Sub']);
+  });
+});
+
+describe('head to head', () => {
+  /** One round: Hero (Pink) vs `opp` (Navy), scored from Hero's side. */
+  const meeting = (
+    round: number,
+    opp: string,
+    heroScore: number,
+    oppScore: number,
+    fill: { hero?: boolean; opp?: boolean } = {}
+  ) => [
+    raw({
+      Team: 'Pink', Opponent: 'Navy', Season: '4', Round: String(round),
+      Player: fill.hero ? 'Hero (Fill-in)' : 'Hero',
+      'win?': heroScore > oppScore ? 'TRUE' : 'FALSE',
+      'Team Score': String(heroScore), 'Opponent Score': String(oppScore),
+    }),
+    raw({
+      Team: 'Navy', Opponent: 'Pink', Season: '4', Round: String(round),
+      Player: fill.opp ? `${opp} (Fill-in)` : opp,
+      'win?': oppScore > heroScore ? 'TRUE' : 'FALSE',
+      'Team Score': String(oppScore), 'Opponent Score': String(heroScore),
+    }),
+  ];
+
+  const season = (...rounds: Record<string, string>[][]) =>
+    normalizeRows(rounds.flat());
+
+  it('records every meeting, counting fill-ins on both sides', () => {
+    const rows = season(
+      meeting(1, 'Bunny', 6, 2),
+      meeting(2, 'Bunny', 6, 3, { opp: true }),
+      meeting(3, 'Bunny', 6, 4, { hero: true }),
+      meeting(4, 'Bogey', 2, 6)
+    );
+    const h2h = headToHead('Hero', rows);
+    const bunny = h2h.find((h) => h.opponent === 'Bunny')!;
+    expect(bunny.meetings).toBe(3);
+    expect([bunny.wins, bunny.losses]).toEqual([3, 0]);
+    expect([bunny.gamesFor, bunny.gamesAgainst]).toEqual([18, 9]);
+    expect(bunny.games.map((g) => g.round)).toEqual([1, 2, 3]);
+    expect(bunny.games[1].opponentFillIn).toBe(true);
+    expect(bunny.games[2].fillIn).toBe(true);
+    expect(bunny.games[0].team).toBe('Pink');
+    expect(bunny.games[0].opponentTeam).toBe('Navy');
+    expect(h2h.find((h) => h.opponent === 'Bogey')!.meetings).toBe(1);
+  });
+
+  it('picks best and worst on win rate, ignoring thin samples', () => {
+    const rows = season(
+      meeting(1, 'Bunny', 6, 2),
+      meeting(2, 'Bunny', 6, 3),
+      meeting(3, 'Bunny', 6, 4),
+      meeting(4, 'Bogey', 2, 6),
+      meeting(5, 'Bogey', 3, 6),
+      meeting(6, 'Bogey', 4, 6),
+      meeting(7, 'Stranger', 6, 0) // one meeting — not enough to qualify
+    );
+    const split = bestWorstOpponent('Hero', rows)!;
+    expect(split.minMeetings).toBe(3);
+    expect(split.best.opponent).toBe('Bunny');
+    expect(split.worst.opponent).toBe('Bogey');
+  });
+
+  it('breaks a win-rate tie on games for vs against', () => {
+    const rows = season(
+      meeting(1, 'Tidy', 6, 0),
+      meeting(2, 'Tidy', 6, 1),
+      meeting(3, 'Tidy', 0, 6),
+      meeting(4, 'Scrappy', 6, 5),
+      meeting(5, 'Scrappy', 6, 5),
+      meeting(6, 'Scrappy', 0, 6)
+    );
+    const split = bestWorstOpponent('Hero', rows)!;
+    expect(split.best.winPct).toBeCloseTo(split.worst.winPct);
+    expect(split.best.opponent).toBe('Tidy');
+    expect(split.worst.opponent).toBe('Scrappy');
+  });
+
+  it('drops the bar to the floor when nobody has been met often enough', () => {
+    const rows = season(
+      meeting(1, 'Bunny', 6, 2),
+      meeting(2, 'Bunny', 6, 3),
+      meeting(3, 'Bogey', 2, 6),
+      meeting(4, 'Bogey', 3, 6),
+      meeting(5, 'Stranger', 6, 0)
+    );
+    const split = bestWorstOpponent('Hero', rows)!;
+    expect(split.minMeetings).toBe(2);
+    expect(split.best.opponent).toBe('Bunny');
+    expect(split.worst.opponent).toBe('Bogey');
+  });
+
+  it('returns null without two qualifying opponents', () => {
+    const rows = season(
+      meeting(1, 'Bunny', 6, 2),
+      meeting(2, 'Bunny', 6, 3),
+      meeting(3, 'Bunny', 6, 4),
+      meeting(4, 'Stranger', 2, 6)
+    );
+    expect(bestWorstOpponent('Hero', rows)).toBeNull();
+  });
+
+  it('never counts SINGLES GAME as an opponent', () => {
+    const rows = normalizeRows([
+      ...meeting(1, 'Bunny', 6, 2),
+      raw({
+        Team: 'Navy', Opponent: 'Pink', Season: '4', Round: '1',
+        Player: 'SINGLES GAME', 'Team Score': '2', 'Opponent Score': '6',
+      }),
+    ]);
+    expect(headToHead('Hero', rows).map((h) => h.opponent)).toEqual(['Bunny']);
   });
 });

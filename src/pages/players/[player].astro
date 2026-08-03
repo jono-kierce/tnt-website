@@ -5,9 +5,10 @@ import TeamChip from '../../components/TeamChip.astro';
 import VotesNote from '../../components/VotesNote.astro';
 import StatSummary from '../../components/StatSummary.astro';
 import TrendChart from '../../components/TrendChart.astro';
+import OpponentTile from '../../components/OpponentTile.astro';
 import { SITE, seasonLabel, teamMeta, isVotesSealed } from '../../config/site.ts';
 import { withBase } from '../../lib/url.ts';
-import { allPlayers, playerAgg, playerRows, playerTrend } from '../../lib/stats.ts';
+import { allPlayers, bestWorstOpponent, playerAgg, playerRows, playerTrend } from '../../lib/stats.ts';
 import { rows, playerLatestTeam, playerSeasons } from '../../lib/site-data.ts';
 import { bioHtml, playerPhotos } from '../../lib/content.ts';
 
@@ -28,6 +29,9 @@ const slug = playerAgg(name, rows).slug;
 const allTime = playerAgg(name, rows);
 const perSeason = seasons.map((s) => ({ season: s, agg: playerAgg(name, rows, { season: s }) }));
 const trend = playerTrend(name, rows);
+
+// Best/worst opponent (all meetings count, fill-ins included on both sides).
+const h2h = bestWorstOpponent(name, rows);
 
 // Match log (includes fill-in games, flagged).
 const log = playerRows(name, rows, { includeFillIns: true }).sort(
@@ -105,6 +109,21 @@ const photos = playerPhotos(slug);
     <VotesNote compact />
   </section>
 
+  {h2h && (
+    <section class="section container">
+      <p class="eyebrow">Head to head</p>
+      <h2 class="serif-title" style="margin-bottom:12px">Best &amp; Worst Opponent</h2>
+      <div class="grid grid-2 opp-grid">
+        <OpponentTile label="Best" h2h={h2h.best} team={playerLatestTeam(h2h.best.opponent)} player={name} />
+        <OpponentTile label="Worst" h2h={h2h.worst} team={playerLatestTeam(h2h.worst.opponent)} player={name} />
+      </div>
+      <p class="finenote">
+        Minimum {h2h.minMeetings} meetings. Ranked on win rate, then games won vs
+        lost. Fill-in appearances count. Hover or tap a tile for every meeting.
+      </p>
+    </section>
+  )}
+
   <section class="section container">
     <p class="eyebrow">Every match</p>
     <h2 class="serif-title" style="margin-bottom:12px">Match Log</h2>
@@ -164,6 +183,8 @@ const photos = playerPhotos(slug);
   .gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
   .gallery img { aspect-ratio: 3/4; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
   @media (max-width: 640px) { .gallery { grid-template-columns: repeat(2, 1fr); } }
+  /* Tiles sit on their own row so a popover can spill over the section below. */
+  .opp-grid { align-items: start; gap: 14px; }
   .prose :global(p) { color: var(--ivory-dim); }
   .prose :global(a) { color: var(--gold-soft); }
   .season-select select {

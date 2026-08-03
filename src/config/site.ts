@@ -65,6 +65,16 @@ export const SITE = {
   perGameMinGames: 4,
 
   /**
+   * Best/worst-opponent tiles. Nobody in TNT has faced the same opponent more
+   * than a handful of times, so the qualifying bar is adaptive: we use
+   * `h2hPreferredMeetings` when the player has at least two opponents they've
+   * met that often, otherwise we step down one meeting at a time to
+   * `h2hMinMeetings`. Below that a "record" is noise, and the tiles are hidden.
+   */
+  h2hPreferredMeetings: 3,
+  h2hMinMeetings: 2,
+
+  /**
    * A player counts as a "core" member of a team in a season when their
    * non-fill-in games for that team reach this share of the team's matches.
    * Separates the regular pairing from one-off subs the CSV didn't flag.

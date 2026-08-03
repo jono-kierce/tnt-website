@@ -293,6 +293,170 @@ export function allPlayers(rows: StatRow[] = loadStatRows()): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// Head to head (best / worst opponent)
+// ---------------------------------------------------------------------------
+
+/** One meeting between two players, from the first player's point of view. */
+export interface H2HGame {
+  season: number;
+  round: number;
+  /** The player's team that night. */
+  team: string;
+  /** The opponent's team that night. */
+  opponentTeam: string;
+  teamScore: number;
+  opponentScore: number;
+  win: boolean;
+  /** The player was filling in. */
+  fillIn: boolean;
+  /** The opponent was filling in. */
+  opponentFillIn: boolean;
+}
+
+/** A player's career record against one opponent. */
+export interface HeadToHead {
+  opponent: string;
+  slug: string;
+  meetings: number;
+  wins: number;
+  losses: number;
+  winPct: number;
+  gamesFor: number;
+  gamesAgainst: number;
+  /** gamesFor / gamesAgainst, guarded to gamesFor (as on the ladder). */
+  ratio: number;
+  /** Every meeting, oldest first. */
+  games: H2HGame[];
+}
+
+/** Index every team-side of every fixture, so we can look up the other side. */
+function fixtureSides(rows: StatRow[]): Map<string, StatRow[]> {
+  const sides = new Map<string, StatRow[]>();
+  for (const r of rows) {
+    if (r.isSingles) continue;
+    const key = matchKey(r);
+    (sides.get(key) ?? sides.set(key, []).get(key)!).push(r);
+  }
+  return sides;
+}
+
+/**
+ * A player's record against every opponent they've faced. Fill-in games count
+ * on both sides — you still played them. Sorted by meetings desc.
+ */
+export function headToHead(
+  player: string,
+  rows: StatRow[] = loadStatRows()
+): HeadToHead[] {
+  const sides = fixtureSides(rows);
+  const byOpponent = new Map<string, HeadToHead>();
+
+  for (const r of rows) {
+    if (r.isSingles || r.player !== player) continue;
+    const across = sides.get(`${r.season}|${r.round}|${r.opponent}|${r.team}`) ?? [];
+    for (const o of across) {
+      if (o.player === player) continue;
+      const h =
+        byOpponent.get(o.player) ??
+        byOpponent
+          .set(o.player, {
+            opponent: o.player,
+            slug: o.slug,
+            meetings: 0,
+            wins: 0,
+            losses: 0,
+            winPct: 0,
+            gamesFor: 0,
+            gamesAgainst: 0,
+            ratio: 0,
+            games: [],
+          })
+          .get(o.player)!;
+      h.meetings += 1;
+      if (r.win) h.wins += 1;
+      else h.losses += 1;
+      h.gamesFor += r.teamScore;
+      h.gamesAgainst += r.opponentScore;
+      h.games.push({
+        season: r.season,
+        round: r.round,
+        team: r.team,
+        opponentTeam: r.opponent,
+        teamScore: r.teamScore,
+        opponentScore: r.opponentScore,
+        win: r.win,
+        fillIn: r.isFillIn,
+        opponentFillIn: o.isFillIn,
+      });
+    }
+  }
+
+  const out = [...byOpponent.values()];
+  for (const h of out) {
+    h.winPct = h.meetings ? h.wins / h.meetings : 0;
+    h.ratio = h.gamesAgainst === 0 ? h.gamesFor : h.gamesFor / h.gamesAgainst;
+    h.games.sort((a, b) => a.season - b.season || a.round - b.round);
+  }
+  return out.sort(
+    (a, b) => b.meetings - a.meetings || a.opponent.localeCompare(b.opponent)
+  );
+}
+
+/** Win% first, then games ratio; more meetings breaks a dead heat. */
+const bestFirst = (a: HeadToHead, b: HeadToHead) =>
+  b.winPct - a.winPct ||
+  b.ratio - a.ratio ||
+  b.meetings - a.meetings ||
+  a.opponent.localeCompare(b.opponent);
+
+const worstFirst = (a: HeadToHead, b: HeadToHead) =>
+  a.winPct - b.winPct ||
+  a.ratio - b.ratio ||
+  b.meetings - a.meetings ||
+  a.opponent.localeCompare(b.opponent);
+
+export interface OpponentSplit {
+  /** Meetings needed to qualify — chosen adaptively for this player. */
+  minMeetings: number;
+  best: HeadToHead;
+  worst: HeadToHead;
+}
+
+/**
+ * The opponents a player has the best and worst record against.
+ *
+ * The sample sizes here are small (nobody has faced the same opponent more than
+ * six times), so a fixed threshold would either be meaningless or leave half
+ * the field without a tile. Instead we take the highest bar between
+ * `h2hPreferredMeetings` and `h2hMinMeetings` that still leaves two distinct
+ * opponents to compare, and give up if even the floor can't manage that.
+ */
+export function bestWorstOpponent(
+  player: string,
+  rows: StatRow[] = loadStatRows()
+): OpponentSplit | null {
+  const all = headToHead(player, rows);
+  const floor = SITE.h2hMinMeetings;
+
+  let minMeetings = floor;
+  for (let n = SITE.h2hPreferredMeetings; n >= floor; n--) {
+    if (all.filter((h) => h.meetings >= n).length >= 2) {
+      minMeetings = n;
+      break;
+    }
+  }
+
+  const qualified = all.filter((h) => h.meetings >= minMeetings);
+  if (qualified.length < 2) return null;
+
+  return {
+    minMeetings,
+    best: [...qualified].sort(bestFirst)[0],
+    worst: [...qualified].sort(worstFirst)[0],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Per-season trend for a player (winners/game, UE/game)
 // ---------------------------------------------------------------------------
 
