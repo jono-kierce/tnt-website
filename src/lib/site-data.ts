@@ -166,11 +166,14 @@ export function playerSeasons(player: string): number[] {
 
 export interface MvpRow { player: string; slug: string; team: string; votes: number; games: number }
 
-/** Season MVP vote tally (sum of votes), highest first. Home-and-away only. */
+/**
+ * Season MVP vote tally (sum of votes), highest first. Home-and-away only.
+ * Fill-in nights are excluded — those votes were earned for another team.
+ */
 export function seasonMvp(season: number): MvpRow[] {
   const byPlayer = new Map<string, { votes: number; games: number; team: string }>();
   for (const r of rows) {
-    if (r.season !== season || r.isSingles || r.isFinals || r.votes === null) continue;
+    if (r.season !== season || r.isSingles || r.isFinals || r.isFillIn || r.votes === null) continue;
     const e = byPlayer.get(r.player) ?? { votes: 0, games: 0, team: r.team };
     e.votes += r.votes;
     e.games += 1;
