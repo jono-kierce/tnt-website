@@ -6,9 +6,10 @@ import VotesNote from '../../components/VotesNote.astro';
 import StatSummary from '../../components/StatSummary.astro';
 import TrendChart from '../../components/TrendChart.astro';
 import OpponentTile from '../../components/OpponentTile.astro';
+import SetScore from '../../components/SetScore.astro';
 import { SITE, seasonLabel, teamMeta, isVotesSealed } from '../../config/site.ts';
 import { withBase } from '../../lib/url.ts';
-import { allPlayers, bestWorstOpponent, fillInRecord, playerAgg, playerRows, playerTrend } from '../../lib/stats.ts';
+import { allPlayers, bestWorstOpponent, fillInRecord, fillInVotes, playerAgg, playerRows, playerTrend } from '../../lib/stats.ts';
 import { playerRanks } from '../../lib/ranks.ts';
 import { rows, playerLatestTeam, playerSeasons } from '../../lib/site-data.ts';
 import { bioHtml, playerPhotos } from '../../lib/content.ts';
@@ -41,11 +42,13 @@ const scopes = [
   ...seasons.map((s) => ({ key: String(s), short: `in S${s}`, season: s as number | undefined })),
 ].map((sc) => {
   const includeFillIns = sc.season === undefined;
+  const regular = playerAgg(name, rows, { season: sc.season, includeFillIns, scope: 'regular' });
+  const finals = playerAgg(name, rows, { season: sc.season, includeFillIns, scope: 'finals' });
   return {
     ...sc,
     agg: playerAgg(name, rows, { season: sc.season, includeFillIns }),
-    regular: playerAgg(name, rows, { season: sc.season, includeFillIns, scope: 'regular' }),
-    finals: playerAgg(name, rows, { season: sc.season, includeFillIns, scope: 'finals' }),
+    regular,
+    finals,
     ranks: playerRanks(name, rows, sc.season),
     sealed: sc.season !== undefined && isVotesSealed(sc.season),
     fillIns: includeFillIns
@@ -54,6 +57,18 @@ const scopes = [
           regular: fillInRecord(name, rows, sc.season, 'regular'),
           finals: fillInRecord(name, rows, sc.season, 'finals'),
         },
+    // Votes are the one thing a career panel still drops: they were cast for
+    // whichever team you turned out for that night.
+    votes: {
+      regular: includeFillIns
+        ? playerAgg(name, rows, { season: sc.season, scope: 'regular' })
+        : regular,
+      finals: includeFillIns
+        ? playerAgg(name, rows, { season: sc.season, scope: 'finals' })
+        : finals,
+      fillInRegular: fillInVotes(name, rows, sc.season, 'regular'),
+      fillInFinals: fillInVotes(name, rows, sc.season, 'finals'),
+    },
   };
 });
 
@@ -177,6 +192,7 @@ const photos = playerPhotos(slug);
             sealed={sc.sealed}
             season={sc.season}
             fillIns={sc.fillIns}
+            votes={sc.votes}
           />
         </div>
       ))
@@ -223,12 +239,14 @@ const photos = playerPhotos(slug);
                 <td class={`c-tight ${r.isFinals ? 'finals-rd' : ''}`}>{roundCell(r)}</td>
                 <td class="c-opp">{r.opponent}</td>
                 <td class="c-res">
-                  <span
-                    class={`res ${r.win ? 'win' : 'loss'} ${r.stage === 'F' ? 'res--medal' : ''}`}
-                    title={resultMark(r).label}
-                  >{resultMark(r).text}</span>
-                  <span class="sets">
-                    {scoreLines(r).map((s) => <span class="set">{s}</span>)}
+                  <span class="res-cell">
+                    <span
+                      class={`res ${r.win ? 'win' : 'loss'} ${r.stage === 'F' ? 'res--medal' : ''}`}
+                      title={resultMark(r).label}
+                    >{resultMark(r).text}</span>
+                    <span class="sets">
+                      {scoreLines(r).map((s) => <span class="set"><SetScore score={s} /></span>)}
+                    </span>
                   </span>
                 </td>
                 <td class="num">{r.winners ?? '—'}</td>
@@ -291,15 +309,18 @@ const photos = playerPhotos(slug);
   .matchlog thead th:last-child, .matchlog tbody td:last-child { padding-right: 12px; }
   .matchlog .c-tight, .matchlog thead th.c-tight { width: 1%; text-align: center; white-space: nowrap; }
   .matchlog .c-opp { text-align: left; white-space: nowrap; }
-  /* Result reads W/L then the scoreline. The W/L is pinned to the left of the
-     cell rather than flowing with the sets, so both stay on the same two
-     columns whether the match went one set or three. */
-  .matchlog td.c-res { position: relative; white-space: nowrap; padding-left: 30px; }
-  .matchlog .res { position: absolute; left: 7px; top: 8px; font-weight: 700; }
+  /* Result reads W/L then the scoreline, on two fixed columns so both line up
+     down the table whether the match went one set or three. The W/L used to be
+     positioned out of flow, which left the cell free to be squeezed narrower
+     than its scoreline — a tiebreak set then spilled sideways and printed on
+     top of the W. In flow with a reserved sets column, it can't. */
+  .matchlog td.c-res { white-space: nowrap; }
+  .matchlog .res-cell { display: inline-grid; grid-template-columns: 1.1em auto; gap: 7px; align-items: start; }
+  .matchlog .res { font-weight: 700; text-align: center; }
   /* A Final trades the letter for a trophy or a silver medal — colour glyphs, so
      the win/loss tint does nothing and the bold weight only smudges them. */
   .matchlog .res--medal { font-weight: 400; font-size: 0.95em; line-height: 1.2; }
-  .matchlog .sets { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.35; }
+  .matchlog .sets { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.35; min-width: 3.6em; }
   /* Every column hugs its content; the badge column soaks up the leftover
      width, so the data reads as one tight block instead of stretching to fill
      the card. */

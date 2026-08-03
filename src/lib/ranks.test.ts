@@ -139,6 +139,22 @@ describe('rank badges', () => {
     expect(rankTable(rows, 4).total.get('Player A')!.winners!.rank).toBe(1);
   });
 
+  it('keeps fill-in votes off the MVP board even all-time', () => {
+    const rows = normalizeRows([
+      ...['A', 'B', 'C', 'D', 'E', 'F'].flatMap((p) =>
+        career(`Player ${p}`, 6, { votes: '2', Season: '4' })
+      ),
+      ...career('Sub', 6, { votes: '2', Season: '4' }),
+      // A big night filling in for someone else — 6 votes that aren't theirs.
+      ...career('Sub (Fill-in)', 1, { votes: '6', Season: '4' }, 7),
+    ]);
+    // The fill-in match still counts as a match career-wide...
+    expect(rankTable(rows).total.get('Sub')!.games!.rank).toBe(1);
+    // ...but its votes don't join the tally, so nobody has pulled ahead.
+    expect(rankTable(rows).total.get('Sub')!.votes).toMatchObject({ rank: 1, of: 7 });
+    expect(rankTable(rows).total.get('Player A')!.votes!.rank).toBe(1);
+  });
+
   it('ranks a season within that season', () => {
     const rows = normalizeRows([
       // Same six players across two seasons; the order reverses in Season 3.

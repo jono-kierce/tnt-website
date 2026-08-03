@@ -88,12 +88,19 @@ export interface RankBadge {
   lowerIsBetter: boolean;
 }
 
-/** The three aggregates every metric is read from. */
+/** The aggregates every metric is read from. */
 interface PlayerAggs {
   player: string;
   all: PlayerAgg;
   regular: PlayerAgg;
   finals: PlayerAgg;
+  /**
+   * The same two, with fill-in nights dropped whatever the window. Votes were
+   * cast for the team you played for that night, so an MVP board never counts
+   * them — not even a career one.
+   */
+  regularExFill: PlayerAgg;
+  finalsExFill: PlayerAgg;
 }
 
 export type RankTable = Record<RankMode, Map<string, Partial<Record<RankMetric, RankBadge>>>>;
@@ -120,12 +127,12 @@ function metricValue(a: PlayerAggs, metric: RankMetric, mode: RankMode): number 
       return a.all.winnerToUe === Infinity ? a.all.winners : a.all.winnerToUe;
     // Votes and BOG are awarded once a match however many sets it ran to.
     case 'votes':
-      return mode === 'total' ? a.regular.votes : a.regular.votesPerGame;
+      return mode === 'total' ? a.regularExFill.votes : a.regularExFill.votesPerGame;
     case 'bog':
       return mode === 'total' ? a.all.bog : a.all.games ? a.all.bog / a.all.games : null;
     // The Finals MVP is a count over at most three matches — no rate.
     case 'finalsVotes':
-      return a.finals.votes;
+      return a.finalsExFill.votes;
     default:
       return null;
   }
@@ -152,12 +159,22 @@ function buildTable(rows: StatRow[], season: number | undefined): RankTable {
   // badge always ranks exactly the number printed above it.
   const includeFillIns = season === undefined;
   const field: PlayerAggs[] = allPlayers(rows)
-    .map((player) => ({
-      player,
-      all: playerAgg(player, rows, { season, includeFillIns }),
-      regular: playerAgg(player, rows, { season, includeFillIns, scope: 'regular' }),
-      finals: playerAgg(player, rows, { season, includeFillIns, scope: 'finals' }),
-    }))
+    .map((player) => {
+      const regular = playerAgg(player, rows, { season, includeFillIns, scope: 'regular' });
+      const finals = playerAgg(player, rows, { season, includeFillIns, scope: 'finals' });
+      return {
+        player,
+        all: playerAgg(player, rows, { season, includeFillIns }),
+        regular,
+        finals,
+        regularExFill: includeFillIns
+          ? playerAgg(player, rows, { season, scope: 'regular' })
+          : regular,
+        finalsExFill: includeFillIns
+          ? playerAgg(player, rows, { season, scope: 'finals' })
+          : finals,
+      };
+    })
     .filter((a) => a.all.games >= SITE.rankMinMatches);
 
   const table: RankTable = { total: new Map(), rate: new Map() };

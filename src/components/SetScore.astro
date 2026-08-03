@@ -1,0 +1,18 @@
+---
+/**
+ * A scoreline with its tiebreaks set tennis-style: `7-6(4)` prints as `7-6⁴`.
+ * Takes one set or a whole line — the parsing doesn't care which.
+ */
+import { scoreParts } from '../lib/score.ts';
+
+interface Props { score: string }
+const { score } = Astro.props;
+const parts = scoreParts(score);
+---
+{parts.map((p) => <>{p.text}{p.tb && <sup class="tb">{p.tb}</sup>}</>)}
+
+<style>
+  /* Zero line-height keeps the raised points from stretching the row — a match
+     log stacks a set per line and every one of them has to stay on its line. */
+  .tb { font-size: 0.66em; font-weight: 600; line-height: 0; }
+</style>

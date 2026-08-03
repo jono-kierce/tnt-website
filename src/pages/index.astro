@@ -2,6 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 import LadderTable from '../components/LadderTable.astro';
 import TeamChip from '../components/TeamChip.astro';
+import SetScore from '../components/SetScore.astro';
 import { SITE, seasonLabel } from '../config/site.ts';
 import { withBase, seasonHref } from '../lib/url.ts';
 import { seasonLadder, latestRound, rotatingFunStat } from '../lib/site-data.ts';
@@ -53,7 +54,7 @@ const fun = rotatingFunStat();
           {fixtures.map((f) => (
             <div class="result-row">
               <span class="result-team win"><TeamChip team={f.winner} plain /></span>
-              <span class="score">{f.score}</span>
+              <span class="score"><SetScore score={f.score} /></span>
               <span class="result-team muted"><TeamChip team={f.loser} plain /></span>
             </div>
           ))}

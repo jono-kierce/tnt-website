@@ -3,6 +3,7 @@ import { loadStatRows, normalizeRows, parseScore } from './normalize.ts';
 import {
   bestWorstOpponent,
   fillInRecord,
+  fillInVotes,
   headToHead,
   ladder,
   leaderboard,
@@ -74,6 +75,20 @@ describe('name merging', () => {
     expect(fillInRecord('Lachlan Jenkin', rows, 3)).toEqual({ matches: 3, wins: 2, losses: 1 });
     // No season given: the whole career, which is where fill-ins do count.
     expect(fillInRecord('Lachlan Jenkin', rows)).toEqual({ matches: 4, wins: 3, losses: 1 });
+  });
+
+  it('counts the votes won while filling in, so the panel can set them aside', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'Red', Season: '3', Round: '1', Player: 'Lachlan Jenkin', votes: '4' }),
+      raw({ Team: 'Navy', Season: '3', Round: '2', Player: 'Lachlan Jenkin (Fill-in)', votes: '6' }),
+      raw({ Team: 'Navy', Season: '3', Round: '3', Player: 'Lachlan Jenkin (Fill-in)', votes: '' }),
+      raw({ Team: 'Navy', Season: '3', Round: 'F', Score: '6-4 6-2', Player: 'Lachlan Jenkin (Fill-in)', votes: '3' }),
+    ]);
+    expect(fillInVotes('Lachlan Jenkin', rows, 3, 'regular')).toBe(6); // blank is not zero
+    expect(fillInVotes('Lachlan Jenkin', rows, 3, 'finals')).toBe(3);
+    expect(fillInVotes('Lachlan Jenkin', rows)).toBe(9);
+    // The tally itself never sees them, in any window.
+    expect(playerAgg('Lachlan Jenkin', rows, { scope: 'regular' }).votes).toBe(4);
   });
 
   it('produces broadcast short names', () => {

@@ -1,6 +1,7 @@
 ---
 import Avatar from './Avatar.astro';
 import TeamChip from './TeamChip.astro';
+import SetScore from './SetScore.astro';
 import { playerHref } from '../lib/url.ts';
 import type { HeadToHead } from '../lib/stats.ts';
 
@@ -40,7 +41,7 @@ const pct = (h2h.winPct * 100).toFixed(0);
             <TeamChip team={g.opponentTeam} plain />
           </span>
           <span class={g.win ? 'win' : 'loss'}>
-            {g.win ? 'W' : 'L'} {g.score || `${g.teamScore}–${g.opponentScore}`}
+            {g.win ? 'W' : 'L'} <SetScore score={g.score || `${g.teamScore}–${g.opponentScore}`} />
           </span>
         </li>
       ))}

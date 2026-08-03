@@ -28,8 +28,19 @@ interface Props {
     regular: { matches: number; wins: number; losses: number };
     finals: { matches: number; wins: number; losses: number };
   };
+  /**
+   * Both vote tallies with fill-in nights dropped in every window — those votes
+   * were cast for another team — plus how many were dropped.
+   */
+  votes: {
+    regular: PlayerAgg;
+    finals: PlayerAgg;
+    fillInRegular: number;
+    fillInFinals: number;
+  };
 }
-const { agg, regular, finals, mode, ranks, scopeShort, sealed = false, fillIns } = Astro.props;
+const { agg, regular, finals, mode, ranks, scopeShort, sealed = false, fillIns, votes } =
+  Astro.props;
 
 const anyExcluded =
   fillIns !== undefined && fillIns.regular.matches + fillIns.finals.matches > 0;
@@ -62,20 +73,29 @@ const ratio =
 
 // Season MVP votes are a home-and-away award; their rate is per match, since a
 // vote is cast once a night however many sets it ran to.
+const mvp = votes.regular;
 const votesValue =
-  sealed && regular.votes === null ? '🔒'
-  : rateMode ? num(regular.votesPerGame, 2)
-  : num(regular.votes);
+  sealed && mvp.votes === null ? '🔒'
+  : rateMode ? num(mvp.votesPerGame, 2)
+  : num(mvp.votes);
 const votesSub =
-  sealed && regular.votes === null ? 'sealed until awards night'
+  sealed && mvp.votes === null ? 'sealed until awards night'
   : rateMode ? 'per match'
   : '';
 
 // The Finals MVP is voted 4-3-2-1, in the same column but never in the tally
 // above. Too few matches behind it to be worth a rate.
-const showFinalsVotes = finals.votes !== null || (sealed && finals.games > 0);
+// The tile also earns its place when the only finals votes on record were won
+// filling in — they're not this player's Finals MVP tally, but they happened.
+const finalsMvp = votes.finals;
+const showFinalsVotes =
+  finalsMvp.votes !== null || (sealed && finalsMvp.games > 0) || votes.fillInFinals > 0;
+const finalsVotesValue =
+  finalsMvp.votes !== null ? String(finalsMvp.votes) : sealed ? '🔒' : '—';
 const finalsVotesSub =
-  finals.votes === null ? 'sealed until awards night' : `4-3-2-1 · ${finals.games} finals`;
+  finalsMvp.votes === null && sealed ? 'sealed until awards night'
+  : finalsMvp.games ? `4-3-2-1 · ${finalsMvp.games} finals`
+  : '4-3-2-1';
 
 const bogValue = rateMode ? (agg.games ? fmt(agg.bog / agg.games, 2) : '—') : String(agg.bog);
 const bogSub = [rateMode ? 'per match' : '', finals.bog > 0 ? `${finals.bog} in finals` : '']
@@ -173,14 +193,24 @@ const ranked = Object.keys(ranks).length > 0;
       <div class="v">{votesValue}</div>
       <RankChip {...chip('votes', rateMode ? 'votes per match' : 'MVP votes')} scopeShort={scopeShort} />
       {votesSub && <div class="sub">{votesSub}</div>}
+      {votes.fillInRegular > 0 && (
+        <div class="sub sub--fine">
+          Fill-ins excluded <span class="nowrap">({votes.fillInRegular} votes)</span>
+        </div>
+      )}
     </div>
 
     {showFinalsVotes && (
       <div class="tile">
         <div class="k">Finals MVP Votes</div>
-        <div class="v">{finals.votes === null ? '🔒' : finals.votes}</div>
+        <div class="v">{finalsVotesValue}</div>
         <RankChip {...chip('finalsVotes', 'Finals MVP votes')} scopeShort={scopeShort} />
         <div class="sub">{finalsVotesSub}</div>
+        {votes.fillInFinals > 0 && (
+          <div class="sub sub--fine">
+            Fill-ins excluded <span class="nowrap">({votes.fillInFinals} votes)</span>
+          </div>
+        )}
       </div>
     )}
 
@@ -227,7 +257,12 @@ const ranked = Object.keys(ranks).length > 0;
       </>
     )}
     The Finals MVP is voted separately (4-3-2-1) and never counts toward MVP votes.
-    {fillIns === undefined && <>{' '}Fill-in appearances count toward these career numbers.</>}
+    {fillIns === undefined && (
+      <>
+        {' '}Fill-in appearances count toward these career numbers — except the vote
+        tallies, since those votes were cast for another team.
+      </>
+    )}
     {anyExcluded && (
       <>
         {' '}A fill-in match was played for another team, so it sits outside this

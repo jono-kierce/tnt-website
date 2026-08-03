@@ -417,6 +417,29 @@ export function fillInRecord(
   return { matches: played.length, wins, losses: played.length - wins };
 }
 
+/**
+ * Votes won while filling in. They were earned for somebody else's team, so
+ * they never join the MVP tally in any window — but the panel still says how
+ * many there were. Blank votes count as nothing, not zero.
+ */
+export function fillInVotes(
+  player: string,
+  rows: StatRow[],
+  season?: number,
+  scope: StatScope = 'all'
+): number {
+  return rows
+    .filter(
+      (r) =>
+        !r.isSingles &&
+        r.player === player &&
+        r.isFillIn &&
+        inScope(r, scope) &&
+        (season === undefined || r.season === season)
+    )
+    .reduce((sum, r) => sum + (r.votes ?? 0), 0);
+}
+
 /** Canonical list of real players (excludes SINGLES GAME). */
 export function allPlayers(rows: StatRow[] = loadStatRows()): string[] {
   return [...new Set(rows.filter((r) => !r.isSingles).map((r) => r.player))].sort(

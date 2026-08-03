@@ -79,6 +79,9 @@ scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/buil
   played for another team — and says so, with the record it dropped
   ("Fill-in matches excluded (1–0)"). Rank badges follow the same rule, so a
   badge always ranks the number printed above it (`fillInRecord` in `stats.ts`).
+  **Votes are the exception: never counted in any window**, career included —
+  they were cast for whichever team you turned out for — but both vote tiles
+  report what was set aside (`fillInVotes`).
 - **Every blank stat cell is `null`, not 0** — coverage is tracked per stat
   (`PlayerAgg.tally[stat].{total,games,sets}`), so a partial finals entry never
   drags an average toward zero. Don't reintroduce `num()` for a stat column.
