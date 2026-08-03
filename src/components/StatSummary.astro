@@ -1,5 +1,8 @@
 ---
+import RankChip from './RankChip.astro';
 import { isPartial, perSet, type CountingStat, type PlayerAgg } from '../lib/stats.ts';
+import type { RankBadge, RankMetric, RankMode } from '../lib/ranks.ts';
+import { SITE } from '../config/site.ts';
 
 interface Props {
   /** All matches, finals included — the source of every rate. */
@@ -8,77 +11,197 @@ interface Props {
   regular: PlayerAgg;
   /** Finals only — the September record, the Finals MVP and finals BOGs. */
   finals: PlayerAgg;
-  scopeLabel: string;
+  /** Totals, or per set (per match for the awards). */
+  mode: RankMode;
+  /** Where this player sits in the field, for this scope and mode. */
+  ranks: Partial<Record<RankMetric, RankBadge>>;
+  /** Chip suffix: "all-time", "in S3". */
+  scopeShort: string;
   sealed?: boolean;
   season?: number;
 }
-const { agg, regular, finals, scopeLabel, sealed = false } = Astro.props;
+const { agg, regular, finals, mode, ranks, scopeShort, sealed = false } = Astro.props;
 
+const rateMode = mode === 'rate';
 const fmt = (n: number, d = 0) => n.toFixed(d);
+const num = (v: number | null, d = 0) => (v === null ? '—' : fmt(v, d));
+
+/**
+ * A counting stat's headline number: the home-and-away total, or its per-set
+ * rate across everything including finals. Same split the leaderboards use.
+ */
+const value = (stat: CountingStat) =>
+  rateMode ? num(perSet(agg, stat), 2) : num(regular[stat] as number | null);
+
+/**
+ * The sub-line owns up to any matches the stat is missing from, so a partial
+ * total is never mistaken for a complete one.
+ */
+const coverage = (stat: CountingStat) =>
+  isPartial(agg, stat) ? `${agg.tally[stat].games} of ${agg.games} matches` : '';
+
+const sub = (stat: CountingStat, prefix = '') =>
+  [prefix, rateMode ? 'per set' : '', coverage(stat)].filter(Boolean).join(' · ');
+
 const ratio =
   agg.winnerToUe === null ? '—'
   : agg.winnerToUe === Infinity ? '∞'
   : fmt(agg.winnerToUe, 2);
 
-/** Totals come from the home-and-away season; a dash means never recorded. */
-const total = (stat: CountingStat) => {
-  const v = regular[stat] as number | null;
-  return v === null ? '—' : String(v);
-};
+// Season MVP votes are a home-and-away award; their rate is per match, since a
+// vote is cast once a night however many sets it ran to.
+const votesValue =
+  sealed && regular.votes === null ? '🔒'
+  : rateMode ? num(regular.votesPerGame, 2)
+  : num(regular.votes);
+const votesSub =
+  sealed && regular.votes === null ? 'sealed until awards night'
+  : rateMode ? 'per match'
+  : '';
 
-/**
- * Rates count finals too, normalised per set so a three-set final doesn't read
- * as a monster night. The sub-line owns up to any matches the stat is missing
- * from, so a partial total is never mistaken for a complete one.
- */
-const rate = (stat: CountingStat) => {
-  const v = perSet(agg, stat);
-  if (v === null) return 'not recorded';
-  const coverage = isPartial(agg, stat)
-    ? ` · ${agg.tally[stat].games} of ${agg.games} matches`
-    : '';
-  return `${fmt(v, 2)} / set${coverage}`;
-};
-
-// Season MVP votes are a home-and-away award, so the total follows the same
-// rule as the other totals — but the rate stays per match, not per set.
-const votesDisplay = sealed && regular.votes === null ? '🔒' : regular.votes === null ? '—' : String(regular.votes);
-const votesSub = sealed && regular.votes === null ? 'sealed until awards night'
-  : regular.votesPerGame === null ? 'not recorded'
-  : `${fmt(regular.votesPerGame, 2)} / match`;
-
-// Finals MVP is voted 4-3-2-1, in the same column but never in the tally above.
+// The Finals MVP is voted 4-3-2-1, in the same column but never in the tally
+// above. Too few matches behind it to be worth a rate.
 const showFinalsVotes = finals.votes !== null || (sealed && finals.games > 0);
-const finalsVotesDisplay = finals.votes === null ? '🔒' : String(finals.votes);
 const finalsVotesSub =
-  finals.votes === null ? 'sealed until awards night'
-  : `4-3-2-1 · ${finals.games} finals`;
+  finals.votes === null ? 'sealed until awards night' : `4-3-2-1 · ${finals.games} finals`;
+
+const bogValue = rateMode ? (agg.games ? fmt(agg.bog / agg.games, 2) : '—') : String(agg.bog);
+const bogSub = [rateMode ? 'per match' : '', finals.bog > 0 ? `${finals.bog} in finals` : '']
+  .filter(Boolean)
+  .join(' · ');
+
+const chip = (metric: RankMetric, what: string) => ({ badge: ranks[metric], what });
+const ranked = Object.keys(ranks).length > 0;
 ---
 <div>
-  <p class="finenote" style="margin:0 0 10px">{scopeLabel}</p>
   <div class="stat-tiles">
-    <div class="tile"><div class="k">Matches</div><div class="v">{agg.games}</div>{agg.finalsGames > 0 && <div class="sub">{agg.finalsGames} finals · {agg.sets} sets</div>}</div>
-    <div class="tile"><div class="k">Regular Season W–L</div><div class="v">{regular.wins}–{regular.losses}</div><div class="sub">{regular.games ? `${fmt(regular.winPct * 100, 0)}% win rate` : 'no home-and-away matches'}</div></div>
+    <div class="tile">
+      <div class="k">Matches</div>
+      <div class="v">{agg.games}</div>
+      <RankChip {...chip('games', 'matches played')} scopeShort={scopeShort} />
+      {agg.finalsGames > 0 && <div class="sub">{agg.finalsGames} finals · {agg.sets} sets</div>}
+    </div>
+
+    <div class="tile">
+      <div class="k">Regular Season W–L</div>
+      <div class="v">{regular.wins}–{regular.losses}</div>
+      <RankChip {...chip('winPct', 'home-and-away win rate')} scopeShort={scopeShort} />
+      <div class="sub">
+        {regular.games ? `${fmt(regular.winPct * 100, 0)}% win rate` : 'no home-and-away matches'}
+      </div>
+    </div>
+
     {finals.games > 0 && (
-      <div class="tile"><div class="k">Finals W–L</div><div class="v">{finals.wins}–{finals.losses}</div><div class="sub">{fmt(finals.winPct * 100, 0)}% win rate</div></div>
+      <div class="tile">
+        <div class="k">Finals W–L</div>
+        <div class="v">{finals.wins}–{finals.losses}</div>
+        <RankChip {...chip('finalsWinPct', 'finals win rate')} scopeShort={scopeShort} />
+        <div class="sub">{fmt(finals.winPct * 100, 0)}% win rate</div>
+      </div>
     )}
-    <div class="tile"><div class="k">Winners</div><div class="v">{total('winners')}</div><div class="sub">{rate('winners')}</div></div>
-    <div class="tile"><div class="k">Unforced Errors</div><div class="v">{total('unforcedErrors')}</div><div class="sub">{rate('unforcedErrors')}</div></div>
-    <div class="tile"><div class="k">Winner : UE</div><div class="v">{ratio}</div><div class="sub">higher is cleaner</div></div>
-    <div class="tile"><div class="k">Aces</div><div class="v">{total('aces')}</div></div>
-    <div class="tile"><div class="k">Double Faults</div><div class="v">{total('doubleFaults')}</div></div>
+
+    <div class="tile">
+      <div class="k">Winners</div>
+      <div class="v">{value('winners')}</div>
+      <RankChip {...chip('winners', rateMode ? 'winners per set' : 'winners')} scopeShort={scopeShort} />
+      {sub('winners') && <div class="sub">{sub('winners')}</div>}
+    </div>
+
+    <div class="tile">
+      <div class="k">Unforced Errors</div>
+      <div class="v">{value('unforcedErrors')}</div>
+      <RankChip {...chip('unforcedErrors', rateMode ? 'unforced errors per set' : 'unforced errors')} scopeShort={scopeShort} />
+      {sub('unforcedErrors') && <div class="sub">{sub('unforcedErrors')}</div>}
+    </div>
+
+    <div class="tile">
+      <div class="k">Winner : UE</div>
+      <div class="v">{ratio}</div>
+      <RankChip {...chip('winnerToUe', 'winner-to-error ratio')} scopeShort={scopeShort} />
+      <div class="sub">higher is cleaner</div>
+    </div>
+
+    <div class="tile">
+      <div class="k">Aces</div>
+      <div class="v">{value('aces')}</div>
+      <RankChip {...chip('aces', rateMode ? 'aces per set' : 'aces')} scopeShort={scopeShort} />
+      {sub('aces') && <div class="sub">{sub('aces')}</div>}
+    </div>
+
+    <div class="tile">
+      <div class="k">Double Faults</div>
+      <div class="v">{value('doubleFaults')}</div>
+      <RankChip {...chip('doubleFaults', rateMode ? 'double faults per set' : 'double faults')} scopeShort={scopeShort} />
+      {sub('doubleFaults') && <div class="sub">{sub('doubleFaults')}</div>}
+    </div>
+
     {agg.errorsForced !== null && (
-      <div class="tile"><div class="k">Errors Forced</div><div class="v">{total('errorsForced')}</div><div class="sub">S2+ · {rate('errorsForced')}</div></div>
+      <div class="tile">
+        <div class="k">Errors Forced</div>
+        <div class="v">{value('errorsForced')}</div>
+        <RankChip {...chip('errorsForced', rateMode ? 'errors forced per set' : 'errors forced')} scopeShort={scopeShort} />
+        <div class="sub">{sub('errorsForced', 'S2+')}</div>
+      </div>
     )}
-    <div class="tile"><div class="k">MVP Votes</div><div class="v">{votesDisplay}</div><div class="sub">{votesSub}</div></div>
+
+    <div class="tile">
+      <div class="k">MVP Votes</div>
+      <div class="v">{votesValue}</div>
+      <RankChip {...chip('votes', rateMode ? 'votes per match' : 'MVP votes')} scopeShort={scopeShort} />
+      {votesSub && <div class="sub">{votesSub}</div>}
+    </div>
+
     {showFinalsVotes && (
-      <div class="tile"><div class="k">Finals MVP Votes</div><div class="v">{finalsVotesDisplay}</div><div class="sub">{finalsVotesSub}</div></div>
+      <div class="tile">
+        <div class="k">Finals MVP Votes</div>
+        <div class="v">{finals.votes === null ? '🔒' : finals.votes}</div>
+        <RankChip {...chip('finalsVotes', 'Finals MVP votes')} scopeShort={scopeShort} />
+        <div class="sub">{finalsVotesSub}</div>
+      </div>
     )}
-    <div class="tile"><div class="k">Best on Ground</div><div class="v">{agg.bog}</div>{finals.bog > 0 && <div class="sub">{finals.bog} in finals</div>}</div>
+
+    <div class="tile">
+      <div class="k">Best on Ground</div>
+      <div class="v">{bogValue}</div>
+      <RankChip {...chip('bog', rateMode ? 'BOGs per match' : 'Best on Ground')} scopeShort={scopeShort} />
+      {bogSub && <div class="sub">{bogSub}</div>}
+    </div>
   </div>
+
   <p class="finenote" style="margin:10px 0 0">
-    Totals cover the home-and-away season. Per-set rates include finals — a
-    three-set final counts as three sets, not one big night. The Finals MVP is
-    voted separately (4-3-2-1) and never counts toward MVP votes.
+    {rateMode ? (
+      <>
+        Per-set rates count finals — a three-set final counts as three sets, not
+        one big night. Votes and Best on Ground are awarded once a match, so
+        they stay per match.
+      </>
+    ) : (
+      <>
+        Totals cover the home-and-away season, so a deep finals run can't pad
+        them. Win–loss and the ratio count everything.
+      </>
+    )}
+    {' '}
+    {ranked ? (
+      rateMode ? (
+        <>
+          Badges grade this player against everyone with {SITE.rankMinMatches}+ matches
+          in this window — a short season swings a rate hard, so read a per-set rank
+          with that in mind. Hover a badge for the rank and the size of the field.
+        </>
+      ) : (
+        <>
+          A total says as much about how many Tuesdays you've turned up to as how you
+          played, so totals aren't graded — only a top-{SITE.rankTopTotals} finish in
+          this window earns a badge. Hover it for the rank and the size of the field.
+        </>
+      )
+    ) : (
+      <>
+        No badges: fewer than {SITE.rankMinMatches} matches in this window, which is
+        too small a sample to rank{rateMode ? ' — especially per set' : ''}.
+      </>
+    )}
+    The Finals MVP is voted separately (4-3-2-1) and never counts toward MVP votes.
   </p>
 </div>

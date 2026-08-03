@@ -289,6 +289,50 @@ main { position: relative; z-index: 1; }
 .tile .v { font-size: 1.7rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .tile .sub { font-size: 0.72rem; color: var(--muted); }
 
+/* Rank badges on the stat tiles — the gold ladder. Every tier wears the same
+   pill; only the colour says where in the field the player sits. */
+.rankchip {
+  display: inline-block; margin: 5px 0 3px;
+  font-family: var(--serif); font-size: 0.68rem; letter-spacing: 0.06em;
+  border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px;
+  white-space: nowrap; color: var(--muted); cursor: help;
+}
+.rankchip:focus-visible { outline: none; }
+.rankchip--elite {
+  background: var(--gold); border-color: var(--gold); color: #14140f; font-weight: 700;
+}
+.rankchip--above { border-color: var(--gold-soft); color: var(--gold-soft); }
+.rankchip--average { border-color: var(--line); color: var(--ivory-dim); }
+.rankchip--below { border-color: var(--line); color: var(--muted); }
+.rankchip--shocking { border-color: var(--loss); color: var(--loss); }
+.rankchip--plain { border-color: var(--line); color: var(--muted); }
+
+/* Hover / focus detail: the rank and the size of the field it was drawn from.
+   Anchored to the tile so it can never push the page sideways. */
+.tile { position: relative; }
+.rankpop {
+  position: absolute; z-index: 6; left: 0; right: 0; top: calc(100% + 6px);
+  display: grid; gap: 2px;
+  background: #0d0d0b; border: 1px solid var(--gold);
+  border-radius: 10px; padding: 8px 10px; box-shadow: var(--shadow);
+  font-family: var(--sans); letter-spacing: normal; white-space: normal;
+  text-align: left; cursor: default;
+  opacity: 0; visibility: hidden; transform: translateY(-4px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s;
+}
+.rankchip:hover .rankpop,
+.rankchip:focus .rankpop,
+.rankchip:focus-within .rankpop {
+  opacity: 1; visibility: visible; transform: translateY(0);
+}
+.rankpop-head {
+  font-family: var(--serif); text-transform: uppercase; letter-spacing: 0.1em;
+  font-size: 0.6rem; color: var(--gold);
+}
+.rankpop-rank { font-size: 0.82rem; color: var(--ivory); font-variant-numeric: tabular-nums; }
+.rankpop-tier { font-size: 0.72rem; color: var(--ivory-dim); }
+.rankpop-note { font-size: 0.68rem; color: var(--muted); font-style: italic; }
+
 /* --- Utilities ------------------------------------------------------------- */
 .flex { display: flex; }
 .items-center { align-items: center; }

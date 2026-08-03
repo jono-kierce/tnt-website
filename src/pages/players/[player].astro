@@ -9,6 +9,7 @@ import OpponentTile from '../../components/OpponentTile.astro';
 import { SITE, seasonLabel, teamMeta, isVotesSealed } from '../../config/site.ts';
 import { withBase } from '../../lib/url.ts';
 import { allPlayers, bestWorstOpponent, playerAgg, playerRows, playerTrend } from '../../lib/stats.ts';
+import { playerRanks } from '../../lib/ranks.ts';
 import { rows, playerLatestTeam, playerSeasons } from '../../lib/site-data.ts';
 import { bioHtml, playerPhotos } from '../../lib/content.ts';
 
@@ -29,15 +30,30 @@ const slug = playerAgg(name, rows).slug;
 // Three aggregates per scope: everything including finals (rates), the
 // home-and-away season on its own (raw totals and the season record, as on the
 // leaderboards) and finals on their own (the September record, Finals MVP).
+// Each scope also carries the player's standing in that same window, so a badge
+// on a season panel ranks the season, not the career.
 const allTime = playerAgg(name, rows);
-const allTimeRegular = playerAgg(name, rows, { scope: 'regular' });
-const allTimeFinals = playerAgg(name, rows, { scope: 'finals' });
-const perSeason = seasons.map((s) => ({
-  season: s,
-  agg: playerAgg(name, rows, { season: s }),
-  regular: playerAgg(name, rows, { season: s, scope: 'regular' }),
-  finals: playerAgg(name, rows, { season: s, scope: 'finals' }),
+const scopes = [
+  { key: 'all', short: 'all-time', season: undefined as number | undefined },
+  ...seasons.map((s) => ({ key: String(s), short: `in S${s}`, season: s as number | undefined })),
+].map((sc) => ({
+  ...sc,
+  agg: playerAgg(name, rows, { season: sc.season }),
+  regular: playerAgg(name, rows, { season: sc.season, scope: 'regular' }),
+  finals: playerAgg(name, rows, { season: sc.season, scope: 'finals' }),
+  ranks: playerRanks(name, rows, sc.season),
+  sealed: sc.season !== undefined && isVotesSealed(sc.season),
 }));
+
+/**
+ * Per set leads: it's the view that compares players fairly, and the only one
+ * the badges grade. The switch flips the whole panel, badges included.
+ */
+const MODES = [
+  { key: 'rate', label: 'Per set' },
+  { key: 'total', label: 'Totals' },
+] as const;
+const DEFAULT_MODE = MODES[0].key;
 const trend = playerTrend(name, rows);
 
 // Best/worst opponent (all meetings count, fill-ins included on both sides).
@@ -108,23 +124,44 @@ const photos = playerPhotos(slug);
         <p class="eyebrow">Career &amp; season splits</p>
         <h2 class="serif-title mb-0">Statistics</h2>
       </div>
-      <label class="season-select">
-        <span class="sr-only">Filter by season</span>
-        <select id="seasonFilter">
-          <option value="all">All-time</option>
-          {seasons.map((s) => <option value={String(s)}>{seasonLabel(s)}</option>)}
-        </select>
-      </label>
+      <div class="stat-controls">
+        <div class="segmented" role="group" aria-label="Show totals or per-set rates">
+          {MODES.map((m) => (
+            <button type="button" class="seg" data-mode={m.key} aria-pressed={String(m.key === DEFAULT_MODE)}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <label class="season-select">
+          <span class="sr-only">Filter by season</span>
+          <select id="seasonFilter">
+            <option value="all">All-time</option>
+            {seasons.map((s) => <option value={String(s)}>{seasonLabel(s)}</option>)}
+          </select>
+        </label>
+      </div>
     </div>
 
-    <div class="mt-16 stat-scope" data-scope="all">
-      <StatSummary agg={allTime} regular={allTimeRegular} finals={allTimeFinals} scopeLabel="All-time" />
-    </div>
-    {perSeason.map(({ season, agg, regular, finals }) => (
-      <div class="mt-16 stat-scope hidden" data-scope={String(season)}>
-        <StatSummary agg={agg} regular={regular} finals={finals} scopeLabel={seasonLabel(season)} sealed={isVotesSealed(season)} season={season} />
-      </div>
-    ))}
+    {scopes.map((sc) =>
+      MODES.map((m) => (
+        <div
+          class:list={['mt-16', 'stat-view', { hidden: !(sc.key === 'all' && m.key === DEFAULT_MODE) }]}
+          data-scope={sc.key}
+          data-mode={m.key}
+        >
+          <StatSummary
+            agg={sc.agg}
+            regular={sc.regular}
+            finals={sc.finals}
+            mode={m.key}
+            ranks={sc.ranks[m.key]}
+            scopeShort={sc.short}
+            sealed={sc.sealed}
+            season={sc.season}
+          />
+        </div>
+      ))
+    )}
     <VotesNote compact />
   </section>
 
@@ -194,14 +231,30 @@ const photos = playerPhotos(slug);
 </Layout>
 
 <script>
-  const sel = document.getElementById('seasonFilter');
-  const scopes = document.querySelectorAll('.stat-scope');
-  sel?.addEventListener('change', () => {
-    const v = (sel as HTMLSelectElement).value;
-    scopes.forEach((el) => {
-      el.classList.toggle('hidden', (el as HTMLElement).dataset.scope !== v);
+  // One panel per (season, mode) is pre-rendered; showing the right one is just
+  // a matter of matching both.
+  const sel = document.getElementById('seasonFilter') as HTMLSelectElement | null;
+  const segs = [...document.querySelectorAll<HTMLButtonElement>('.seg')];
+  const views = document.querySelectorAll<HTMLElement>('.stat-view');
+
+  // Must match DEFAULT_MODE above — the pre-rendered panel starts here.
+  let mode = 'rate';
+
+  function show() {
+    const scope = sel?.value ?? 'all';
+    views.forEach((el) => {
+      el.classList.toggle('hidden', el.dataset.scope !== scope || el.dataset.mode !== mode);
     });
-  });
+    segs.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+  }
+
+  sel?.addEventListener('change', show);
+  segs.forEach((b) =>
+    b.addEventListener('click', () => {
+      mode = b.dataset.mode ?? 'total';
+      show();
+    })
+  );
 </script>
 
 <style>
@@ -242,6 +295,17 @@ const photos = playerPhotos(slug);
   .opp-grid { align-items: start; gap: 14px; }
   .prose :global(p) { color: var(--ivory-dim); }
   .prose :global(a) { color: var(--gold-soft); }
+  .stat-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .segmented {
+    display: inline-flex; border: 1px solid var(--line); border-radius: 999px;
+    background: var(--card); padding: 3px;
+  }
+  .seg {
+    font-family: var(--serif); font-size: 0.85rem; letter-spacing: 0.05em;
+    color: var(--ivory-dim); background: none; border: 0; border-radius: 999px;
+    padding: 6px 16px; cursor: pointer;
+  }
+  .seg[aria-pressed='true'] { background: var(--gold); color: #14140f; font-weight: 600; }
   .season-select select {
     font-family: var(--serif); font-size: 0.95rem; color: var(--ivory);
     background: var(--card); border: 1px solid var(--line); border-radius: 999px;

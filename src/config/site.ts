@@ -65,6 +65,28 @@ export const SITE = {
   perGameMinGames: 4,
 
   /**
+   * Rank badges on the player stat panel.
+   *
+   * `rankMinMatches` is the bar for being ranked at all, in either mode: a
+   * two-match cameo shouldn't be able to top a board, and a percentile drawn
+   * off cameos means nothing for anyone else either. Players below it get no
+   * badges and are left out of everyone else's field.
+   *
+   * `rankMinField` is the smallest field worth splitting into tiers — below
+   * that a badge shows the bare rank with no colour.
+   *
+   * `rankTiers` are cumulative shares of the field, best-first: the top 10% are
+   * elite, the top 35% above average, and so on to the bottom 10%.
+   */
+  rankMinMatches: 5,
+  rankMinField: 6,
+  rankTiers: { elite: 0.1, above: 0.35, average: 0.65, below: 0.9 },
+  /** On a tiered board, ranks this good are shown as a number, not a tier. */
+  rankPodium: 3,
+  /** On the untiered totals boards, the only badge worth showing. */
+  rankTopTotals: 5,
+
+  /**
    * Best/worst-opponent tiles. Nobody in TNT has faced the same opponent more
    * than a handful of times, so the qualifying bar is adaptive: we use
    * `h2hPreferredMeetings` when the player has at least two opponents they've

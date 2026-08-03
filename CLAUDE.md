@@ -46,6 +46,7 @@ src/lib/normalize.ts     THE normalization layer: CSV -> StatRow[], all quirks h
                           errors-forced S2+, EVERY stat null-if-blank, BOG
                           derivation, Round->stage, Score->sets)
 src/lib/stats.ts         ladder, rosters/pairings, player aggregates, leaderboards, records
+src/lib/ranks.ts         where a player sits in the field — the stat-panel badges
 src/lib/site-data.ts     page-facing helpers (season ladder, MVP tally, fun stats)
 src/lib/stats.test.ts    unit tests — keep these green
 src/config/site.ts       currentSeason, sealedVoteSeasons, seasonYears, team colours, thresholds
@@ -80,6 +81,16 @@ scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/buil
   `Score`. They count for win-loss, H2H, streaks and per-set rates; they're
   excluded from the ladder, career totals, the record books and MVP votes
   (`StatScope` in `stats.ts` is the switch — `'regular'`, `'all'` or `'finals'`).
+- **Rank badges** (`ranks.ts`) rank a player inside the window the panel is
+  showing — all-time or one season, totals or per set — against everyone with
+  `SITE.rankMinMatches`+ matches in it. Short samples get no badge and are kept
+  out of everyone else's field. **Only the per-set boards are graded**: tiers
+  are shares of the field (`rankTiers`), shown as a tier word except for the
+  podium, which keeps its number. **Totals are ranked but never graded** — a
+  career total is half a record of how many seasons you've played — so they
+  badge the top `rankTopTotals` and nothing else. `#1` always means the biggest
+  number: for unforced errors and double faults the colour flips instead, so
+  leading that board reads as the disgrace it is. Per set is the default view.
 - **The UI says "matches", not "games"** — "games" is reserved for game scores
   (the ladder's for/against and ratio). `PlayerAgg.games` keeps its old name.
 - **Rates are per set, never per match** — a semi or final runs to three sets.

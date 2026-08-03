@@ -1,0 +1,78 @@
+---
+import type { RankBadge } from '../lib/ranks.ts';
+import { SITE } from '../config/site.ts';
+
+interface Props {
+  badge?: RankBadge;
+  /** Trailing words on the chip: "all-time", "in S3". */
+  scopeShort: string;
+  /** What the rank is on, for the tooltip: "winners per set". */
+  what: string;
+}
+const { badge, scopeShort, what } = Astro.props;
+
+/** Chip text for everyone outside the top three. */
+const TIER_LABEL = {
+  elite: 'Elite',
+  above: 'Above average',
+  average: 'Average',
+  below: 'Below average',
+  shocking: 'Shocking',
+} as const;
+
+/** The same tiers, said out loud in the tooltip. */
+const TIER_WORD = {
+  elite: 'elite',
+  above: 'above average',
+  average: 'mid-table',
+  below: 'below average',
+  shocking: 'the wrong end of the field',
+} as const;
+
+const ordinal = (n: number) => {
+  const rest = n % 100;
+  if (rest >= 11 && rest <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+};
+
+/**
+ * A tiered board (the per-set rates) shows the podium as a number and everyone
+ * else as their tier. An untiered one (the totals) shows the top five and stays
+ * quiet about the rest — the rank and the size of the field are in the tooltip
+ * either way, where they stay honest as the field grows.
+ */
+const podium = badge !== undefined && badge.rank <= SITE.rankPodium;
+const show = badge !== undefined && (badge.tier !== null || badge.rank <= SITE.rankTopTotals);
+const label = !badge ? ''
+  : badge.tier && !podium ? TIER_LABEL[badge.tier]
+  : `#${badge.rank} ${scopeShort}`;
+/**
+ * Untiered top-fives borrow the tier colours: gold for the win, outline behind
+ * it — and rose for the two boards nobody wants to lead.
+ */
+const style =
+  badge?.tier ??
+  (badge?.lowerIsBetter ? 'shocking' : badge?.rank === 1 ? 'elite' : 'above');
+---
+{badge && show && (
+  <span
+    class={`rankchip rankchip--${style}`}
+    tabindex="0"
+    aria-label={
+      `${what}: ${ordinal(badge.rank)} of ${badge.of} eligible, ${scopeShort}` +
+      (badge.tier ? ` — ${TIER_WORD[badge.tier]}` : '') +
+      (badge.lowerIsBetter ? ' (fewest is best)' : '')
+    }
+  >
+    {label}
+    {/* The tile's own label says which stat this is, so the popover only has to
+        answer "out of how many, and in what window?". */}
+    <span class="rankpop" role="note">
+      <span class="rankpop-head">{scopeShort}</span>
+      <span class="rankpop-rank">#{badge.rank} of {badge.of}</span>
+      {badge.tier && <span class="rankpop-tier">{TIER_LABEL[badge.tier]}</span>}
+      {/* #1 is always the biggest number, so these two need the direction spelled out. */}
+      {badge.lowerIsBetter && <span class="rankpop-note">fewest is best</span>}
+    </span>
+  </span>
+)}
