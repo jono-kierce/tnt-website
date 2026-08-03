@@ -282,6 +282,9 @@ main { position: relative; z-index: 1; }
 .tile .k {
   font-family: var(--serif); text-transform: uppercase; letter-spacing: 0.1em;
   font-size: 0.66rem; color: var(--muted);
+  /* Two lines' worth, so a wrapped label ("Regular Season W–L") doesn't drop
+     its number below the ones either side of it. */
+  line-height: 1.25; min-height: 2.5em;
 }
 .tile .v { font-size: 1.7rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .tile .sub { font-size: 0.72rem; color: var(--muted); }

@@ -26,21 +26,24 @@ const seasons = playerSeasons(name);
 const slug = playerAgg(name, rows).slug;
 
 // All-time (fill-ins excluded, matching leaderboard convention) + per season.
-// Two aggregates per scope: everything including finals (win-loss, rates) and
-// the home-and-away season on its own (raw totals, as on the leaderboards).
+// Three aggregates per scope: everything including finals (rates), the
+// home-and-away season on its own (raw totals and the season record, as on the
+// leaderboards) and finals on their own (the September record, Finals MVP).
 const allTime = playerAgg(name, rows);
 const allTimeRegular = playerAgg(name, rows, { scope: 'regular' });
+const allTimeFinals = playerAgg(name, rows, { scope: 'finals' });
 const perSeason = seasons.map((s) => ({
   season: s,
   agg: playerAgg(name, rows, { season: s }),
   regular: playerAgg(name, rows, { season: s, scope: 'regular' }),
+  finals: playerAgg(name, rows, { season: s, scope: 'finals' }),
 }));
 const trend = playerTrend(name, rows);
 
 // Best/worst opponent (all meetings count, fill-ins included on both sides).
 const h2h = bestWorstOpponent(name, rows);
 
-// Match log (includes fill-in games, flagged).
+// Match log (includes fill-in matches, flagged).
 const log = playerRows(name, rows, { includeFillIns: true }).sort(
   (a, b) => a.season - b.season || a.round - b.round
 );
@@ -59,7 +62,7 @@ const photos = playerPhotos(slug);
       <h1 class="serif-title" style="font-size:clamp(2rem,5vw,3rem)">{name}</h1>
       <div class="pill-row mt-8">
         <TeamChip team={team} />
-        <span class="badge">{allTime.games} career games</span>
+        <span class="badge">{allTime.games} career matches</span>
         <span class="badge">{allTime.wins}W–{allTime.losses}L</span>
         {allTime.bog > 0 && <span class="badge badge--bog">{allTime.bog}× BOG</span>}
       </div>
@@ -106,11 +109,11 @@ const photos = playerPhotos(slug);
     </div>
 
     <div class="mt-16 stat-scope" data-scope="all">
-      <StatSummary agg={allTime} regular={allTimeRegular} scopeLabel="All-time" />
+      <StatSummary agg={allTime} regular={allTimeRegular} finals={allTimeFinals} scopeLabel="All-time" />
     </div>
-    {perSeason.map(({ season, agg, regular }) => (
+    {perSeason.map(({ season, agg, regular, finals }) => (
       <div class="mt-16 stat-scope hidden" data-scope={String(season)}>
-        <StatSummary agg={agg} regular={regular} scopeLabel={seasonLabel(season)} sealed={isVotesSealed(season)} season={season} />
+        <StatSummary agg={agg} regular={regular} finals={finals} scopeLabel={seasonLabel(season)} sealed={isVotesSealed(season)} season={season} />
       </div>
     ))}
     <VotesNote compact />
@@ -143,7 +146,8 @@ const photos = playerPhotos(slug);
               <th>Season</th><th>Rd</th><th>Opponent</th><th>Result</th>
               <th title="Winners">W</th><th title="Unforced errors">UE</th>
               <th title="Aces">Ace</th><th title="Double faults">DF</th>
-              <th title="Errors forced (S2+)">EF</th><th title="Votes">V</th><th></th>
+              <th title="Errors forced (S2+)">EF</th>
+              <th title="Votes — 3-2-1 from two voters in the home-and-away season, 4-3-2-1 in a final">V</th><th></th>
             </tr>
           </thead>
           <tbody>

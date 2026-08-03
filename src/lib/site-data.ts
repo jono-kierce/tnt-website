@@ -97,7 +97,7 @@ export function funStats(): FunStat[] {
 
   const w = rec.mostWinnersGame[0];
   if (w) out.push({
-    kicker: 'Single-game record',
+    kicker: 'Single-match record',
     headline: `${w.value} WINNERS. ONE NIGHT.`,
     detail: `${w.player} unloaded ${w.value} winners in a single match — ${seasonLabel(w.season)}, Round ${w.round} vs ${w.opponent}.`,
   });
@@ -105,7 +105,7 @@ export function funStats(): FunStat[] {
   const a = rec.mostAcesGame[0];
   if (a && a.value > 0) out.push({
     kicker: 'Serve of the century',
-    headline: `${a.value} ACES IN A GAME.`,
+    headline: `${a.value} ACES IN ONE MATCH.`,
     detail: `${a.player} had the radar gun humming — ${a.value} aces in one match back in ${seasonLabel(a.season)}.`,
   });
 

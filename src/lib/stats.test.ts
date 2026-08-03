@@ -463,6 +463,49 @@ describe('finals rows', () => {
     expect(h2h.games[0]).toMatchObject({ roundLabel: 'Final', isFinals: true, score: '4-6 7-6(4) 6-1' });
   });
 
+  it('splits the record into a home-and-away and a finals half', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '1', Player: 'Hero', 'win?': 'TRUE' }),
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '2', Player: 'Hero', 'win?': 'FALSE' }),
+      finalRow({ Round: 'SF', Player: 'Hero', Score: '6-2 6-3', 'win?': 'TRUE' }),
+      finalRow({ Player: 'Hero', 'win?': 'FALSE' }),
+    ]);
+    const reg = playerAgg('Hero', rows, { scope: 'regular' });
+    const fin = playerAgg('Hero', rows, { scope: 'finals' });
+    expect([reg.games, reg.wins, reg.losses]).toEqual([2, 1, 1]);
+    expect([fin.games, fin.wins, fin.losses]).toEqual([2, 1, 1]);
+    // The two halves add back up to the all-in record.
+    const all = playerAgg('Hero', rows);
+    expect([all.games, all.wins]).toEqual([reg.games + fin.games, reg.wins + fin.wins]);
+  });
+
+  it('keeps the 4-3-2-1 Finals MVP vote out of the season MVP tally', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '1', Player: 'Hero', votes: '6' }),
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '2', Player: 'Hero', votes: '2' }),
+      finalRow({ Player: 'Hero', votes: '4' }),
+    ]);
+    // Finals votes are skipped whatever the scope, unless the scope is finals.
+    for (const scope of ['all', 'regular'] as const) {
+      const agg = playerAgg('Hero', rows, { scope });
+      expect(agg.votes).toBe(8);
+      expect(agg.votesPerGame).toBe(4); // over the two nights that were voted
+    }
+    expect(playerAgg('Hero', rows, { scope: 'finals' }).votes).toBe(4);
+    expect(leaderboard('votes', rows)[0].value).toBe(8);
+    expect(leaderboard('finalsVotes', rows)[0].value).toBe(4);
+  });
+
+  it('derives Best on Ground in a final from the finals votes', () => {
+    const rows = normalizeRows([
+      finalRow({ Player: 'Hero', votes: '4' }),
+      finalRow({ Team: 'Red', Opponent: 'White', Player: 'Villain', votes: '3', 'win?': 'FALSE' }),
+    ]);
+    expect(rows.filter((r) => r.bog).map((r) => r.player)).toEqual(['Hero']);
+    expect(playerAgg('Hero', rows, { scope: 'finals' }).bog).toBe(1);
+    expect(playerAgg('Hero', rows, { scope: 'regular' }).bog).toBe(0);
+  });
+
   it('keeps finals out of the single-match record books', () => {
     const rows = normalizeRows([
       raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '1', Player: 'Steady', Winners: '9' }),

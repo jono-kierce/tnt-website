@@ -25,11 +25,15 @@ const matchKey = (r: { season: number; round: number; team: string; opponent: st
  * `all` includes finals. It's the scope for win-loss, head-to-head, streaks and
  * every per-set rate, where the extra matches are the point and the set-based
  * denominator already handles the multi-set inflation.
+ *
+ * `finals` is the mirror image of `regular` — September only. It's what powers
+ * the finals win-loss split and the Finals MVP, which is a separate award
+ * (4-3-2-1) that happens to be written into the same `votes` column.
  */
-export type StatScope = 'regular' | 'all';
+export type StatScope = 'regular' | 'all' | 'finals';
 
 export const inScope = (r: StatRow, scope: StatScope): boolean =>
-  scope === 'all' || !r.isFinals;
+  scope === 'all' ? true : scope === 'finals' ? r.isFinals : !r.isFinals;
 
 /**
  * Collapse per-player rows into one record per team-side of each match. Uses all
@@ -227,8 +231,9 @@ export interface PlayerAgg {
   player: string;
   slug: string;
   scope: StatScope;
+  /** Matches played. (Named `games` for historical reasons; the UI says matches.) */
   games: number;
-  /** Sets played across those games. Two or three for a semi or final. */
+  /** Sets played across those matches. Two or three for a semi or final. */
   sets: number;
   /** How many of `games` were finals (0 when scope is 'regular'). */
   finalsGames: number;
@@ -244,9 +249,13 @@ export interface PlayerAgg {
   doubleFaults: number | null;
   forcedErrors: number | null;
   errorsForced: number | null;
+  /**
+   * Season MVP votes. Finals votes are a separate award and never counted here
+   * — a `finals`-scoped aggregate is what reports them.
+   */
   votes: number | null;
   winnerToUe: number | null;
-  /** Votes are awarded per match, not per set, so this rate stays per game. */
+  /** Votes are awarded per match, not per set, so this rate stays per match. */
   votesPerGame: number | null;
   bog: number;
   /** Serve % (S1 only): firstServeIn / (in + out). null outside S1 scope. */
@@ -308,6 +317,10 @@ function aggregateRows(
     for (const stat of COUNTING_STATS) {
       const v = r[stat];
       if (v === null) continue;
+      // Finals votes are a different award on a different scale (4-3-2-1 for
+      // the Finals MVP) that shares the `votes` column. They never join the
+      // season MVP tally — only a finals-scoped aggregate counts them.
+      if (stat === 'votes' && r.isFinals && scope !== 'finals') continue;
       const t = tally[stat];
       t.total += v;
       t.games += 1;
@@ -593,11 +606,17 @@ export function playerTrend(
 // Leaderboards
 // ---------------------------------------------------------------------------
 
-export type LeaderStat = CountingStat | 'winPct' | 'winnerToUe' | 'bog';
+export type LeaderStat = CountingStat | 'winPct' | 'winnerToUe' | 'bog' | 'finalsVotes';
 
-/** Rates are compared across all matches; raw totals only over the H&A season. */
+/**
+ * Rates are compared across all matches; raw totals only over the H&A season.
+ * The Finals MVP is the exception in both directions — it only exists in
+ * September, so its board is finals-only whichever mode you're in.
+ */
 export const defaultScope = (stat: LeaderStat, perSet: boolean): StatScope =>
-  perSet || stat === 'winPct' || stat === 'winnerToUe' ? 'all' : 'regular';
+  stat === 'finalsVotes' ? 'finals'
+  : perSet || stat === 'winPct' || stat === 'winnerToUe' ? 'all'
+  : 'regular';
 
 export interface LeaderOptions extends AggOptions {
   /** Rank on the per-set rate rather than the raw total. */
@@ -637,8 +656,10 @@ export function leaderboard(
         return agg.winnerToUe === Infinity ? agg.winners : agg.winnerToUe;
       case 'bog':
         return agg.bog;
-      // Votes are awarded once per match however many sets it ran to.
+      // Votes are awarded once per match however many sets it ran to. The
+      // finals board reads the same column under a finals-only scope.
       case 'votes':
+      case 'finalsVotes':
         return rate ? agg.votesPerGame : agg.votes;
       default:
         return rate ? perSet(agg, stat) : agg[stat];

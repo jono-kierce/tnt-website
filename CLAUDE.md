@@ -64,7 +64,12 @@ scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/buil
   the season config; captain is element 0. If unset, pairing is derived from
   games played (top non-fill-in members).
 - **Votes eras:** S1 = 2/1 + Player-of-the-Round; S2+ = two voters × 3-2-1
-  (max 6/game). Blank votes are treated as missing (never 0).
+  (max 6/match). Blank votes are treated as missing (never 0).
+- **Finals MVP votes are 4-3-2-1** and live in the same `votes` column, on
+  finals rows. They are a separate award: never part of the season MVP tally or
+  the Votes leaderboard, and only a `'finals'`-scoped aggregate reports them
+  (the skip lives in `aggregateRows` in `stats.ts`). They do drive BOG in a
+  final, same rule as any other match.
 - **Serve stats:** S1 only. **Errors Forced:** S2+ only.
 - **BOG = most votes in a match** (both sides of the fixture); ties share it.
 - **Fill-in games** are excluded from leaderboards by default (toggle to include).
@@ -74,7 +79,9 @@ scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/buil
 - **Finals** live in the CSV with `Round` = `QF`/`SF`/`F` and the scoreline in
   `Score`. They count for win-loss, H2H, streaks and per-set rates; they're
   excluded from the ladder, career totals, the record books and MVP votes
-  (`StatScope` in `stats.ts` is the switch — `'regular'` vs `'all'`).
+  (`StatScope` in `stats.ts` is the switch — `'regular'`, `'all'` or `'finals'`).
+- **The UI says "matches", not "games"** — "games" is reserved for game scores
+  (the ladder's for/against and ratio). `PlayerAgg.games` keeps its old name.
 - **Rates are per set, never per match** — a semi or final runs to three sets.
   Votes are the exception: awarded once a match, so `votesPerGame` stays.
 

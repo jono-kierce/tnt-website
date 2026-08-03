@@ -31,7 +31,7 @@ type Entry = {
   games: number; gamesRegular: number; finalsGames: number;
   totals: Record<string, number | null>;
   rates: Record<string, number | null>;
-  /** Games behind each rate — a partial stat gets its own honest denominator. */
+  /** Matches behind each rate — a partial stat gets its own honest denominator. */
   coverage: Record<string, number>;
   bog: number; winPct: number; winnerToUe: number | null;
 };
@@ -40,6 +40,7 @@ function buildScope(season: number | undefined, includeFillIns: boolean): Entry[
     .map((name) => {
       const all = playerAgg(name, rows, { season, includeFillIns });
       const reg = playerAgg(name, rows, { season, includeFillIns, scope: 'regular' });
+      const fin = playerAgg(name, rows, { season, includeFillIns, scope: 'finals' });
       const totals: Record<string, number | null> = { bog: reg.bog };
       const rates: Record<string, number | null> = { bog: null };
       const coverage: Record<string, number> = { bog: reg.games };
@@ -49,9 +50,12 @@ function buildScope(season: number | undefined, includeFillIns: boolean): Entry[
         rates[stat] = stat === 'votes' ? all.votesPerGame : perSet(all, stat);
         coverage[stat] = all.tally[stat].games;
       }
+      // The Finals MVP is its own award on its own scale (4-3-2-1), sharing the
+      // votes column. A count over at most three matches, so it has no rate.
+      totals.finalsVotes = fin.votes;
       return {
         player: name, slug: all.slug, team: scopeTeam(name, season),
-        games: all.games, gamesRegular: reg.games, finalsGames: all.finalsGames,
+        games: all.games, gamesRegular: reg.games, finalsGames: fin.games,
         totals, rates, coverage,
         bog: reg.bog, winPct: all.winPct,
         winnerToUe: all.winnerToUe === Infinity ? all.winners : all.winnerToUe,
@@ -83,7 +87,7 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
     <h1 class="serif-title">Leaderboards</h1>
     <p class="lead" style="max-width:640px">
       Argue responsibly. Filter by season, flip between totals and per-set, and
-      mind the minimum-games threshold on rate boards. Totals are the
+      mind the minimum-matches threshold on rate boards. Totals are the
       home-and-away season; rates count finals, per set.
     </p>
 
@@ -102,6 +106,7 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
           <option value="doubleFaults">Double Faults</option>
           <option value="errorsForced">Errors Forced (S2+)</option>
           <option value="votes">Votes (MVP)</option>
+          <option value="finalsVotes">Finals MVP Votes</option>
           <option value="bog">Best on Ground</option>
           <option value="winPct">Win %</option>
           <option value="winnerToUe">Winner : UE ratio</option>
@@ -113,7 +118,7 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
           <option value="perSet">Per set</option>
         </select>
       </label>
-      <label class="check"><input type="checkbox" id="lbFill" /> Include fill-in games</label>
+      <label class="check"><input type="checkbox" id="lbFill" /> Include fill-in matches</label>
       <button class="btn btn--sm" id="lbCsv" type="button">Download table CSV</button>
     </div>
     <p class="finenote" id="lbNote"></p>
@@ -127,7 +132,7 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
               <th>Player</th>
               <th>Team</th>
               <th id="lbValHead">Value</th>
-              <th>Games</th>
+              <th>Matches</th>
             </tr>
           </thead>
           <tbody id="lbBody"></tbody>
@@ -149,9 +154,14 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
   const valHead = document.getElementById('lbValHead')!;
 
   const RATES_ONLY = ['winPct', 'winnerToUe']; // already rates
+  // A count over at most three finals — a per-match rate would be noise.
+  const TOTALS_ONLY = ['finalsVotes'];
+  // Votes are awarded once a match, so their "rate" mode is per match, not per set.
+  const PER_MATCH = ['votes'];
   const LABELS: Record<string, string> = {
     winners: 'Winners', unforcedErrors: 'Unforced Errors', aces: 'Aces',
     doubleFaults: 'Double Faults', errorsForced: 'Errors Forced', votes: 'Votes',
+    finalsVotes: 'Finals MVP Votes',
     bog: 'Best on Ground', winPct: 'Win %', winnerToUe: 'Winner : UE',
   };
 
@@ -163,9 +173,11 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
     return (perSet ? (e as any).rates : (e as any).totals)[stat] ?? null;
   }
 
-  /** Games behind the number shown — the rate's own coverage, or the H&A season. */
+  /** Matches behind the number shown — the rate's own coverage, or the H&A season. */
   function denom(e: Entry, stat: string, perSet: boolean): number {
     if (RATES_ONLY.includes(stat)) return e.games;
+    // The Finals MVP board counts finals played, not home-and-away nights.
+    if (stat === 'finalsVotes') return (e as any).finalsGames;
     return perSet ? ((e as any).coverage[stat] ?? 0) : (e as any).gamesRegular;
   }
 
@@ -177,8 +189,9 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
 
   function render() {
     const scope = seasonSel.value, stat = statSel.value;
-    const perSet = modeSel.value === 'perSet' && !RATES_ONLY.includes(stat);
-    modeSel.disabled = RATES_ONLY.includes(stat);
+    const perSet =
+      modeSel.value === 'perSet' && !RATES_ONLY.includes(stat) && !TOTALS_ONLY.includes(stat);
+    modeSel.disabled = RATES_ONLY.includes(stat) || TOTALS_ONLY.includes(stat);
     const data: Entry[] = cfg.datasets[`${scope}|${fillChk.checked}`] ?? [];
 
     let rows = data
@@ -193,7 +206,7 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
     rows.sort((a, b) => b.value - a.value || b.games - a.games);
 
     // Votes are the one rate that isn't per set — they're awarded once a match.
-    const rateLabel = perSet ? (stat === 'votes' ? ' / game' : ' / set') : '';
+    const rateLabel = perSet ? (PER_MATCH.includes(stat) ? ' / match' : ' / set') : '';
     valHead.textContent = LABELS[stat] + rateLabel;
     current = { rows: rows.map((r) => ({ ...r.e, value: r.value, games: r.games })), valLabel: LABELS[stat] + rateLabel };
 
@@ -211,20 +224,22 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
       </tr>`;
     }).join('') || `<tr><td colspan="5" class="muted">No qualifying players.</td></tr>`;
 
-    const notes: string[] = ['All fill-in games excluded' + (fillChk.checked ? ' — currently INCLUDED' : ' by default') + '.'];
-    if (perSet && stat === 'votes') notes.push('Votes are awarded per match, so this rate stays per game.');
+    const notes: string[] = ['All fill-in matches excluded' + (fillChk.checked ? ' — currently INCLUDED' : ' by default') + '.'];
+    if (stat === 'finalsVotes') notes.push('The Finals MVP is voted 4-3-2-1 across the finals only. These votes never count toward the season MVP board.');
+    else if (perSet && stat === 'votes') notes.push('Votes are awarded per match, so this rate stays per match.');
     else if (perSet) notes.push('Per-set rates include finals, normalised by sets played.');
     else if (!RATES_ONLY.includes(stat)) notes.push('Totals cover the home-and-away season — finals excluded, since only eight teams play them.');
     else notes.push('Win-loss counts finals.');
-    notes.push('Games shown is the number behind the figure — a stat missing from a night is left out, not counted as zero.');
-    if (applyMin) notes.push(`Minimum ${minGames} games to qualify.`);
-    if (stat === 'votes' && cfg.sealedSeasons.includes(Number(scope))) notes.push('Votes for this season are sealed 🔒 — board will populate after awards night.');
+    if (stat === 'votes') notes.push('Season MVP votes only — finals votes are counted on their own board.');
+    notes.push('Matches shown is the number behind the figure — a stat missing from a night is left out, not counted as zero.');
+    if (applyMin) notes.push(`Minimum ${minGames} matches to qualify.`);
+    if ((stat === 'votes' || stat === 'finalsVotes') && cfg.sealedSeasons.includes(Number(scope))) notes.push('Votes for this season are sealed 🔒 — board will populate after awards night.');
     if (stat === 'errorsForced') notes.push('Errors Forced only tracked from Season 2.');
     note.textContent = notes.join(' ');
   }
 
   function downloadCsv() {
-    const header = ['Rank', 'Player', 'Team', current.valLabel, 'Games'];
+    const header = ['Rank', 'Player', 'Team', current.valLabel, 'Matches'];
     const lines = [header.join(',')].concat(
       current.rows.map((r, i) => [i + 1, `"${r.player}"`, r.team, r.value, r.games].join(','))
     );

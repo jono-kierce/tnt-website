@@ -18,20 +18,20 @@ const gameNote = (r: { season: number; round: number; opponent: string }) =>
 
 const boards: Board[] = [
   {
-    kicker: 'Single game', title: 'THE HIGHLIGHT REEL', caption: 'Most winners struck in one match. Absolute cinema.',
+    kicker: 'Single match', title: 'THE HIGHLIGHT REEL', caption: 'Most winners struck in one match. Absolute cinema.',
     rows: rec.mostWinnersGame.map((r) => ({ player: r.player, slug: r.slug, value: r.value, note: gameNote(r) })),
   },
   {
-    kicker: 'Single game', title: 'UNRETURNABLE', caption: 'Most aces in a single match. Blink and you missed it.',
+    kicker: 'Single match', title: 'UNRETURNABLE', caption: 'Most aces in a single match. Blink and you missed it.',
     rows: rec.mostAcesGame.map((r) => ({ player: r.player, slug: r.slug, value: r.value, note: gameNote(r) })),
   },
   {
-    kicker: 'Single game', title: 'THE HORROR SHOW', caption: 'Biggest unforced-error meltdown in one night. We do not speak of it.',
+    kicker: 'Single match', title: 'THE HORROR SHOW', caption: 'Biggest unforced-error meltdown in one night. We do not speak of it.',
     rows: rec.biggestUeGame.map((r) => ({ player: r.player, slug: r.slug, value: r.value, note: gameNote(r) })),
   },
   {
     kicker: 'Career', title: 'TOSS IT HIGHER', caption: 'Career double faults. The double-fault dossier, updated weekly.',
-    rows: rec.mostDoubleFaultsCareer.map((r) => ({ player: r.player, slug: r.slug, value: r.value, note: `${r.games} games` })),
+    rows: rec.mostDoubleFaultsCareer.map((r) => ({ player: r.player, slug: r.slug, value: r.value, note: `${r.games} matches` })),
   },
   {
     kicker: 'Career', title: 'ON A HEATER', caption: 'Longest win streak in TNT history. Untouchable while it lasted.',
@@ -39,11 +39,11 @@ const boards: Board[] = [
   },
   {
     kicker: 'Career', title: 'MR RELIABLE', caption: 'Most Best-on-Ground awards. Turns up, stands up.',
-    rows: mostBog.map((r) => ({ player: r.player, slug: r.slug, value: `${r.value}×`, note: `${r.games} games` })),
+    rows: mostBog.map((r) => ({ player: r.player, slug: r.slug, value: `${r.value}×`, note: `${r.games} matches` })),
   },
   {
     kicker: 'Career', title: 'THE FINISHER', caption: 'Most career winners, all-time. The scoreboard operator.',
-    rows: mostWinnersCareer.map((r) => ({ player: r.player, slug: r.slug, value: r.value, note: `${r.games} games` })),
+    rows: mostWinnersCareer.map((r) => ({ player: r.player, slug: r.slug, value: r.value, note: `${r.games} matches` })),
   },
 ];
 ---
