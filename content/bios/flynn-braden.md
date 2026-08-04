@@ -1,0 +1,1 @@
+Two Season 3 appearances in the Red and Black jerseys, two losses, and a spot in the annals as one of TNT's true mystery men. Flynn Braden arrived without a scouting report and left without a press release — which, by this league's standards, might be the cleanest career on record. The door, as always, remains open.
