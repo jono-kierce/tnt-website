@@ -2,8 +2,8 @@ import type { SeasonConfig } from './schema.ts';
 
 /**
  * SEASON 3 (2024).
- * Champions/runners-up/finals MVP taken from the written bios. Season MVP and
- * finals scores still to fill in (marked TODO).
+ * Honours and finals scores complete. Finals MVP votes (4-3-2-1) are in the
+ * CSV on the finals rows; the derived tally agrees with the Finals MVP below.
  */
 const season3: SeasonConfig = {
   season: 3,

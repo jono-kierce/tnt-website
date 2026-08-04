@@ -108,19 +108,28 @@ scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/buil
 
 ## Current state / open TODOs (owner to fill)
 
-- S4 (2025) votes are loaded and **unsealed**; `sealedVoteSeasons` is empty.
-- All four brackets have full results, and all four seasons' finals are in the
-  CSV as **scorelines only** — no player stats yet.
+- **S4 (2025) is complete** — full results, honours filled, votes loaded and
+  **unsealed**; `sealedVoteSeasons` is empty. All honours for all four seasons
+  are filled in (no `TODO` honours remain).
+- **Season 5 (2026) is scaffolded but not live**: `season-5.ts` exists (teams/
+  honours/finals empty) and `seasonYears` maps 5 → 2026. When the first S5
+  rows land in the CSV, flip `currentSeason` to 5 in `src/config/site.ts` —
+  until then the homepage keeps showing S4, because a season with no rows has
+  an empty ladder and no `/seasons/5/` page to link to. Add 5 to
+  `sealedVoteSeasons` at the same time if votes are to stay hidden until
+  awards night.
+- All four brackets have full results. Finals **player stats**: S3 has finals
+  MVP votes in the CSV (28/28 rows; the derived 4-3-2-1 tally matches the
+  recorded Finals MVP). S1, S2 and S4 finals are **scorelines only** — no
+  player stats yet.
 - S1–S3 finals (line-ups and scores) came from the owner's sheet
-  `~/Documents/TNT/alltime_with_finalsresv2.csv`; **S4's are derived from the
-  bracket** and its line-ups assume the regular-season pairings — check them
-  against the real sheet when it turns up.
+  `~/Documents/TNT/alltime_with_finalsresv2.csv`; S4's were derived from the
+  bracket and have been **verified against the real sheet**.
 - **Tiebreak sets:** the owner's sheet records them level (`6-6`, `5-5`); the
   brackets normalise to `7-6(4)` etc. where the breaker score is known. Both
   live in the repo — S1 F, S3 QF4 and S3 SF1 use the normalised form; the S2
   final keeps `6-6`/`3-3` because nobody recorded those two breakers. A level
   set is a `check-data` warning, never an error: `win?` settles the match.
 - Most team **captains** are blank except S4 and Kierce's teams.
-- Some Season MVP / Finals MVP honours and finals scores are marked `TODO`.
 - `npm run check-data` flags 2 ambiguous S1 R8 rows (Hume, Dickson — two
   non-fill-in rows in one round); pre-existing data, left as-is.

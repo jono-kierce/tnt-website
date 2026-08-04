@@ -43,7 +43,11 @@ export const SITE = {
   /** Root path when deployed to GitHub Pages. Set to '/<repo>' for project pages. */
   base: '/',
 
-  /** The season currently being played. Drives the "current ladder" everywhere. */
+  /**
+   * The season currently being played. Drives the "current ladder" everywhere.
+   * Flip to 5 when the first Season 5 rows land in the CSV — a season with no
+   * rows has an empty ladder and no season page to link to.
+   */
   currentSeason: 4,
 
   /**
@@ -54,7 +58,7 @@ export const SITE = {
   sealedVoteSeasons: [],
 
   /** Map season number -> calendar year for labelling ("Season 4 (2025)"). */
-  seasonYears: { 1: 2022, 2: 2023, 3: 2024, 4: 2025 } as Record<number, number>,
+  seasonYears: { 1: 2022, 2: 2023, 3: 2024, 4: 2025, 5: 2026 } as Record<number, number>,
 
   /** Serve stats were only recorded in Season 1. */
   serveStatsSeason: 1,

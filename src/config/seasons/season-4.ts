@@ -1,11 +1,11 @@
 import type { SeasonConfig } from './schema.ts';
 
 /**
- * SEASON 4 (2025) — current season, votes sealed until awards night.
+ * SEASON 4 (2025) — complete. Votes are loaded and unsealed; honours filled.
  *
  * Team pair order is captain-first, draftee-second (read from the Instagram
- * standings graphic). Captains filled from that graphic per the captain-first
- * convention; correct any you know differently.
+ * standings graphic). Finals line-ups and scores verified against the owner's
+ * sheet.
  */
 const season4: SeasonConfig = {
   season: 4,
