@@ -1,14 +1,1 @@
-# Season 4 (2025) recap
-
-*Write your season recap here — this markdown renders on the Season 4 page.
-Delete this placeholder text when you're ready.*
-
-Pink stormed the 2025 regular season with a flawless 8–0 record, Luke Sharrock
-and Angus Hume taking the minor premiership and, ultimately, the title. Behind
-them the chasing pack — Gorton & Simpson, Dickson & Croucher, Feikema & Burgess
-— traded blows all winter.
-
-The MVP race went to the wire: Adam Dickson edged it on 41 votes, a single vote
-clear of Jimmy Gorton and Luke Sharrock (40 apiece). In the finals it was
-Jonathan Kierce who caught fire, taking Finals MVP as White pushed all the way
-to the championship match.
+The season of perfection. It began with an omen — both previous champions had risen from seventh the year before, and last year's seventh was Godden and Wise — and a draft full of storylines: Archie Littlejohn returning from injury to make Will Mumme the number one pick "2 years running," first-year captain Adam Dickson dialling in by video to select Declan Croucher, Will Burgess suffering "the misfortune of being picked up by the commissioner," and Jonathan Kierce taking loose cannon Lachy Godden with the final pick amid unconfirmed bribery rumours. What followed was history. Luke Sharrock and Angus Hume simply never lost — minor premiers at 8-0, then through the finals untouched for the league's first perfect season, 11-0. Not even Sharrock's semi-final ankle injury (sustained playing beer pong, replaced by emergency captain Charlie Simpson) could slow Pink down. The counter-narrative was just as good: Kierce dragged Godden and seventh-placed White through a quarter-final tiebreak and past Orange — Gorton and Kierce meeting in a three-set finals epic for the third straight year — before the fairytale fell 6-4 7-6(3) in the decider. The MVP count produced the closest finish ever: Dickson 41, Gorton 40, Sharrock 40, a first-season captain crowned by a single vote after leading Green to second. A perfect team, a near-perfect fairytale, and a one-vote MVP: Season 4 had everything.
