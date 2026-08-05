@@ -1,0 +1,26 @@
+---
+import { photoSrc } from '../lib/content.ts';
+import type { Photo } from '../lib/photos.ts';
+
+interface Props { photos: Photo[]; alt?: string }
+const { photos, alt = 'TNT photo' } = Astro.props;
+---
+<div class="gallery">
+  {photos.map((p) => (
+    <figure class="gallery-item">
+      <img src={photoSrc(p)} alt={p.caption ?? alt} loading="lazy" />
+      {p.caption && <figcaption>{p.caption}</figcaption>}
+    </figure>
+  ))}
+</div>
+
+<style>
+  .gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .gallery-item { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+  .gallery-item img {
+    width: 100%; aspect-ratio: 3/4; object-fit: cover;
+    border-radius: 10px; border: 1px solid var(--line);
+  }
+  .gallery-item figcaption { font-size: 0.8rem; color: var(--muted); line-height: 1.35; }
+  @media (max-width: 640px) { .gallery { grid-template-columns: repeat(2, 1fr); } }
+</style>

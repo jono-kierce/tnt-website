@@ -1,0 +1,131 @@
+# TNT photo manifest — every photo on the site is listed here.
+#
+# To add a photo: drop the image into the right season folder (or misc/), then
+# add an entry below. `npm run check-data` warns about any photo on disk that
+# isn't listed here, and errors on typo'd player slugs or missing files.
+#
+# Fields:
+#   file:     path relative to content/photos/
+#   players:  player slugs tagged in the photo — it appears on each one's page
+#   season:   1-5; the photo shows in that season's gallery. Omit if unknown.
+#   caption:  optional, shown under the photo. Leave blank for none.
+#
+# Order matters: galleries show photos in the order listed here, and a player's
+# avatar is their first solo-tagged photo (falling back to first tagged).
+
+- file: season-1/s1-dickson.png
+  players: [adam-dickson]
+  season: 1
+  caption:
+
+- file: season-1/runnersup-s1.png
+  players: [angus-hume, charlie-simpson]
+  season: 1
+  caption:
+
+- file: season-1/broadcast-s1-final.png
+  players: [archie-littlejohn, ed-simpson, ted-angel]
+  season: 1
+  caption:
+
+- file: season-1/s1-archie.png
+  players: [archie-littlejohn]
+  season: 1
+  caption:
+
+- file: season-1/charlie-ginger-s1.png
+  players: [charlie-simpson]
+  season: 1
+  caption:
+
+- file: season-1/s1-champions.png
+  players: [ethan-seamer, jonathan-kierce]
+  season: 1
+  caption:
+
+- file: season-1/s1-gf-stats-ethan.png
+  players: [ethan-seamer]
+  season: 1
+  caption:
+
+- file: season-2/s2champ-presentation.png
+  players: [ed-simpson, jimmy-gorton]
+  season: 2
+  caption:
+
+- file: season-3/s3-champions.jpg
+  players: [damon-maurice, jonathan-kierce]
+  season: 3
+  caption:
+
+- file: season-3/s3-damon-championpres.jpg
+  players: [damon-maurice]
+  season: 3
+  caption:
+
+- file: season-3/black-s3-presentation.jpg
+  players: [emerson-wise, lewis-mossman]
+  season: 3
+  caption:
+
+- file: season-3/jim-s3.jpg
+  players: [jim-papa]
+  season: 3
+  caption:
+
+- file: season-3/s3-jenk-forehand.jpg
+  players: [lachlan-jenkin]
+  season: 3
+  caption:
+
+- file: season-3/s3-godden-broken-racquet.jpg
+  players: [lachy-godden]
+  season: 3
+  caption:
+
+- file: season-3/s3-godden-forehand.jpg
+  players: [lachy-godden]
+  season: 3
+  caption:
+
+- file: season-4/s4-green-pres.jpg
+  players: [adam-dickson, declan-croucher]
+  season: 4
+  caption:
+
+- file: season-4/jamie-s4.jpg
+  players: [jamie-harris]
+  season: 4
+  caption:
+
+- file: season-4/s4-celebration.jpg
+  players: [jonathan-kierce]
+  season: 4
+  caption:
+
+- file: season-4/s4-runnersup.jpg
+  players: [lachy-godden]
+  season: 4
+  caption:
+
+- file: season-4/s4-quinn-ellie.jpg
+  players: [quinn-feikema]
+  season: 4
+  caption:
+
+- file: season-4/s4-shayl-forehand.png
+  players: [shayl-inlander]
+  season: 4
+  caption:
+
+- file: misc/jimmy-1.png
+  players: [jimmy-gorton]
+  caption:
+
+- file: misc/jimmy-2.png
+  players: [jimmy-gorton]
+  caption:
+
+- file: misc/letdownaward-ted.png
+  players: [ted-angel]
+  caption:

@@ -48,6 +48,8 @@ src/lib/normalize.ts     THE normalization layer: CSV -> StatRow[], all quirks h
 src/lib/stats.ts         ladder, rosters/pairings, player aggregates, leaderboards, records
 src/lib/ranks.ts         where a player sits in the field — the stat-panel badges
 src/lib/site-data.ts     page-facing helpers (season ladder, MVP tally, fun stats)
+src/lib/photos.ts        photo manifest loader (content/photos/photos.yaml): tags,
+                         captions, seasons, avatar pick. Node-safe — no import.meta.env
 src/lib/stats.test.ts    unit tests — keep these green
 src/config/site.ts       currentSeason, sealedVoteSeasons, seasonYears, team colours, thresholds
 src/config/aliases.ts    name alias map + slug/short-name helpers
@@ -111,6 +113,10 @@ scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/buil
   (the ladder's for/against and ratio). `PlayerAgg.games` keeps its old name.
 - **Rates are per set, never per match** — a semi or final runs to three sets.
   Votes are the exception: awarded once a match, so `votesPerGame` stays.
+- **Photos:** `content/photos/photos.yaml` is the manifest — file, tagged player
+  slugs, season, caption. Folders (`season-N/`, `misc/`) are just storage. A
+  photo not in the manifest is invisible; `check-data` and `copy-assets` both
+  warn. Manifest order = gallery order; avatar = first solo-tagged photo.
 
 ## Current state / open TODOs (owner to fill)
 

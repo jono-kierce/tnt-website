@@ -6,9 +6,7 @@ import { withBase } from './url.ts';
 const root = process.cwd();
 const BIOS_DIR = path.join(root, 'content/bios');
 const SEASONS_DIR = path.join(root, 'content/seasons');
-const PHOTOS_DIR = path.join(root, 'content/photos');
 
-const PHOTO_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif']);
 const STUB = /^no bio written yet/i;
 
 /** Rewrite bare-slug markdown links `](my-slug)` -> `](/players/my-slug/)`. */
@@ -36,13 +34,7 @@ export function seasonRecapHtml(season: number): string | null {
   return marked.parse(linkPlayers(raw)) as string;
 }
 
-/** Web paths to a player's photos (sorted), or [] if none. */
-export function playerPhotos(slug: string): string[] {
-  const dir = path.join(PHOTOS_DIR, slug);
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .filter((f) => PHOTO_EXT.has(path.extname(f).toLowerCase()))
-    .sort()
-    .map((f) => withBase(`/photos/${slug}/${f}`));
+/** Web URL for a manifest photo (see src/lib/photos.ts). */
+export function photoSrc(photo: { file: string }): string {
+  return withBase(`/photos/${photo.file}`);
 }

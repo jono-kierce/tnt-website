@@ -10,6 +10,8 @@ import { allSeasons } from '../../lib/stats.ts';
 import { rows, seasonLadder, seasonMvp } from '../../lib/site-data.ts';
 import { getSeasonConfig } from '../../config/seasons/index.ts';
 import { seasonRecapHtml } from '../../lib/content.ts';
+import { seasonPhotos } from '../../lib/photos.ts';
+import PhotoGallery from '../../components/PhotoGallery.astro';
 
 export function getStaticPaths() {
   return allSeasons(rows).map((s) => ({ params: { season: String(s) }, props: { season: s } }));
@@ -22,6 +24,7 @@ const mvp = seasonMvp(season);
 const podium = mvp.slice(0, 3);
 const rest = mvp.slice(3, 10);
 const recap = seasonRecapHtml(season);
+const photos = seasonPhotos(season);
 const honours = cfg?.honours ?? [];
 const podiumMedals = ['🥇', '🥈', '🥉'];
 ---
@@ -47,6 +50,13 @@ const podiumMedals = ['🥇', '🥈', '🥉'];
     <section class="section container">
       <p class="eyebrow">Recap</p>
       <div class="card prose season-recap" set:html={recap} />
+    </section>
+  )}
+
+  {photos.length > 0 && (
+    <section class="section container">
+      <p class="eyebrow">From the Court</p>
+      <PhotoGallery photos={photos} alt={seasonLabel(season)} />
     </section>
   )}
 

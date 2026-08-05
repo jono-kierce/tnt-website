@@ -13,6 +13,7 @@ import { readCsvFile } from '../src/lib/csv.ts';
 import { allPlayers, allSeasons, COUNTING_STATS } from '../src/lib/stats.ts';
 import { NAME_ALIASES } from '../src/config/aliases.ts';
 import { SITE, isVotesSealed } from '../src/config/site.ts';
+import { allPhotos, missingPhotoFiles, unlistedPhotos, photoFilesOnDisk } from '../src/lib/photos.ts';
 
 const rows = loadStatRows();
 const errors: string[] = [];
@@ -191,6 +192,36 @@ for (const s of allSeasons(rows)) {
       (waiting ? `\n       ${waiting} blank template rows waiting` : '')
   );
 }
+
+// 6. Photos. The manifest (content/photos/photos.yaml) is the source of truth:
+//    a photo on disk that isn't listed is invisible on the site, and a typo'd
+//    slug or filename silently drops the photo from every gallery.
+const photos = allPhotos();
+const validSlugs = new Set(rows.map((r) => r.slug));
+const knownSeasons = new Set([...allSeasons(rows), SITE.currentSeason]);
+const seenFiles = new Set<string>();
+
+for (const p of photos) {
+  const wherePhoto = `photos.yaml → ${p.file}`;
+  if (seenFiles.has(p.file)) warnings.push(`Photo listed twice: ${wherePhoto}`);
+  seenFiles.add(p.file);
+  if (!p.players.length) warnings.push(`Photo has no players tagged: ${wherePhoto}`);
+  for (const slug of p.players) {
+    if (!validSlugs.has(slug)) {
+      errors.push(`Unknown player slug "${slug}" (typo?): ${wherePhoto}`);
+    }
+  }
+  if (p.season !== null && !knownSeasons.has(p.season)) {
+    warnings.push(`Photo season ${p.season} has no CSV rows: ${wherePhoto}`);
+  }
+}
+for (const f of missingPhotoFiles()) {
+  errors.push(`photos.yaml lists a file that doesn't exist: content/photos/${f}`);
+}
+for (const f of unlistedPhotos()) {
+  warnings.push(`Photo on disk but NOT in photos.yaml (won't show on the site): content/photos/${f}`);
+}
+console.log(`\nphotos: ${photos.length} in photos.yaml, ${photoFilesOnDisk().length} on disk`);
 
 if (warnings.length) {
   console.log('\nWarnings:');

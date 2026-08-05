@@ -1,12 +1,14 @@
 ---
 import { teamMeta } from '../config/site.ts';
-import { playerPhotos } from '../lib/content.ts';
+import { photoSrc } from '../lib/content.ts';
+import { avatarPhoto } from '../lib/photos.ts';
 
 interface Props { slug: string; name: string; team: string }
 const { slug, name, team } = Astro.props;
 const m = teamMeta(team);
 const style = `--team-color:${m.color};--team-color-2:${m.color2};--team-ink:${m.ink}`;
-const photo = playerPhotos(slug)[0] ?? null;
+const av = avatarPhoto(slug);
+const photo = av ? photoSrc(av) : null;
 const initials = name.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]).join('');
 ---
 <div class="avatar" style={style}>

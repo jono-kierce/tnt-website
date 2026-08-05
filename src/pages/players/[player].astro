@@ -12,7 +12,9 @@ import { withBase } from '../../lib/url.ts';
 import { allPlayers, bestWorstOpponent, fillInRecord, fillInVotes, playerAgg, playerRows, playerTrend } from '../../lib/stats.ts';
 import { playerRanks } from '../../lib/ranks.ts';
 import { rows, playerLatestTeam, playerSeasons } from '../../lib/site-data.ts';
-import { bioHtml, playerPhotos } from '../../lib/content.ts';
+import { bioHtml } from '../../lib/content.ts';
+import { playerPhotos } from '../../lib/photos.ts';
+import PhotoGallery from '../../components/PhotoGallery.astro';
 
 export function getStaticPaths() {
   return allPlayers(rows).map((name) => ({
@@ -129,9 +131,7 @@ const photos = playerPhotos(slug);
 
   {photos.length > 0 && (
     <section class="section container">
-      <div class="gallery">
-        {photos.slice(0, 4).map((src) => <img src={src} alt={name} loading="lazy" />)}
-      </div>
+      <PhotoGallery photos={photos.slice(0, 8)} alt={name} />
     </section>
   )}
 
@@ -333,9 +333,6 @@ const photos = playerPhotos(slug);
   .player-head { display: grid; grid-template-columns: 120px 1fr; gap: 20px; align-items: center; }
   .head-avatar { width: 120px; }
   @media (max-width: 520px) { .player-head { grid-template-columns: 84px 1fr; } .head-avatar { width: 84px; } }
-  .gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  .gallery img { aspect-ratio: 3/4; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
-  @media (max-width: 640px) { .gallery { grid-template-columns: repeat(2, 1fr); } }
   /* Tiles sit on their own row so a popover can spill over the section below. */
   .opp-grid { align-items: start; gap: 14px; }
   .prose :global(p) { color: var(--ivory-dim); }
