@@ -193,6 +193,9 @@ const ranked = Object.keys(ranks).length > 0;
       <div class="v">{votesValue}</div>
       <RankChip {...chip('votes', rateMode ? 'votes per match' : 'MVP votes')} scopeShort={scopeShort} />
       {votesSub && <div class="sub">{votesSub}</div>}
+      {mvp.votesEraAdjusted && (
+        <div class="sub sub--fine">S1 votes era-adjusted <span class="nowrap">(2→6, 1→4)</span></div>
+      )}
       {votes.fillInRegular > 0 && (
         <div class="sub sub--fine">
           Fill-ins excluded <span class="nowrap">({votes.fillInRegular} votes)</span>
@@ -257,6 +260,13 @@ const ranked = Object.keys(ranks).length > 0;
       </>
     )}
     The Finals MVP is voted separately (4-3-2-1) and never counts toward MVP votes.
+    {mvp.votesEraAdjusted && (
+      <>
+        {' '}Career vote tallies count Season 1 era-adjusted — under the old 2/1
+        system a best-on-court 2 counts as 6 and a 1 as 4, matching the two-voter
+        3-2-1 scale — while a season panel shows the votes as cast.
+      </>
+    )}
     {fillIns === undefined && (
       <>
         {' '}Fill-in appearances count toward these career numbers — except the vote

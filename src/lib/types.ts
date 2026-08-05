@@ -77,6 +77,13 @@ export interface StatRow {
 
   /** null when the vote is blank (sealed season or simply unrecorded). */
   votes: number | null;
+  /**
+   * `votes` on the modern two-voter 3-2-1 scale: an S1 home-and-away vote is
+   * mapped 2 -> 6, 1 -> 4 (see SITE.voteEraMap); every other row keeps its
+   * value. Cross-era windows (career totals, the all-time boards) count this;
+   * single-season windows, the MVP tally and BOG use `votes` as cast.
+   */
+  adjustedVotes: number | null;
   bog: boolean;
 }
 

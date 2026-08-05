@@ -154,6 +154,7 @@ export function normalizeRows(raw: Record<string, string>[]): StatRow[] {
         opponentScore: num(r['Opponent Score']),
 
         votes: numOrNull(r['votes']),
+        adjustedVotes: adjustVotes(season, stage !== null, numOrNull(r['votes'])),
         // BOG is not stored — it's derived from votes below.
         bog: false,
       };
@@ -161,6 +162,22 @@ export function normalizeRows(raw: Record<string, string>[]): StatRow[] {
 
   deriveBog(out);
   return out;
+}
+
+/**
+ * Map a Season 1 home-and-away vote onto the modern two-voter 3-2-1 scale for
+ * the cross-era windows: 2 -> 6, 1 -> 4 (see SITE.voteEraMap). Finals rows
+ * pass through untouched — the Finals MVP has been 4-3-2-1 in every season —
+ * and so does any value the map doesn't know, so a data typo stays visible
+ * rather than being silently rescaled.
+ */
+function adjustVotes(
+  season: number,
+  isFinals: boolean,
+  votes: number | null
+): number | null {
+  if (votes === null || isFinals || season !== SITE.voteEraSeason) return votes;
+  return SITE.voteEraMap[votes] ?? votes;
 }
 
 /**

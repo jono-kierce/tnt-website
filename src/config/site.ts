@@ -60,6 +60,18 @@ export const SITE = {
   /** Map season number -> calendar year for labelling ("Season 4 (2025)"). */
   seasonYears: { 1: 2022, 2: 2023, 3: 2024, 4: 2025, 5: 2026 } as Record<number, number>,
 
+  /**
+   * Season 1 was voted 2/1 by a single voter; every season since is 3-2-1 from
+   * two voters (max 6 a match). Cross-era windows — career totals, the
+   * all-time boards — map an S1 home-and-away vote onto the modern scale so a
+   * best-on-court night weighs the same in every era: 2 -> 6, 1 -> 4. The 6
+   * matches the maximum both systems reserve for the night's best; the 4 is
+   * calibrated to what second-best actually averages under two voters (~3.8).
+   * Single-season windows, the S1 MVP tally and BOG always use votes as cast.
+   */
+  voteEraSeason: 1,
+  voteEraMap: { 2: 6, 1: 4 } as Record<number, number>,
+
   /** Serve stats were only recorded in Season 1. */
   serveStatsSeason: 1,
   /** Errors Forced was recorded from this season onward. */

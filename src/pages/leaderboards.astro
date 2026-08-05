@@ -231,6 +231,7 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
     else if (!RATES_ONLY.includes(stat)) notes.push('Totals cover the home-and-away season — finals excluded, since only eight teams play them.');
     else notes.push('Win-loss counts finals.');
     if (stat === 'votes') notes.push('Season MVP votes only — finals votes are counted on their own board.');
+    if (stat === 'votes' && scope === 'all') notes.push('Season 1 votes are era-adjusted to the two-voter 3-2-1 scale — a 2 counts as 6, a 1 as 4. Season boards show votes as cast.');
     notes.push('Matches shown is the number behind the figure — a stat missing from a night is left out, not counted as zero.');
     if (applyMin) notes.push(`Minimum ${minGames} matches to qualify.`);
     if ((stat === 'votes' || stat === 'finalsVotes') && cfg.sealedSeasons.includes(Number(scope))) notes.push('Votes for this season are sealed 🔒 — board will populate after awards night.');

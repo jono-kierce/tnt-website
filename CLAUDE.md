@@ -66,6 +66,12 @@ scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/buil
   games played (top non-fill-in members).
 - **Votes eras:** S1 = 2/1 + Player-of-the-Round; S2+ = two voters × 3-2-1
   (max 6/match). Blank votes are treated as missing (never 0).
+- **S1 votes are era-adjusted in cross-era windows only:** a career/all-time
+  tally counts an S1 home-and-away 2 as 6 and a 1 as 4 (`adjustedVotes`, mapped
+  in `normalize.ts` from `SITE.voteEraMap`), so a best-on-court night weighs the
+  same in every era. Season windows, the S1 MVP tally, BOG derivation and the
+  match log always use votes as cast; `PlayerAgg.votesEraAdjusted` tells the UI
+  when to footnote. Finals rows are never rescaled.
 - **Finals MVP votes are 4-3-2-1** and live in the same `votes` column, on
   finals rows. They are a separate award: never part of the season MVP tally or
   the Votes leaderboard, and only a `'finals'`-scoped aggregate reports them

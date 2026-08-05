@@ -164,6 +164,55 @@ describe('votes-era handling', () => {
     expect(agg.tally.votes.games).toBe(2);
     expect(agg.votesPerGame).toBe(4);
   });
+
+  it('era-adjusts S1 votes (2→6, 1→4) in cross-era windows only', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'Pink', Season: '1', Round: '1', Player: 'X', votes: '2' }),
+      raw({ Team: 'Pink', Season: '1', Round: '2', Player: 'X', votes: '1' }),
+      raw({ Team: 'Pink', Season: '1', Round: '3', Player: 'X', votes: '0' }),
+      raw({ Team: 'Pink', Season: '2', Round: '1', Player: 'X', votes: '6' }),
+    ]);
+    expect(rows.map((r) => r.adjustedVotes)).toEqual([6, 4, 0, 6]);
+    // No season given: the career window, counted on the modern scale.
+    const career = playerAgg('X', rows);
+    expect(career.votes).toBe(16);
+    expect(career.votesPerGame).toBe(4);
+    expect(career.votesEraAdjusted).toBe(true);
+    // A season window shows the votes as cast.
+    const s1 = playerAgg('X', rows, { season: 1 });
+    expect(s1.votes).toBe(3);
+    expect(s1.votesPerGame).toBe(1);
+    expect(s1.votesEraAdjusted).toBe(false);
+  });
+
+  it('never rescales finals votes, blanks, or later seasons', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'Pink', Opponent: 'Navy', Season: '1', Round: 'F', Score: '6-4', Player: 'X', votes: '2' }),
+      raw({ Team: 'Pink', Season: '1', Round: '1', Player: 'X', votes: '' }),
+      raw({ Team: 'Pink', Season: '3', Round: '1', Player: 'X', votes: '2' }),
+    ]);
+    expect(rows.map((r) => r.adjustedVotes)).toEqual([2, null, 2]);
+  });
+
+  it('era-adjusts the all-time votes board but not a season board', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'Pink', Season: '1', Round: '1', Player: 'Old', votes: '2' }),
+      raw({ Team: 'Navy', Season: '2', Round: '1', Player: 'New', votes: '5' }),
+    ]);
+    expect(leaderboard('votes', rows).map((e) => [e.player, e.value])).toEqual([
+      ['Old', 6],
+      ['New', 5],
+    ]);
+    expect(leaderboard('votes', rows, { season: 1 })[0].value).toBe(2);
+  });
+
+  it('sets aside fill-in votes in the currency of the window', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'Pink', Season: '1', Round: '1', Player: 'X (Fill-in)', votes: '2' }),
+    ]);
+    expect(fillInVotes('X', rows)).toBe(6); // career: era-adjusted
+    expect(fillInVotes('X', rows, 1)).toBe(2); // season: as cast
+  });
 });
 
 describe('era-specific stats', () => {
@@ -547,18 +596,19 @@ describe('finals rows', () => {
 
   it('keeps the 4-3-2-1 Finals MVP vote out of the season MVP tally', () => {
     const rows = normalizeRows([
-      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '1', Player: 'Hero', votes: '6' }),
-      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '2', Player: 'Hero', votes: '2' }),
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '1', Player: 'Hero', votes: '2' }),
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '2', Player: 'Hero', votes: '1' }),
       finalRow({ Player: 'Hero', votes: '4' }),
     ]);
     // Finals votes are skipped whatever the scope, unless the scope is finals.
+    // These are career windows, so the S1 votes count era-adjusted: 6 + 4.
     for (const scope of ['all', 'regular'] as const) {
       const agg = playerAgg('Hero', rows, { scope });
-      expect(agg.votes).toBe(8);
-      expect(agg.votesPerGame).toBe(4); // over the two nights that were voted
+      expect(agg.votes).toBe(10);
+      expect(agg.votesPerGame).toBe(5); // over the two nights that were voted
     }
     expect(playerAgg('Hero', rows, { scope: 'finals' }).votes).toBe(4);
-    expect(leaderboard('votes', rows)[0].value).toBe(8);
+    expect(leaderboard('votes', rows)[0].value).toBe(10);
     expect(leaderboard('finalsVotes', rows)[0].value).toBe(4);
   });
 

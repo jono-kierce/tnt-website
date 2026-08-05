@@ -251,9 +251,14 @@ export interface PlayerAgg {
   errorsForced: number | null;
   /**
    * Season MVP votes. Finals votes are a separate award and never counted here
-   * — a `finals`-scoped aggregate is what reports them.
+   * — a `finals`-scoped aggregate is what reports them. In a cross-era window
+   * (no season given) S1 votes are counted era-adjusted, 2 -> 6 and 1 -> 4,
+   * so a best-on-court night weighs the same in every era; a season window
+   * counts them as cast. `votesEraAdjusted` says which happened.
    */
   votes: number | null;
+  /** True when the vote tally above actually rescaled an S1 vote. */
+  votesEraAdjusted: boolean;
   winnerToUe: number | null;
   /** Votes are awarded per match, not per set, so this rate stays per match. */
   votesPerGame: number | null;
@@ -297,13 +302,15 @@ function aggregateRows(
   player: string,
   slug: string,
   rows: StatRow[],
-  scope: StatScope
+  scope: StatScope,
+  eraAdjustVotes: boolean
 ): PlayerAgg {
   const tally = emptyTallies();
   let wins = 0,
     sets = 0,
     finalsGames = 0,
-    bog = 0;
+    bog = 0,
+    votesEraAdjusted = false;
   let fsIn = 0,
     fsOut = 0,
     serveGames = 0;
@@ -315,12 +322,15 @@ function aggregateRows(
     if (r.bog) bog++;
 
     for (const stat of COUNTING_STATS) {
-      const v = r[stat];
+      // A cross-era window counts S1 votes rescaled onto the modern 3-2-1
+      // scale (2 -> 6, 1 -> 4); a season window counts them as cast.
+      const v = stat === 'votes' && eraAdjustVotes ? r.adjustedVotes : r[stat];
       if (v === null) continue;
       // Finals votes are a different award on a different scale (4-3-2-1 for
       // the Finals MVP) that shares the `votes` column. They never join the
       // season MVP tally — only a finals-scoped aggregate counts them.
       if (stat === 'votes' && r.isFinals && scope !== 'finals') continue;
+      if (stat === 'votes' && v !== r.votes) votesEraAdjusted = true;
       const t = tally[stat];
       t.total += v;
       t.games += 1;
@@ -357,6 +367,7 @@ function aggregateRows(
     forcedErrors: total('forcedErrors'),
     errorsForced: total('errorsForced'),
     votes: total('votes'),
+    votesEraAdjusted,
     winnerToUe:
       winners === null ? null : ue ? winners / ue : winners > 0 ? Infinity : null,
     votesPerGame: tally.votes.games ? tally.votes.total / tally.votes.games : null,
@@ -391,7 +402,9 @@ export function playerAgg(
 ): PlayerAgg {
   const filtered = playerRows(player, rows, opts);
   const slug = filtered[0]?.slug ?? '';
-  return aggregateRows(player, slug, filtered, opts.scope ?? 'all');
+  // No season means a cross-era window, and cross-era vote tallies are counted
+  // era-adjusted so an S1 best-on-court weighs the same as a modern one.
+  return aggregateRows(player, slug, filtered, opts.scope ?? 'all', opts.season === undefined);
 }
 
 /**
@@ -420,7 +433,8 @@ export function fillInRecord(
 /**
  * Votes won while filling in. They were earned for somebody else's team, so
  * they never join the MVP tally in any window — but the panel still says how
- * many there were. Blank votes count as nothing, not zero.
+ * many there were. Blank votes count as nothing, not zero. The count follows
+ * the window's currency: era-adjusted career-wide, as cast inside a season.
  */
 export function fillInVotes(
   player: string,
@@ -437,7 +451,7 @@ export function fillInVotes(
         inScope(r, scope) &&
         (season === undefined || r.season === season)
     )
-    .reduce((sum, r) => sum + (r.votes ?? 0), 0);
+    .reduce((sum, r) => sum + ((season === undefined ? r.adjustedVotes : r.votes) ?? 0), 0);
 }
 
 /** Canonical list of real players (excludes SINGLES GAME). */
