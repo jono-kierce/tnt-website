@@ -15,7 +15,7 @@ const { rows, cutoff, caption } = Astro.props;
     <table class="stat ladder">
       <thead>
         <tr>
-          <th style="width:2ch">#</th>
+          <th class="col-rank">#</th>
           <th>Team</th>
           <th title="Matches played">P</th>
           <th>Wins</th>
@@ -58,4 +58,19 @@ const { rows, cutoff, caption } = Astro.props;
     font-size: 1.05rem; white-space: nowrap;
   }
   tr.cutoff td { border-bottom: 2px solid var(--gold); }
+
+  /* On a phone the pairing name wraps instead of setting the table's width —
+     the ladder fits the screen rather than scrolling inside its card. */
+  @media (max-width: 520px) {
+    table.ladder { min-width: 0; }
+    table.ladder tbody td { padding: 10px 6px; }
+    .ladder-card { padding: 10px 6px 12px; }
+    .ladder-team { gap: 8px; }
+    /* Two-line names get a full-height bar rather than a stub beside them. */
+    .ladder-team .bar { align-self: stretch; height: auto; min-height: 26px; }
+    .ladder-name {
+      font-size: clamp(0.86rem, 3.6vw, 1.05rem);
+      white-space: normal; overflow-wrap: break-word;
+    }
+  }
 </style>
