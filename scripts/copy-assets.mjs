@@ -31,6 +31,28 @@ function copyDir(from, to) {
   }
 }
 
+// Copying alone leaves orphans behind: rename or delete a photo in content/ and
+// the old file sits in public/ forever, invisible in the manifest but still
+// shipped in dist/. public/photos is generated (and gitignored), so anything
+// here that content/ no longer has is stale by definition.
+function pruneDir(from, to) {
+  if (!fs.existsSync(to)) return 0;
+  let removed = 0;
+  for (const entry of fs.readdirSync(to, { withFileTypes: true })) {
+    const dest = path.join(to, entry.name);
+    const src = path.join(from, entry.name);
+    if (entry.isDirectory()) {
+      removed += pruneDir(src, dest);
+      if (fs.readdirSync(dest).length === 0) fs.rmdirSync(dest);
+    } else if (!fs.existsSync(src)) {
+      fs.rmSync(dest);
+      console.log(`[copy-assets] pruned stale ${path.relative(root, dest)}`);
+      removed++;
+    }
+  }
+  return removed;
+}
+
 // 1. CSV for download
 const csv = path.join(root, 'data/alltimestats.csv');
 if (fs.existsSync(csv)) {
@@ -40,8 +62,12 @@ if (fs.existsSync(csv)) {
 
 // 2. Photos
 const photosDir = path.join(root, 'content/photos');
-copyDir(photosDir, path.join(root, 'public/photos'));
-console.log('[copy-assets] content/photos -> public/photos');
+const publicPhotos = path.join(root, 'public/photos');
+copyDir(photosDir, publicPhotos);
+const pruned = pruneDir(photosDir, publicPhotos);
+console.log(
+  `[copy-assets] content/photos -> public/photos${pruned ? ` (${pruned} stale file(s) pruned)` : ''}`
+);
 
 // A photo on disk that photos.yaml doesn't list is invisible on the site —
 // say so on every dev/build, since that's when a new photo usually arrives.

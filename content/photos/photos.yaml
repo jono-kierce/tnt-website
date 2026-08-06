@@ -13,42 +13,42 @@
 # Order matters: galleries show photos in the order listed here, and a player's
 # avatar is their first solo-tagged photo (falling back to first tagged).
 
-- file: season-1/s1-dickson.png
+- file: season-1/s1-dickson.jpg
   players: [adam-dickson]
   season: 1
   caption:
 
-- file: season-1/runnersup-s1.png
+- file: season-1/runnersup-s1.jpg
   players: [angus-hume, charlie-simpson]
   season: 1
   caption:
 
-- file: season-1/broadcast-s1-final.png
+- file: season-1/broadcast-s1-final.jpg
   players: [archie-littlejohn, ed-simpson, ted-angel]
   season: 1
   caption: Live commentary team for the Final
 
-- file: season-1/s1-archie.png
+- file: season-1/s1-archie.jpg
   players: [archie-littlejohn]
   season: 1
   caption:
 
-- file: season-1/charlie-ginger-s1.png
+- file: season-1/charlie-ginger-s1.jpg
   players: [charlie-simpson]
   season: 1
   caption:
 
-- file: season-1/s1-champions.png
+- file: season-1/s1-champions.jpg
   players: [ethan-seamer, jonathan-kierce]
   season: 1
   caption:
 
-- file: season-1/s1-gf-stats-ethan.png
+- file: season-1/s1-gf-stats-ethan.jpg
   players: [ethan-seamer]
   season: 1
   caption:
 
-- file: season-2/s2champ-presentation.png
+- file: season-2/s2champ-presentation.jpg
   players: [ed-simpson, jimmy-gorton]
   season: 2
   caption:
@@ -113,20 +113,20 @@
   season: 4
   caption:
 
-- file: season-4/s4-shayl-forehand.png
+- file: season-4/s4-shayl-forehand.jpg
   players: [shayl-inlander]
   season: 4
   caption:
 
-- file: misc/jimmy-1.png
+- file: misc/jimmy-1.jpg
   players: [jimmy-gorton]
   caption:
 
-- file: misc/jimmy-2.png
+- file: misc/jimmy-2.jpg
   players: [jimmy-gorton]
   caption:
 
-- file: season-2/letdownaward-ted.png
+- file: season-2/letdownaward-ted.jpg
   players: [ted-angel]
   caption: Ted Angel wins the biggest letdown of Season 2
 
@@ -170,7 +170,7 @@
   season: 4
   caption: Team Red in S4
 
-- file: season-4/jonoheadshot.png
+- file: season-4/jonoheadshot.jpg
   players: [jonathan-kierce]
   season: 4
   caption:

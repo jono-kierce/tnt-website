@@ -32,6 +32,7 @@ npm run build        # static build -> dist/
 npm test             # vitest (stats + normalization unit tests)
 npm run check-data   # validate the CSV: coverage, out-of-range votes, ambiguous rows, missing bios
 npm run ladder       # print derived ladders + pairings per season (sanity check)
+npm run optimize-photos          # downsize new photos for the web (add `-- --dry-run` first)
 ```
 
 Node 20+. `--experimental-strip-types` is used to run the `.ts` scripts directly;
@@ -56,7 +57,9 @@ src/config/aliases.ts    name alias map + slug/short-name helpers
 src/config/seasons/*.ts  per-season honours, captains, pairing order, finals bracket
 src/pages, src/components  UI (Astro)
 content/                 bios, photos, recaps (owner-edited)
-scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/build)
+scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/build);
+                         prunes public/ files content/ no longer has
+scripts/optimize-photos.py  downsizes content/photos for the web (owner-run, idempotent)
 ```
 
 ## Data conventions (must respect)
@@ -117,6 +120,14 @@ scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/buil
   slugs, season, caption. Folders (`season-N/`, `misc/`) are just storage. A
   photo not in the manifest is invisible; `check-data` and `copy-assets` both
   warn. Manifest order = gallery order; avatar = first solo-tagged photo.
+- **Photos are served unprocessed.** They go through `public/`, the one
+  directory Astro copies byte-for-byte, so `astro:assets` never sees them —
+  whatever is on disk is what a visitor downloads into a 200px tile. **Run
+  `npm run optimize-photos` after adding any**: it caps the long edge at
+  2000px, re-encodes as JPEG, bakes in EXIF orientation and keeps only the
+  capture date (camera model and GPS coordinates are dropped — these files are
+  publicly downloadable). It's idempotent, and renames PNG→JPEG, updating
+  `photos.yaml` to match. `check-data` warns above 1 MB.
 
 ## Current state / open TODOs (owner to fill)
 

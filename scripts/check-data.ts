@@ -221,7 +221,24 @@ for (const f of missingPhotoFiles()) {
 for (const f of unlistedPhotos()) {
   warnings.push(`Photo on disk but NOT in photos.yaml (won't show on the site): content/photos/${f}`);
 }
-console.log(`\nphotos: ${photos.length} in photos.yaml, ${photoFilesOnDisk().length} on disk`);
+// A camera original is ~2-10 MB and gets displayed in a 200px tile. They're
+// served unprocessed out of public/, so nothing downsizes them on the way to
+// the visitor — `npm run optimize-photos` is what keeps this honest.
+const PHOTO_MAX_KB = 1024;
+let oversized = 0;
+for (const f of photoFilesOnDisk()) {
+  const kb = fs.statSync(path.join('content/photos', f)).size / 1024;
+  if (kb > PHOTO_MAX_KB) {
+    warnings.push(
+      `Photo is ${Math.round(kb)}KB (over ${PHOTO_MAX_KB}KB) — run \`npm run optimize-photos\`: content/photos/${f}`
+    );
+    oversized++;
+  }
+}
+console.log(
+  `\nphotos: ${photos.length} in photos.yaml, ${photoFilesOnDisk().length} on disk` +
+    (oversized ? `, ${oversized} oversized` : '')
+);
 
 if (warnings.length) {
   console.log('\nWarnings:');
