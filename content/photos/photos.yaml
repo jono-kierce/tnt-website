@@ -132,44 +132,65 @@
 
 - file: season-4/adam-mvp.jpg
   players: [adam-dickson]
+  season: 4
   caption: Adam Dickson accepting the S4 MVP
 
 - file: season-4/archie-leastcommitted.jpg
   players: [archie-littlejohn]
+  season: 4
   caption:
 
 - file: season-4/jimmy-bestshittalk.jpg
   players: [jimmy-gorton]
+  season: 4
   caption: 
 
 - file: season-4/quinn-overrated.jpg
   players: [quinn-feikema]
+  season: 4
   caption: 
 
-- file: season-4/IMG_3071.jpg
+- file: season-4/IMG_3071.JPG
   players: [jonathan-kierce, jimmy-gorton, adam-dickson, luke-sharrock]
+  season: 4
   caption: 
 
 - file: season-4/leaguemvps.jpeg
   players: [jonathan-kierce, archie-littlejohn, adam-dickson, luke-sharrock]
+  season: 4
   caption: All previous MVPs at the S4 Presentation
 
-- file: season-4/teamblue.jpg
+- file: season-4/teamblue.JPG
   players: [ethan-seamer, shayl-inlander]
+  season: 4
   caption: Team Navy in S4
 
-- file: season-4/teamred.jpg
+- file: season-4/teamred.JPG
   players: [quinn-feikema, will-burgess]
+  season: 4
   caption: Team Red in S4
 
-- file: season-4/jono-headshot.png
+- file: season-4/jonoheadshot.png
   players: [jonathan-kierce]
+  season: 4
   caption:
 
 - file: season-4/emerson-serve.JPG
   players: [emerson-wise]
+  season: 4
   caption:
 
 - file: season-4/emerson-cele.JPG
   players: [emerson-wise]
+  season: 4
   caption:
+
+- file: season-4/jackson.JPG
+  players: [jackson-virgona]
+  season: 4
+  caption:
+
+- file: season-4/ted-broadcast.JPG
+  players: [ted-angel]
+  season: 4
+  caption: Ted Angel on content duties during S4
