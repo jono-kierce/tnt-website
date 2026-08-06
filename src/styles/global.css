@@ -187,7 +187,33 @@ table.stat th[aria-sort="descending"]::after { content: " ▾"; color: var(--gol
 table.stat th[aria-sort="ascending"]::after { content: " ▴"; color: var(--gold); }
 
 .rank { color: var(--muted); font-family: var(--serif); font-size: 1rem; }
+table.stat .col-rank { width: 2ch; }
 .win { color: var(--win); } .loss { color: var(--loss); }
+
+/* Mobile scoreboard: a phone is narrower than any of these tables want to be,
+   so at the breakpoint they give up their minimum widths and the trimmings —
+   the rank heading, the team name beside its colour dot — rather than push the
+   page sideways. Shared here so the ladder and the leaderboards stay in step. */
+@media (max-width: 520px) {
+  /* A grid item's automatic minimum size is its content, so a wide table
+     stretches its column past the viewport instead of scrolling in its card. */
+  .grid > * { min-width: 0; }
+
+  /* Cards give back some of their gutter so the table inside them has it. */
+  .card { padding: 16px; }
+
+  table.stat { min-width: 0; font-size: 0.92rem; }
+  table.stat thead th { white-space: normal; }
+  table.stat thead th, table.stat tbody td { padding: 9px 5px; }
+  /* The rank column reads as a rank without a heading over it. */
+  table.stat th.col-rank, table.stat td.rank {
+    width: 1%; padding-left: 6px; padding-right: 3px;
+  }
+  table.stat td.rank { font-size: 0.82rem; }
+  table.stat th.col-rank { font-size: 0; }
+  /* Team is the colour dot alone; the name lives on in its title/aria-label. */
+  table.stat .team-label { display: none; }
+}
 
 /* small-print note like the Insta graphics */
 .finenote { font-size: 0.72rem; color: var(--muted); font-style: italic; margin-top: 8px; }

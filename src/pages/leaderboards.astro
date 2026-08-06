@@ -128,7 +128,7 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
         <table class="stat" id="lbTable">
           <thead>
             <tr>
-              <th style="width:2ch">#</th>
+              <th class="col-rank">#</th>
               <th>Player</th>
               <th>Team</th>
               <th id="lbValHead">Value</th>
@@ -166,6 +166,9 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
   };
 
   let current: { rows: any[]; valLabel: string } = { rows: [], valLabel: '' };
+
+  const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+  const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ESCAPES[ch]);
 
   function metric(e: Entry, stat: string, perSet: boolean): number | null {
     if (stat === 'winPct') return e.winPct as number;
@@ -212,12 +215,15 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
 
     body.innerHTML = rows.map((r, i) => {
       const c = cfg.teamColors[r.e.team];
+      const team = esc(r.e.team);
+      // On a phone the name is hidden and the dot carries the team on its own,
+      // so the label has to live on the dot itself.
       const chip = c
-        ? `<span class="flex items-center gap-8" style="--team-color:${c.color};--team-color-2:${c.color2}"><span class="dot"></span>${r.e.team}</span>`
+        ? `<span class="flex items-center gap-8" style="--team-color:${c.color};--team-color-2:${c.color2}"><span class="dot" role="img" title="${team}" aria-label="${team}"></span><span class="team-label">${team}</span></span>`
         : '';
       return `<tr>
         <td class="rank">${i + 1}</td>
-        <td><a href="${cfg.playerBase}${r.e.slug}/">${r.e.player}</a></td>
+        <td><a href="${cfg.playerBase}${r.e.slug}/">${esc(r.e.player)}</a></td>
         <td>${chip}</td>
         <td class="num">${fmt(r.value, stat, perSet)}</td>
         <td>${r.games}</td>
