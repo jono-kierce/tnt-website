@@ -26,7 +26,7 @@
 - file: season-1/broadcast-s1-final.png
   players: [archie-littlejohn, ed-simpson, ted-angel]
   season: 1
-  caption:
+  caption: Live commentary team for the Final
 
 - file: season-1/s1-archie.png
   players: [archie-littlejohn]
@@ -56,7 +56,7 @@
 - file: season-3/s3-champions.jpg
   players: [damon-maurice, jonathan-kierce]
   season: 3
-  caption:
+  caption: Champions of Season 3
 
 - file: season-3/s3-damon-championpres.jpg
   players: [damon-maurice]
@@ -66,7 +66,7 @@
 - file: season-3/black-s3-presentation.jpg
   players: [emerson-wise, lewis-mossman]
   season: 3
-  caption:
+  caption: Season 3 Team Black
 
 - file: season-3/jim-s3.jpg
   players: [jim-papa]
@@ -101,7 +101,7 @@
 - file: season-4/s4-celebration.jpg
   players: [jonathan-kierce]
   season: 4
-  caption:
+  caption: 
 
 - file: season-4/s4-runnersup.jpg
   players: [lachy-godden]
@@ -126,6 +126,6 @@
   players: [jimmy-gorton]
   caption:
 
-- file: misc/letdownaward-ted.png
+- file: season-2/letdownaward-ted.png
   players: [ted-angel]
-  caption:
+  caption: Ted Angel wins the biggest letdown of Season 2
