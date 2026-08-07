@@ -134,8 +134,10 @@ scripts/optimize-photos.py  downsizes content/photos for the web (owner-run, ide
 - **S4 (2025) is complete** — full results, honours filled, votes loaded and
   **unsealed**; `sealedVoteSeasons` is empty. All honours for all four seasons
   are filled in (no `TODO` honours remain).
-- **Season 5 (2026) is scaffolded but not live**: `season-5.ts` exists (teams/
-  honours/finals empty) and `seasonYears` maps 5 → 2026. When the first S5
+- **Season 5 (2026) is drafted but not live**: `season-5.ts` has all ten teams
+  from the draft (honours/finals still empty) and `seasonYears` maps 5 → 2026.
+  S5 is the first **ten-team** season — **Brown** was added to `TEAMS` in
+  `site.ts` alongside the original nine. When the first S5
   rows land in the CSV, flip `currentSeason` to 5 in `src/config/site.ts` —
   until then the homepage keeps showing S4, because a season with no rows has
   an empty ladder and no `/seasons/5/` page to link to. Add 5 to

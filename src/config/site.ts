@@ -26,6 +26,8 @@ export const TEAMS: Record<string, TeamMeta> = {
   Red: { name: 'Red', color: '#e23b3b', color2: '#b32020', ink: '#f5f5f0' },
   Yellow: { name: 'Yellow', color: '#eac53b', color2: '#c9a11c', ink: '#0d0d0d' },
   White: { name: 'White', color: '#e8e8e0', color2: '#b8b8ae', ink: '#0d0d0d' },
+  // Brown joins in S5 — the league's tenth team.
+  Brown: { name: 'Brown', color: '#8a5a34', color2: '#5c3a1f', ink: '#f5f5f0' },
 };
 
 export function teamMeta(name: string): TeamMeta {
