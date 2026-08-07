@@ -194,3 +194,38 @@
   players: [ted-angel]
   season: 4
   caption: Ted Angel on content duties during S4
+
+- file: season-4/will-reaching.JPG
+  players: [will-mumme]
+  season: 4
+  caption:
+
+- file: season-3/teamyellow.JPG
+  players: [luke-sharrock, max-razums]
+  season: 3
+  caption:
+
+- file: season-3/dim-cele.JPG
+  players: [dimitri-liva]
+  season: 3
+  caption:
+
+- file: season-4/shayl-point.JPG
+  players: [shayl-inlander]
+  season: 4
+  caption:
+
+- file: season-3/flynn-cele.JPG
+  players: [flynn-braden]
+  season: 3
+  caption:
+
+- file: season-2/max.JPG
+  players: [max-razums]
+  season: 2
+  caption:
+
+- file: season-2/cons.JPG
+  players: [conor-paraskevas]
+  season: 2
+  caption:
