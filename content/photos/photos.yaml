@@ -229,3 +229,18 @@
   players: [conor-paraskevas]
   season: 2
   caption:
+
+- file: season-1/joel.JPG
+  players: [joel-trudgeon]
+  season: 1
+  caption:
+
+- file: season-1/shayl-signing.JPG
+  players: [shayl-inlander]
+  season: 1
+  caption: Shayl signs on as injury replacement in Season 1
+
+- file: season-1/raines-serve.JPG
+  players: [jack-raines]
+  season: 1
+  caption:
