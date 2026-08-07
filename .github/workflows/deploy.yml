@@ -46,3 +46,10 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # The Pages service can sit on a queued deployment for a long time
+          # when its backlog builds — this happened for about an hour on
+          # 2026-08-06 and failed four runs. The default 10 min gives up while
+          # the deployment is still perfectly healthy, so wait longer and let a
+          # slow deploy be slow rather than red.
+          timeout: 1800000
