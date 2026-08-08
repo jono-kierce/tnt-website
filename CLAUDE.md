@@ -33,11 +33,16 @@ npm test             # vitest (stats + normalization unit tests)
 npm run check-data   # validate the CSV: coverage, out-of-range votes, ambiguous rows, missing bios
 npm run ladder       # print derived ladders + pairings per season (sanity check)
 npm run optimize-photos          # downsize new photos for the web (add `-- --dry-run` first)
+npm run graphics     # render this round's Instagram PNGs -> graphics/out/ (needs Node 22.18+)
 ```
 
-Node 20+. `--experimental-strip-types` is used to run the `.ts` scripts directly;
-season configs use `import.meta.glob`, so they only load under Vite (Astro), not
-plain Node — `ladder`/`check-data` deliberately avoid importing them.
+Node 20+, except `npm run graphics` which needs **Node 22.18+**: the renderer
+imports the site's `.ts` libraries directly and relies on built-in type
+stripping. `--experimental-strip-types` is used to run the `.ts` scripts
+directly; season configs use `import.meta.glob`, so they only load under Vite
+(Astro), not plain Node — `ladder`/`check-data` deliberately avoid importing
+them, and `graphics/lib/season-configs.ts` is a Node-safe re-implementation of
+that auto-discovery for the renderer.
 
 ## Architecture
 
@@ -60,7 +65,38 @@ content/                 bios, photos, recaps (owner-edited)
 scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/build);
                          prunes public/ files content/ no longer has
 scripts/optimize-photos.py  downsizes content/photos for the web (owner-run, idempotent)
+graphics/                Instagram PNGs, rendered from the same CSV — see graphics/README.md
 ```
+
+## Instagram graphics (`graphics/`)
+
+1080×1350 PNGs rendered by headless Chromium from the same CSV, so posting a
+round is "append rows, push, collect PNGs". Three template families — ladder,
+result card, stat board. **Read `graphics/README.md` before touching it**; the
+rules that matter here:
+
+- **No graphic computes a statistic.** `graphics/lib/payloads.ts` calls
+  `stats.ts` and does presentation only. A stat the graphics need but `stats.ts`
+  doesn't expose gets **added to `stats.ts` with a test** — never recomputed in
+  the renderer. A test asserts the ladder payload equals the site's own ladder.
+- **Team colours are generated**, not copied: `graphics/lib/tokens.ts` writes
+  `templates/_tokens.css` from `TEAMS` on every render, one `[data-team="…"]`
+  block per team. Templates never build a variable name from a team string.
+- **Fonts are vendored** under `templates/fonts/` with `font-display: block`, so
+  a render here and a render in CI lay out identically and no fallback face
+  gets baked into a PNG.
+- **The logo is an inlined CSS mask** (`templates/_assets.css`, generated from
+  `logos/`). It must stay greyscale **+ alpha** and stay a `data:` URI —
+  `mask-image` reads the alpha channel, and Chromium won't load a mask across a
+  `file://` opaque origin. Break either and it silently becomes a gold rectangle.
+- **Sealed votes are refused, not rendered.** Any vote-derived board (votes,
+  finals votes, BOG) on a season in `sealedVoteSeasons` throws; the CLI reports
+  the skip. A graphic gets posted, so leaking there is worse than on a page.
+- **Match winners come from `win?`, never from counting sets** — S4 R9 has a
+  `5-5` that neither side won.
+- CI renders the current round on push to `main` and uploads the PNGs as an
+  artifact. It runs alongside the Pages build and is `continue-on-error`, so it
+  can't slow or block a deploy. **Nothing is committed to the repo.**
 
 ## Data conventions (must respect)
 

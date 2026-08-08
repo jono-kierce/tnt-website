@@ -14,7 +14,7 @@
  */
 
 import { chromium } from 'playwright';
-import { mkdirSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { basename, dirname, extname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -215,7 +215,8 @@ if (only.has('boards')) {
       payload = statBoardPayload(spec);
     } catch (err) {
       if (err instanceof SealedVotesError) {
-        warnings.push(`Skipped "${spec.title}" — ${err.message}`);
+        // The error already names the board and says what to do about it.
+        warnings.push(err.message);
         continue;
       }
       throw err;
@@ -233,6 +234,16 @@ await browser.close();
 // ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
+
+// Let a GitHub Actions step name its artifact after what was actually
+// rendered, rather than the workflow guessing the round ahead of time.
+if (process.env.GITHUB_OUTPUT) {
+  appendFileSync(
+    process.env.GITHUB_OUTPUT,
+    `stem=${stem}\ncount=${written.length}\n`,
+    'utf8'
+  );
+}
 
 console.log(`\n${written.length} graphic${written.length === 1 ? '' : 's'} → ${OUT}`);
 if (warnings.length) {

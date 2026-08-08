@@ -11,7 +11,10 @@
 <style>
   header { flex: none; position: relative; }
   .eyebrow { margin-top: -64px; }
-  .headline { font-size: 88px; margin-top: 16px; }
+  /* Board titles are configuration, not fixed strings, so the headline keeps
+     clear of the crest and `fitHeadline` below steps the size down until it
+     fits. "Career Winners" at 88px would otherwise run straight under it. */
+  .headline { font-size: 88px; margin-top: 16px; max-width: 770px; }
   .sub { margin-top: 12px; }
   header .mark { position: absolute; right: 0; top: -34px; width: 92px; color: var(--gold); }
   .rule-gold {
@@ -207,9 +210,28 @@ function toneColor(t) {
   return `rgb(${mix.join(',')})`;
 }
 
+/**
+ * Set the headline as large as it goes on one line, down to a floor. A board's
+ * title comes from its spec, so "Bad Stats" and "Winners Per Set, All Time"
+ * both have to land — and a headline that silently wrapped would eat a row off
+ * the bottom of the table instead of complaining.
+ */
+function fitHeadline(el, max = 88, min = 52) {
+  // Measure unwrapped: with `max-width` set, a wrapping element's scrollWidth
+  // never exceeds its clientWidth, so the overflow has nothing to report.
+  el.style.whiteSpace = 'nowrap';
+  for (let size = max; size >= min; size -= 2) {
+    el.style.fontSize = `${size}px`;
+    if (el.scrollWidth <= el.clientWidth) return;
+  }
+  // Longer than the floor allows — let it wrap rather than run off the canvas.
+  el.style.whiteSpace = 'normal';
+}
+
 window.__render = function (d) {
   document.getElementById('eyebrow').textContent = d.eyebrow;
   document.getElementById('title').textContent = d.title;
+  fitHeadline(document.getElementById('title'));
   document.getElementById('subtitle').textContent = d.subtitle;
   document.getElementById('metric-label').textContent = d.metricLabel;
   document.getElementById('footnote').textContent = d.footnote;

@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "ladder": "node --experimental-strip-types scripts/print-ladder.ts",
     "check-data": "node --experimental-strip-types scripts/check-data.ts",
-    "optimize-photos": "python3 scripts/optimize-photos.py"
+    "optimize-photos": "python3 scripts/optimize-photos.py",
+    "graphics": "node graphics/render.mjs"
   },
   "dependencies": {
     "astro": "^5.6.0",

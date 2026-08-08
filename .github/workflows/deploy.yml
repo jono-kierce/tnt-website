@@ -37,6 +37,57 @@ jobs:
         with:
           path: ./dist
 
+  # This week's Instagram graphics, rendered from the same CSV the site builds
+  # from and uploaded as an artifact — PNGs are never committed.
+  #
+  # Deliberately NOT a dependency of `deploy`: it runs alongside `build`, so it
+  # adds nothing to the time the site takes to ship, and `continue-on-error`
+  # means a broken template can't stop a data fix from going live. A failure
+  # still shows on the run; it just doesn't hold the door.
+  graphics:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Newer than the build job: the renderer imports the site's .ts
+          # libraries directly and needs Node's built-in type stripping (22.18+).
+          # `npm test` still runs on 20 in `build`, where vitest does its own
+          # transform.
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      # Chromium only. `playwright install` with no argument would also pull
+      # Firefox and WebKit, which nothing here renders with.
+      - name: Playwright version
+        id: pw
+        run: echo "v=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.pw.outputs.v }}
+      - if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      # A cached browser still needs its OS libraries on a fresh runner.
+      - if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      # No --season or --round: the CLI defaults to SITE.currentSeason and the
+      # latest round in the CSV, which is exactly "whatever was just pushed".
+      - name: Render graphics
+        id: render
+        run: npm run graphics
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: graphics-${{ steps.render.outputs.stem || github.sha }}
+          path: graphics/out/*.png
+          if-no-files-found: error
+          retention-days: 30
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
