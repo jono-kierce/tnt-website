@@ -29,6 +29,7 @@ npm run build      # static build into dist/
 npm run preview    # serve the built site
 npm test           # run the stats unit tests
 npm run ladder     # print derived ladders + pairings for every season (sanity check)
+npm run build-logo # regenerate public/logo/ from the artwork in logos/
 ```
 
 Requires Node 20+.
@@ -40,15 +41,16 @@ Requires Node 20+.
 | What | Where | Notes |
 |------|-------|-------|
 | **Match data** | `data/alltimestats.csv` | The one source of truth. Schema below. |
-| **Logo / crest** | `public/logo/` | `crest.svg` (or `.png`), `favicon.png`, `og.png`. See `public/logo/README.md`. A placeholder crest ships in the repo — replace it. |
+| **Logo / crest** | `logos/` | The source artwork. `npm run build-logo` turns it into the crest, favicon and share card in `public/logo/` — see `public/logo/README.md`. |
 | **Player bios** | `content/bios/<slug>.md` | ~150 words of markdown. See `content/bios/README.md`. |
 | **Player photos** | `content/photos/<slug>/` | 3–4 images per player. Falls back to an initials avatar. |
 | **Season recaps** | `content/seasons/season-<N>.md` | Optional prose per season. |
 
 A player's **slug** is their canonical name lowercased with spaces as hyphens,
 e.g. `Luke Sharrock` → `luke-sharrock`. Photos and the CSV are copied into the
-built site automatically (`scripts/copy-assets.mjs`); you never touch `public/`
-except for the logo files.
+built site automatically (`scripts/copy-assets.mjs`), and the logo files are
+written by `npm run build-logo` — so you never edit anything in `public/` by
+hand.
 
 ---
 
@@ -202,6 +204,7 @@ src/lib/stats.ts               ladder, aggregates, leaderboards, records
 src/lib/stats.test.ts          unit tests (name merge, ladder, votes eras, ...)
 src/components/  src/pages/     UI
 content/                        bios, photos, recaps (you edit these)
-public/logo/                    crest + favicon (you drop these in)
+logos/                          the source artwork
+public/logo/                    crest, favicon, share card (generated from it)
 scripts/copy-assets.mjs         copies CSV + photos into the build
 ```

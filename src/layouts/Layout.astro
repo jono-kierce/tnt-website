@@ -23,6 +23,9 @@ const nav = [
 ];
 const isCurrent = (href: string) =>
   href === withBase('/') ? path === href : path.startsWith(href);
+// A share card has to be an absolute URL — a crawler has no page to resolve a
+// relative one against. `Astro.site` is the deployed origin from astro.config.
+const ogImage = new URL(withBase('/logo/og.png'), Astro.site ?? Astro.url).href;
 const bodyStyle = accent
   ? `--team-color:${accent.color};--team-color-2:${accent.color2};--team-ink:${accent.ink}`
   : undefined;
@@ -37,7 +40,8 @@ const bodyStyle = accent
     <link rel="icon" href={withBase('/logo/favicon.png')} />
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
-    <meta property="og:image" content={withBase('/logo/og.png')} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#0a130d" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

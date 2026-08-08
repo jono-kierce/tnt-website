@@ -25,19 +25,21 @@ import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { LOGO_SOURCE, MARKS as CROPS } from '../../scripts/logo-marks.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
 const OUT = resolve(HERE, '../templates/_assets.css');
 
-/** Source artwork, and the crops that pull the two marks out of it. */
-const SOURCE = resolve(ROOT, "logos/white logo ' no text.png");
+/**
+ * The crops are shared with the website's own generator
+ * (`scripts/build-logo.mjs`) so a post and the site header can't end up
+ * cropping the mark differently; only the output size is decided here.
+ */
+const SOURCE = resolve(ROOT, LOGO_SOURCE);
 const MARKS = [
-  // The crest alone: TNT, laurel, crossed racquets, ball. Stops above the
-  // handwritten "Tuesday Night Tennis", which the templates set in type.
-  { name: 'crest', box: [725, 18, 2048, 1518], width: 512 },
-  // The full lockup, script included — for a card that has room for it.
-  { name: 'lockup', box: [725, 18, 2048, 1998], width: 560 },
+  { name: 'crest', box: CROPS.crest, width: 512 },
+  { name: 'lockup', box: CROPS.lockup, width: 560 },
 ];
 
 /**

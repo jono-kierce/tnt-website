@@ -232,6 +232,22 @@ table.stat .col-rank { width: 2ch; }
 .score { font-family: var(--serif); font-weight: 700; font-size: 1.2rem; letter-spacing: 0.04em; }
 .tiebreak { font-size: 0.62em; vertical-align: super; color: var(--gold-soft); }
 
+/* --- The TNT mark ---------------------------------------------------------- */
+/* The crest is a mask, not a picture: the element paints `currentColor` and the
+   generated PNG's alpha channel decides where the ink lands. That's what lets
+   the same file be gold in the header and ivory at 3.5% behind the page. The
+   mask URL and the aspect ratio are set inline by Crest.astro — the URL because
+   only it knows the deploy base path, the ratio because it reads it out of the
+   file. Size a `.mark` by height or width alone and the other follows. */
+.mark {
+  display: inline-block; flex: none;
+  background-color: currentColor;
+  -webkit-mask-image: var(--mark); mask-image: var(--mark);
+  -webkit-mask-size: contain; mask-size: contain;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center; mask-position: center;
+}
+
 /* --- Header ---------------------------------------------------------------- */
 .site-header {
   position: sticky; top: 0; z-index: 50;
@@ -245,9 +261,8 @@ table.stat .col-rank { width: 2ch; }
 }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--ivory); }
 .brand:hover { text-decoration: none; }
-.brand .crest { width: 34px; height: 34px; color: var(--gold); display: inline-block; flex: none; }
-.crest svg { width: 100%; height: 100%; display: block; }
-.site-footer .crest { width: 26px; height: 26px; color: var(--gold); display: inline-block; flex: none; }
+.brand .crest { height: 34px; color: var(--gold); }
+.site-footer .crest { height: 26px; color: var(--gold); }
 .brand .name {
   font-family: var(--serif); font-weight: 700; letter-spacing: 0.18em;
   text-transform: uppercase; font-size: 0.95rem;
@@ -271,9 +286,13 @@ table.stat .col-rank { width: 2ch; }
 .watermark {
   position: fixed; inset: 0; pointer-events: none; z-index: 0;
   display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
   opacity: 0.035; color: var(--ivory);
 }
-.watermark svg { width: min(70vw, 640px); height: auto; }
+/* The real crest is portrait, so a width alone would run off a laptop screen
+   top and bottom. `mask-size: contain` letterboxes the drawing inside whatever
+   box these two leave, which keeps it whole and undistorted at any window. */
+.watermark .mark { width: min(70vw, 640px); max-height: 76vh; }
 main { position: relative; z-index: 1; }
 
 /* --- Footer ---------------------------------------------------------------- */

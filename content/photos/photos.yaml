@@ -13,8 +13,23 @@
 # Order matters: galleries show photos in the order listed here, and a player's
 # avatar is their first solo-tagged photo (falling back to first tagged).
 
+- file: season-1/szn-wrapup.jpeg
+  players: []
+  season: 4
+  caption:
+
 - file: season-1/s1-dickson.jpg
   players: [adam-dickson]
+  season: 1
+  caption:
+
+- file: season-4/emerson-cele.JPG
+  players: [emerson-wise]
+  season: 4
+  caption:
+
+- file: season-1/damon-smile.jpeg
+  players: [damon-maurice]
   season: 1
   caption:
 
@@ -98,6 +113,11 @@
   season: 4
   caption:
 
+- file: season-4/jonoheadshot.jpg
+  players: [jonathan-kierce]
+  season: 4
+  caption:
+
 - file: season-4/s4-celebration.jpg
   players: [jonathan-kierce]
   season: 4
@@ -170,17 +190,7 @@
   season: 4
   caption: Team Red in S4
 
-- file: season-4/jonoheadshot.jpg
-  players: [jonathan-kierce]
-  season: 4
-  caption:
-
 - file: season-4/emerson-serve.JPG
-  players: [emerson-wise]
-  season: 4
-  caption:
-
-- file: season-4/emerson-cele.JPG
   players: [emerson-wise]
   season: 4
   caption:

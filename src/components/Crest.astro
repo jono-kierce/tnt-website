@@ -6,23 +6,34 @@ import { withBase } from '../lib/url.ts';
 interface Props { class?: string }
 const { class: cls = '' } = Astro.props;
 
-// Prefer inlining the SVG crest so it inherits currentColor (header + watermark).
-// Fall back to a PNG <img>, then to a text mark.
-const svgPath = path.join(process.cwd(), 'public/logo/crest.svg');
-const pngPath = path.join(process.cwd(), 'public/logo/crest.png');
-
-let inlineSvg: string | null = null;
-let pngSrc: string | null = null;
-if (fs.existsSync(svgPath)) {
-  inlineSvg = fs.readFileSync(svgPath, 'utf8').replace(/<\?xml[\s\S]*?\?>/, '').trim();
-} else if (fs.existsSync(pngPath)) {
-  pngSrc = withBase('/logo/crest.png');
+// The crest ships as a greyscale *mask* (generated from `logos/` by
+// `scripts/build-logo.mjs`), so one file takes gold in the header and ivory at
+// 3.5% behind the page — see `.mark` in global.css. The drawing lives in the
+// PNG's alpha channel, which is what `mask-image` reads.
+//
+// The mask URL has to be set here rather than in the stylesheet: the site is
+// served from a base path on GitHub Pages, and `withBase` is the only thing
+// that knows it. Aspect ratio comes from the file itself — a PNG's width and
+// height are big-endian u32s at bytes 16 and 20 of the IHDR chunk — so
+// re-rendering the artwork at a different shape needs no edit here.
+const file = path.join(process.cwd(), 'public/logo/crest.png');
+let ratio: string | null = null;
+if (fs.existsSync(file)) {
+  const head = Buffer.alloc(24);
+  const fd = fs.openSync(file, 'r');
+  fs.readSync(fd, head, 0, 24, 0);
+  fs.closeSync(fd);
+  ratio = `${head.readUInt32BE(16)} / ${head.readUInt32BE(20)}`;
 }
+const src = withBase('/logo/crest.png');
 ---
-{inlineSvg ? (
-  <span class={cls} set:html={inlineSvg} />
-) : pngSrc ? (
-  <img class={cls} src={pngSrc} alt="Tuesday Night Tennis crest" />
+{ratio ? (
+  <span
+    class={`mark ${cls}`}
+    role="img"
+    aria-label="Tuesday Night Tennis crest"
+    style={`--mark:url('${src}');aspect-ratio:${ratio}`}
+  />
 ) : (
   <span class={cls} style="font-family: var(--serif); font-weight:700; letter-spacing:0.12em;">TNT</span>
 )}

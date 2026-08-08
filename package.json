@@ -15,6 +15,7 @@
     "ladder": "node --experimental-strip-types scripts/print-ladder.ts",
     "check-data": "node --experimental-strip-types scripts/check-data.ts",
     "optimize-photos": "python3 scripts/optimize-photos.py",
+    "build-logo": "node scripts/build-logo.mjs",
     "graphics": "node graphics/render.mjs"
   },
   "dependencies": {

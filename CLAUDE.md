@@ -33,6 +33,7 @@ npm test             # vitest (stats + normalization unit tests)
 npm run check-data   # validate the CSV: coverage, out-of-range votes, ambiguous rows, missing bios
 npm run ladder       # print derived ladders + pairings per season (sanity check)
 npm run optimize-photos          # downsize new photos for the web (add `-- --dry-run` first)
+npm run build-logo   # logos/ -> public/logo/ (crest mask, favicon, share card)
 npm run graphics     # render this round's Instagram PNGs -> graphics/out/ (needs Node 22.18+)
 ```
 
@@ -65,6 +66,8 @@ content/                 bios, photos, recaps (owner-edited)
 scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/build);
                          prunes public/ files content/ no longer has
 scripts/optimize-photos.py  downsizes content/photos for the web (owner-run, idempotent)
+scripts/build-logo.mjs   logos/ -> public/logo/ (owner-run when the artwork changes)
+scripts/logo-marks.mjs   the source file + crop boxes, shared with the graphics
 graphics/                Instagram PNGs, rendered from the same CSV — see graphics/README.md
 ```
 
@@ -89,6 +92,8 @@ rules that matter here:
   `logos/`). It must stay greyscale **+ alpha** and stay a `data:` URI —
   `mask-image` reads the alpha channel, and Chromium won't load a mask across a
   `file://` opaque origin. Break either and it silently becomes a gold rectangle.
+  The **crops** come from `scripts/logo-marks.mjs`, shared with the site's own
+  generator so a post and the site header can't crop the mark differently.
 - **Sealed votes are refused, not rendered.** Any vote-derived board (votes,
   finals votes, BOG) on a season in `sealedVoteSeasons` throws; the CLI reports
   the skip. A graphic gets posted, so leaking there is worse than on a page.
@@ -164,6 +169,16 @@ rules that matter here:
   capture date (camera model and GPS coordinates are dropped — these files are
   publicly downloadable). It's idempotent, and renames PNG→JPEG, updating
   `photos.yaml` to match. `check-data` warns above 1 MB.
+- **The logo is generated, never hand-edited.** `public/logo/` is written by
+  `npm run build-logo` from `logos/`; the output is committed. `crest.png` is a
+  **mask**, same trick as the graphics: the drawing lives in the alpha channel
+  and `.mark` in `global.css` paints `currentColor` through it, which is how one
+  file is gold in the header and ivory at 3.5% behind the page. Size a `.mark`
+  by height *or* width and let the other follow — `Crest.astro` supplies the
+  aspect ratio (read out of the PNG) and the mask URL (only it knows the deploy
+  base path, so the URL can't move into the stylesheet). `favicon.png` and
+  `og.png` bake the colour in instead: a tab and a link preview are composited
+  by somebody else's renderer.
 
 ## Current state / open TODOs (owner to fill)
 
