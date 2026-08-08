@@ -29,6 +29,20 @@ const season5: SeasonConfig = {
     Yellow: { captain: 'Luke Sharrock', pair: ['Luke Sharrock', 'Jack Raines'] },
   },
 
+  // Captains in pick order, number one pick first. Drives the draft graphic.
+  draftOrder: [
+    'Navy', // 1  W. Mumme
+    'Black', // 2  A. Littlejohn
+    'Light Blue', // 3  S. Inlander
+    'Green', // 4  Q. Feikema
+    'Orange', // 5  J. Gorton
+    'Pink', // 6  C. Simpson
+    'Red', // 7  L. Jenkin
+    'Brown', // 8  A. Dickson
+    'White', // 9  J. Kierce
+    'Yellow', // 10 L. Sharrock
+  ],
+
   honours: [],
 };
 

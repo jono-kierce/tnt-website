@@ -75,4 +75,14 @@ export interface SeasonConfig {
   honours: Honour[];
   /** Per-team captain + optional pairing override, keyed by colour. */
   teams?: Record<string, TeamConfig>;
+  /**
+   * Team colours in draft order — the captain with the number one pick first.
+   * The CSV can't know this, and `teams` above can't carry it either: its key
+   * order is incidental, and something that only reads right by accident is a
+   * thing that silently stops reading right.
+   *
+   * Only the draft graphic uses it. Omit it and there's no draft graphic;
+   * nothing else on the site or in the renderer cares.
+   */
+  draftOrder?: string[];
 }

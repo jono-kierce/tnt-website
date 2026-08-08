@@ -23,6 +23,7 @@ import { writeTokens, BRAND } from './lib/tokens.ts';
 import { seasonBoards, careerBoards } from './lib/boards.ts';
 import {
   SealedVotesError,
+  draftPayload,
   ladderPayload,
   latestRound,
   resolveRound,
@@ -46,6 +47,8 @@ const { values: argv } = parseArgs({
     only: { type: 'string' },
     photos: { type: 'string' },
     out: { type: 'string' },
+    subtitle: { type: 'string' },
+    footnote: { type: 'string' },
     career: { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h', default: false },
   },
@@ -58,12 +61,16 @@ TNT graphics renderer
   --season <n>     Season to render. Default: SITE.currentSeason (${SITE.currentSeason}).
   --round <r>      Round number, or QF / SF / F. Default: the season's latest
                    round in the CSV.
-  --only <list>    Comma-separated: ladder, results, boards. Default: all.
+  --only <list>    Comma-separated: ladder, results, boards, draft.
+                   Default: ladder,results,boards — the draft board is a
+                   once-a-season post, so it only renders when you ask for it.
   --photos <dir>   Folder of match photos for the result cards. A file is
                    matched to a fixture by name — "pink-v-white.jpg", any name
                    containing both team colours, or "match1.jpg" positionally.
                    A fixture with no photo renders on the scrim and warns.
   --career         Also render the all-time boards.
+  --subtitle <s>   Override the draft board's subtitle.
+  --footnote <s>   Small print bottom-right of the draft board (date, venue).
   --out <dir>      Output folder. Default: graphics/out.
 `);
   process.exit(0);
@@ -75,24 +82,31 @@ if (!Number.isFinite(season)) {
   process.exit(1);
 }
 
+// `draft` is deliberately not in the default set — it's a once-a-season post,
+// not part of a round.
+const KINDS = ['ladder', 'results', 'boards', 'draft'];
+const only = new Set(
+  (argv.only ?? 'ladder,results,boards').split(',').map((s) => s.trim()).filter(Boolean)
+);
+const unknown = [...only].filter((k) => !KINDS.includes(k));
+if (unknown.length) {
+  console.error(`Unknown --only value(s): ${unknown.join(', ')}. Pick from: ${KINDS.join(', ')}`);
+  process.exit(1);
+}
+
+// A draft happens before a ball is hit, so it needs no round — and a season
+// that has only been drafted has no rows to infer one from.
+const needsRound = ['ladder', 'results', 'boards'].some((k) => only.has(k));
 const latest = latestRound(season);
-if (!latest && argv.round === undefined) {
+if (needsRound && !latest && argv.round === undefined) {
   console.error(
     `Season ${season} has no rows in data/alltimestats.csv, so there's nothing ` +
-      `to render. (SITE.currentSeason is ${SITE.currentSeason}.)`
+      `to render. (SITE.currentSeason is ${SITE.currentSeason}.)\n` +
+      `If the season has only been drafted, try: --only draft`
   );
   process.exit(1);
 }
 const round = argv.round === undefined ? latest : resolveRound(argv.round);
-
-const only = new Set(
-  (argv.only ?? 'ladder,results,boards').split(',').map((s) => s.trim()).filter(Boolean)
-);
-const unknown = [...only].filter((k) => !['ladder', 'results', 'boards'].includes(k));
-if (unknown.length) {
-  console.error(`Unknown --only value(s): ${unknown.join(', ')}`);
-  process.exit(1);
-}
 
 const OUT = argv.out ? resolve(process.cwd(), argv.out) : OUT_DEFAULT;
 
@@ -171,9 +185,22 @@ async function shoot(template, data, file) {
 }
 
 /** `s4-r09` — sorts chronologically, says what it is. */
-const stem = `s${season}-${round.fileTag}`;
+const stem = round ? `s${season}-${round.fileTag}` : `s${season}`;
 
-console.log(`\nTNT graphics — Season ${season}, ${round.label}\n`);
+console.log(
+  `\nTNT graphics — Season ${season}${round ? `, ${round.label}` : ''}\n`
+);
+
+if (only.has('draft')) {
+  await shoot(
+    'draft.html',
+    await draftPayload(season, {
+      subtitle: argv.subtitle,
+      footnote: argv.footnote,
+    }),
+    `s${season}-draft.png`
+  );
+}
 
 if (only.has('ladder')) {
   await shoot('ladder.html', await ladderPayload(season, round), `${stem}-ladder.png`);

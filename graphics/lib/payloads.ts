@@ -23,7 +23,7 @@ import {
 import type { MatchSide, SetScore, StatRow } from '../../src/lib/types.ts';
 import { SITE, isVotesSealed } from '../../src/config/site.ts';
 import { PHOTOS_DIR, avatarPhoto } from '../../src/lib/photos.ts';
-import { seasonTeamConfigs } from './season-configs.ts';
+import { getSeasonConfig, seasonTeamConfigs } from './season-configs.ts';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -313,6 +313,83 @@ export async function resultCardPayloads(
 
 export const seasonYear = (season: number): number | undefined =>
   SITE.seasonYears[season];
+
+// ---------------------------------------------------------------------------
+// Draft
+// ---------------------------------------------------------------------------
+
+export interface DraftRowPayload {
+  /** 1 = the number one pick. */
+  pick: number;
+  team: string;
+  captain: string;
+  /** Everyone the captain took, in the order the config lists them. */
+  draftee: string;
+}
+
+export interface DraftPayload {
+  kind: 'draft';
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  footnote: string;
+  rows: DraftRowPayload[];
+}
+
+/**
+ * The draft board for a season, straight off its config.
+ *
+ * The only graphic that reads no match data at all — a draft happens before
+ * there's a single row in the CSV, which is exactly why the pick order has to
+ * be recorded in `season-N.ts`. Nothing is derived here beyond splitting each
+ * pairing into the captain and who they took.
+ */
+export async function draftPayload(
+  season: number,
+  opts: { subtitle?: string; footnote?: string } = {}
+): Promise<DraftPayload> {
+  const cfg = await getSeasonConfig(season);
+  const order = cfg?.draftOrder;
+  if (!cfg || !order?.length) {
+    throw new Error(
+      `Season ${season} has no draftOrder in src/config/seasons/season-${season}.ts, ` +
+        `so there's no pick order to print. Add one — team colours, number one ` +
+        `pick first — and the board builds itself from the pairings already there.`
+    );
+  }
+
+  const rows = order.map((team, i) => {
+    const entry = cfg.teams?.[team];
+    const pair = entry?.pair ?? [];
+    const captain = entry?.captain ?? pair[0];
+    if (!captain) {
+      throw new Error(
+        `Season ${season}: draftOrder lists "${team}" but its teams entry has no ` +
+          `captain or pairing to print.`
+      );
+    }
+    return {
+      pick: i + 1,
+      team,
+      captain,
+      // Everyone after the captain. A pairing is two, but a team that ever
+      // carried three shouldn't lose the third name off the poster.
+      draftee: pair.slice(1).join(' & '),
+    };
+  });
+
+  return {
+    kind: 'draft',
+    eyebrow: eyebrowLabel(season),
+    title: 'The Draft',
+    subtitle: opts.subtitle ?? `${rows.length} teams · Captain's pick`,
+    // Empty by default: the ladder's footnote earns its place by explaining the
+    // ratio, and a draft board has nothing that needs explaining. The slot is
+    // there for a date or a venue — pass --footnote.
+    footnote: opts.footnote ?? '',
+    rows,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Stat boards

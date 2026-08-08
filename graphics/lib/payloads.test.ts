@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   SealedVotesError,
+  draftPayload,
   ladderPayload,
   latestRound,
   resolveRound,
@@ -10,7 +11,8 @@ import {
   statBoardPayload,
 } from './payloads.ts';
 import { ladderWithPairings } from '../../src/lib/stats.ts';
-import { SITE } from '../../src/config/site.ts';
+import { SITE, TEAMS } from '../../src/config/site.ts';
+import { getSeasonConfig } from './season-configs.ts';
 
 /** Compact "6 7" / "4 6³" for asserting on a whole side at once. */
 const line = (sets: { games: string; tiebreak: string | null }[]) =>
@@ -145,6 +147,47 @@ describe('ladder payload', () => {
     const afterR9 = await ladderPayload(4, resolveRound('9'));
     expect(afterFinal.rows).toEqual(afterR9.rows);
     expect(afterFinal.title).toBe('Final Ladder');
+  });
+});
+
+describe('draft board', () => {
+  it('reads Season 5 in pick order, captain and draftee split out', async () => {
+    const d = await draftPayload(5);
+    expect(d.rows).toHaveLength(10);
+    expect(d.rows.map((r) => [r.pick, r.captain, r.draftee])).toEqual([
+      [1, 'Will Mumme', 'Ed Simpson'],
+      [2, 'Archie Littlejohn', 'Angus Hume'],
+      [3, 'Shayl Inlander', 'Ethan Seamer'],
+      [4, 'Quinn Feikema', 'Lewis Mossman'],
+      [5, 'Jimmy Gorton', 'Lachy Godden'],
+      [6, 'Charlie Simpson', 'Damon Maurice'],
+      [7, 'Lachlan Jenkin', 'Jamie Harris'],
+      [8, 'Adam Dickson', 'Ted Angel'],
+      [9, 'Jonathan Kierce', 'Jackson Virgona'],
+      [10, 'Luke Sharrock', 'Jack Raines'],
+    ]);
+  });
+
+  it('names a team for every pick, including the tenth colour', async () => {
+    const d = await draftPayload(5);
+    // Brown joins for S5. A team missing from TEAMS would fall through to the
+    // neutral chip rather than to a broken variable, so assert the real list.
+    expect(d.rows.map((r) => r.team)).toEqual([
+      'Navy', 'Black', 'Light Blue', 'Green', 'Orange',
+      'Pink', 'Red', 'Brown', 'White', 'Yellow',
+    ]);
+    for (const r of d.rows) expect(TEAMS[r.team]).toBeDefined();
+  });
+
+  it('keeps draftOrder and teams in step', async () => {
+    const cfg = await getSeasonConfig(5);
+    // Every drafted team has a pairing, and no team is left off the board.
+    expect(new Set(cfg!.draftOrder)).toEqual(new Set(Object.keys(cfg!.teams!)));
+    expect(cfg!.draftOrder).toHaveLength(new Set(cfg!.draftOrder).size);
+  });
+
+  it('explains itself when a season has no recorded pick order', async () => {
+    await expect(draftPayload(4)).rejects.toThrow(/no draftOrder/);
   });
 });
 

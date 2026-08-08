@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Draft</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  header { flex: none; position: relative; }
+  .eyebrow { margin-top: -64px; }
+  .headline { font-size: 96px; margin-top: 14px; }
+  .sub { margin-top: 12px; }
+  header .mark { position: absolute; right: 0; top: -30px; width: 96px; color: var(--gold); }
+  .rule-gold {
+    height: 2px; margin-top: 22px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  .thead {
+    flex: none; display: flex; align-items: flex-end; gap: 18px;
+    padding: 16px 8px 10px;
+    font-size: 18px; font-weight: 600;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: rgba(244, 241, 232, 0.4);
+  }
+  .c-pick { width: 62px; }
+  .c-bar { width: 10px; }
+  .c-cap { flex: 1; }
+  .c-pick-name { flex: 1; }
+
+  .rows { flex: 1; display: flex; flex-direction: column; }
+
+  .row {
+    flex: 1;
+    display: flex; align-items: center; gap: 18px;
+    padding: 0 8px;
+    border-top: 1px solid var(--rule);
+    position: relative;
+  }
+  .row:first-child { border-top: 0; }
+  .row > * { position: relative; z-index: 1; }
+
+  /* The number one pick gets the leader treatment the ladder gives first place. */
+  .row.first::before {
+    content: '';
+    position: absolute; inset: 0 -8px;
+    background: linear-gradient(90deg, rgba(217,185,106,0.18), rgba(217,185,106,0.02) 58%, transparent);
+  }
+  .row.first::after {
+    content: '';
+    position: absolute; left: -8px; top: 0; bottom: 0; width: 4px;
+    background: var(--gold);
+  }
+
+  .pick {
+    width: 62px; text-align: center;
+    font-family: var(--display); font-weight: 600; font-size: 40px;
+    color: var(--gold);
+  }
+  .row:nth-child(n+4) .pick { color: rgba(244, 241, 232, 0.45); }
+  .row.first .pick { color: var(--gold); }
+
+  .bar { width: 10px; height: 56px; border-radius: 5px; flex: none;
+         background: linear-gradient(180deg, var(--team), var(--team-2)); }
+
+  /* Two columns, because a draft is a pairing of two facts: who picked, and
+     who they got. Captain-first is the league's convention everywhere else. */
+  .cap { flex: 1; font-size: 37px; font-weight: 600; letter-spacing: 0.01em; }
+  .took {
+    flex: 1; display: flex; align-items: baseline; gap: 12px;
+    font-size: 37px; font-weight: 500; color: var(--gold-soft);
+  }
+  .took .amp {
+    font-family: var(--display); font-size: 26px; font-weight: 600;
+    color: rgba(244, 241, 232, 0.32); flex: none;
+  }
+
+  footer {
+    flex: none; display: flex; justify-content: space-between; align-items: flex-end;
+    padding-top: 20px; margin-bottom: -74px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette">
+  <header>
+    <div class="mark mark--crest"></div>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="thead">
+    <div class="c-pick">Pick</div>
+    <div class="c-bar"></div>
+    <div class="c-cap">Captain</div>
+    <div class="c-pick-name">Drafted</div>
+  </div>
+
+  <div class="rows" id="rows"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+    <div class="footnote" id="footnote"></div>
+  </footer>
+</div>
+
+<script type="module">
+const DATA = {
+  eyebrow: 'Season 5 · 2026',
+  title: 'The Draft',
+  subtitle: "10 teams · Captain's pick",
+  footnote: 'Picks in order',
+  rows: [
+    { pick: 1,  team: 'Navy',       captain: 'Will Mumme',       draftee: 'Ed Simpson' },
+    { pick: 2,  team: 'Black',      captain: 'Archie Littlejohn', draftee: 'Angus Hume' },
+    { pick: 3,  team: 'Light Blue', captain: 'Shayl Inlander',   draftee: 'Ethan Seamer' },
+    { pick: 4,  team: 'Green',      captain: 'Quinn Feikema',    draftee: 'Lewis Mossman' },
+    { pick: 5,  team: 'Orange',     captain: 'Jimmy Gorton',     draftee: 'Lachy Godden' },
+    { pick: 6,  team: 'Pink',       captain: 'Charlie Simpson',  draftee: 'Damon Maurice' },
+    { pick: 7,  team: 'Red',        captain: 'Lachlan Jenkin',   draftee: 'Jamie Harris' },
+    { pick: 8,  team: 'Brown',      captain: 'Adam Dickson',     draftee: 'Ted Angel' },
+    { pick: 9,  team: 'White',      captain: 'Jonathan Kierce',  draftee: 'Jackson Virgona' },
+    { pick: 10, team: 'Yellow',     captain: 'Luke Sharrock',    draftee: 'Jack Raines' },
+  ],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+  document.getElementById('subtitle').textContent = d.subtitle;
+  document.getElementById('footnote').textContent = d.footnote;
+
+  document.getElementById('rows').innerHTML = d.rows.map((r) => `
+    <div class="row ${r.pick === 1 ? 'first' : ''}" data-team="${esc(r.team)}">
+      <div class="pick">${r.pick}</div>
+      <div class="bar"></div>
+      <div class="cap">${esc(r.captain)}</div>
+      <div class="took"><span class="amp">&amp;</span>${esc(r.draftee)}</div>
+    </div>`).join('');
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>
