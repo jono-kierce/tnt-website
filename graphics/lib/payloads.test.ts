@@ -1,0 +1,265 @@
+import { describe, expect, it } from 'vitest';
+import {
+  SealedVotesError,
+  ladderPayload,
+  latestRound,
+  resolveRound,
+  resultCardPayloads,
+  rows,
+  seasonRounds,
+  statBoardPayload,
+} from './payloads.ts';
+import { ladderWithPairings } from '../../src/lib/stats.ts';
+import { SITE } from '../../src/config/site.ts';
+
+/** Compact "6 7" / "4 6³" for asserting on a whole side at once. */
+const line = (sets: { games: string; tiebreak: string | null }[]) =>
+  sets.map((s) => s.games + (s.tiebreak ? `^${s.tiebreak}` : '')).join(' ');
+
+describe('round resolution', () => {
+  it('reads a home-and-away round and a finals stage', () => {
+    expect(resolveRound('9')).toMatchObject({
+      round: 9,
+      stage: null,
+      label: 'Round 9',
+      fileTag: 'r09',
+    });
+    expect(resolveRound('F')).toMatchObject({ stage: 'F', label: 'Grand Final', fileTag: 'rF' });
+    expect(resolveRound('QF')).toMatchObject({ stage: 'QF', label: 'Qualifying Final' });
+    expect(resolveRound('SF')).toMatchObject({ stage: 'SF', label: 'Semi Final' });
+  });
+
+  it('zero-pads the file tag so a folder sorts chronologically', () => {
+    const tags = [1, 2, 9].map((n) => resolveRound(String(n)).fileTag);
+    expect(tags).toEqual(['r01', 'r02', 'r09']);
+    expect([...tags].sort()).toEqual(tags);
+  });
+
+  it('puts finals after the home-and-away season', () => {
+    const s4 = seasonRounds(4);
+    expect(s4.map((r) => r.fileTag).slice(-3)).toEqual(['rQF', 'rSF', 'rF']);
+    expect(latestRound(4)?.stage).toBe('F');
+  });
+});
+
+describe('result card scorelines', () => {
+  /** The one fixture in a round, winner's side first. */
+  const card = async (season: number, round: string) =>
+    (await resultCardPayloads(season, resolveRound(round)))[0];
+
+  it('renders the Season 4 grand final, 6-4 7-6(3)', async () => {
+    const c = await card(4, 'F');
+    expect(c.sides.map((s) => s.team)).toEqual(['Pink', 'White']);
+    expect(line(c.sides[0].sets)).toBe('6 7');
+    // The breaker is written on the loser's side in the CSV, and that's the
+    // side that prints it — nothing here inverts a score to get the other view.
+    expect(line(c.sides[1].sets)).toBe('4 6^3');
+    expect(c.sides[0].won).toBe(true);
+  });
+
+  it('renders the Season 3 grand final, 6-0 0-6 6-4', async () => {
+    const c = await card(3, 'F');
+    expect(line(c.sides[0].sets)).toBe('6 0 6');
+    expect(line(c.sides[1].sets)).toBe('0 6 4');
+    expect(c.sides[0].sets.map((s) => s.won)).toEqual([true, false, true]);
+  });
+
+  it('renders the Season 1 grand final, 4-6 7-6(4) 6-1', async () => {
+    const c = await card(1, 'F');
+    expect(line(c.sides[0].sets)).toBe('4 7 6');
+    expect(line(c.sides[1].sets)).toBe('6 6^4 1');
+  });
+
+  it('handles a one-set tie and a tiebreak in the qualifying round', async () => {
+    const cards = await resultCardPayloads(4, resolveRound('QF'));
+    expect(cards).toHaveLength(4);
+    const upset = cards.find((c) => c.slug === 'white-v-green')!;
+    expect(line(upset.sides[0].sets)).toBe('7');
+    expect(line(upset.sides[1].sets)).toBe('6^3');
+    // The 7th seed beat the 2nd — seeds come off the final ladder, not the draw.
+    expect(upset.sides.map((s) => s.seed)).toEqual([7, 2]);
+  });
+
+  it('marks the winner of a set left level, off win? rather than the score', async () => {
+    // Season 4, Round 9: Green beat Yellow on a 5-5 nobody recorded a breaker
+    // for. Neither side won the set, so the card can't infer a winner from it.
+    const cards = await resultCardPayloads(4, resolveRound('9'));
+    const level = cards.find((c) => c.slug === 'green-v-yellow')!;
+    expect(level.sides.map((s) => s.sets[0].games)).toEqual(['5', '5']);
+    expect(level.sides.every((s) => !s.sets[0].won)).toBe(true);
+    expect(level.sides.every((s) => s.sets[0].level)).toBe(true);
+    // ...but exactly one of them won the match, and it's listed first.
+    expect(level.sides.map((s) => s.won)).toEqual([true, false]);
+    expect(level.sides[0].team).toBe('Green');
+  });
+
+  it('labels a home-and-away round and a final differently', async () => {
+    expect((await card(4, '9')).roundLabel).toBe('Round 9');
+    expect((await card(4, 'F')).roundLabel).toBe('Grand Final');
+  });
+});
+
+describe('ladder payload', () => {
+  it('is the same ladder the site renders, formatted for print', async () => {
+    const p = await ladderPayload(4, resolveRound('9'));
+    const site = ladderWithPairings(4, rows, () => undefined);
+
+    expect(p.rows.map((r) => r.team)).toEqual(site.map((r) => r.team));
+    expect(p.rows.map((r) => r.ratio)).toEqual(site.map((r) => r.ratio.toFixed(2)));
+    expect(p.rows[0]).toMatchObject({
+      rank: 1,
+      team: 'Pink',
+      pairing: 'L. Sharrock & A. Hume',
+      played: 8,
+      wins: 8,
+      ratio: '1.67',
+      qualifies: true,
+    });
+  });
+
+  it('takes the pairing order from the season config', async () => {
+    const p = await ladderPayload(4, resolveRound('9'));
+    // season-4.ts lists Orange captain-first as Gorton then Simpson; games
+    // played alone would put Simpson first.
+    expect(p.rows.find((r) => r.team === 'Orange')!.pairing).toBe(
+      'J. Gorton & E. Simpson'
+    );
+  });
+
+  it('marks only the top eight as qualifying', async () => {
+    const p = await ladderPayload(4, resolveRound('9'));
+    expect(p.finalsCutoff).toBe(8);
+    expect(p.rows.filter((r) => r.qualifies)).toHaveLength(8);
+    expect(p.rows.at(-1)).toMatchObject({ rank: 9, qualifies: false });
+  });
+
+  it('gives the ladder as it stood mid-season', async () => {
+    const early = await ladderPayload(4, resolveRound('3'));
+    expect(early.title).toBe('Standings');
+    expect(early.subtitle).toContain('After Round 3');
+    expect(early.rows.every((r) => r.played <= 3)).toBe(true);
+  });
+
+  it('keeps finals off the ladder they seeded', async () => {
+    const afterFinal = await ladderPayload(4, resolveRound('F'));
+    const afterR9 = await ladderPayload(4, resolveRound('9'));
+    expect(afterFinal.rows).toEqual(afterR9.rows);
+    expect(afterFinal.title).toBe('Final Ladder');
+  });
+});
+
+describe('stat boards', () => {
+  it('tallies the Season 4 MVP race the way the honours board records it', () => {
+    // season-4.ts: "A. Dickson — 41 votes (from J. Gorton 40 & L. Sharrock 40)".
+    const b = statBoardPayload({
+      id: 'mvp',
+      title: 'MVP',
+      metricLabel: 'Votes',
+      stat: 'votes',
+      season: 4,
+      rows: 3,
+    });
+    expect(b.rows.map((r) => [r.player, r.value])).toEqual([
+      ['Adam Dickson', '41'],
+      ['Jimmy Gorton', '40'],
+      ['Luke Sharrock', '40'],
+    ]);
+  });
+
+  it('colours the good end green whichever end the leader is at', () => {
+    const spec = {
+      id: 'x',
+      title: 'x',
+      metricLabel: 'x',
+      stat: 'unforcedErrors',
+      perSet: true,
+      season: 4,
+      rows: 5,
+    } as const;
+
+    const good = statBoardPayload({ ...spec, polarity: 'high' });
+    const bad = statBoardPayload({ ...spec, polarity: 'low' });
+
+    // Same ranking — #1 is always the biggest number, as on the site.
+    expect(bad.rows.map((r) => r.player)).toEqual(good.rows.map((r) => r.player));
+    // Opposite ramp: most unforced errors is the worst place to be.
+    expect(good.rows[0].tone).toBe(0);
+    expect(bad.rows[0].tone).toBe(1);
+    expect(bad.rows.at(-1)!.tone).toBe(0);
+  });
+
+  it('reports coverage rather than letting a blank cell pass as a zero', () => {
+    const b = statBoardPayload({
+      id: 'w',
+      title: 'w',
+      metricLabel: 'w',
+      stat: 'winners',
+      perSet: true,
+      season: 4,
+      rows: 10,
+    });
+    const partial = b.rows.filter((r) => r.coverage);
+    expect(partial.length).toBeGreaterThan(0);
+    for (const r of partial) expect(r.coverage).toMatch(/^\d+ of \d+ matches$/);
+  });
+
+  it('excludes fill-ins by default and says so', () => {
+    const spec = {
+      id: 'w',
+      title: 'w',
+      metricLabel: 'w',
+      stat: 'winners',
+      perSet: true,
+      season: 4,
+    } as const;
+    expect(statBoardPayload(spec).footnote).toContain('Fill-in matches excluded');
+    expect(statBoardPayload({ ...spec, includeFillIns: true }).footnote).not.toContain(
+      'Fill-in'
+    );
+  });
+
+  it('applies the site-wide minimum-matches bar to a rate board', () => {
+    const b = statBoardPayload({
+      id: 'w',
+      title: 'w',
+      metricLabel: 'w',
+      stat: 'winners',
+      perSet: true,
+      season: 4,
+    });
+    expect(b.footnote).toContain(`Min. ${SITE.perGameMinGames} matches`);
+  });
+
+  it('refuses to render a vote board for a sealed season', () => {
+    // sealedVoteSeasons is empty today, so seal one for the length of this test.
+    const sealed = SITE.sealedVoteSeasons as unknown as number[];
+    sealed.push(4);
+    try {
+      const spec = {
+        id: 'mvp',
+        title: 'The MVP Race',
+        metricLabel: 'Votes',
+        season: 4,
+      } as const;
+      expect(() => statBoardPayload({ ...spec, stat: 'votes' })).toThrow(SealedVotesError);
+      // BOG is derived from votes, so it leaks the same secret.
+      expect(() => statBoardPayload({ ...spec, stat: 'bog' })).toThrow(SealedVotesError);
+      expect(() => statBoardPayload({ ...spec, stat: 'finalsVotes' })).toThrow(
+        SealedVotesError
+      );
+      // Everything else still renders — only the votes are under seal.
+      expect(() =>
+        statBoardPayload({ ...spec, stat: 'winners', perSet: true })
+      ).not.toThrow();
+    } finally {
+      sealed.length = 0;
+    }
+  });
+
+  it('leaves an unsealed season vote board alone', () => {
+    expect(SITE.sealedVoteSeasons).toHaveLength(0);
+    expect(() =>
+      statBoardPayload({ id: 'mvp', title: 'x', metricLabel: 'Votes', stat: 'votes', season: 4 })
+    ).not.toThrow();
+  });
+});

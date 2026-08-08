@@ -9,10 +9,23 @@
  */
 
 import { loadStatRows, parseRound } from '../../src/lib/normalize.ts';
-import { ladderWithPairings, matchSides, teamRoster } from '../../src/lib/stats.ts';
+import {
+  isPartial,
+  ladderWithPairings,
+  leaderboard,
+  matchSides,
+  playerAgg,
+  teamRoster,
+  type LeaderStat,
+  type PlayerAgg,
+  type StatScope,
+} from '../../src/lib/stats.ts';
 import type { MatchSide, SetScore, StatRow } from '../../src/lib/types.ts';
-import { SITE } from '../../src/config/site.ts';
+import { SITE, isVotesSealed } from '../../src/config/site.ts';
+import { PHOTOS_DIR, avatarPhoto } from '../../src/lib/photos.ts';
 import { seasonTeamConfigs } from './season-configs.ts';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 export const rows: StatRow[] = loadStatRows();
 
@@ -186,6 +199,13 @@ export interface SetPayload {
    */
   tiebreak: string | null;
   won: boolean;
+  /**
+   * The set finished level — `5-5`, `6-6` — because nobody recorded the
+   * breaker. Neither side won it, so neither should be printed as having lost
+   * it. Which team won the *match* is `SidePayload.won`, off the CSV's `win?`,
+   * and that's what the card has to show unambiguously.
+   */
+  level: boolean;
 }
 
 export interface SidePayload {
@@ -217,6 +237,7 @@ const setsFor = (s: MatchSide): SetPayload[] =>
     games: String(set.for),
     tiebreak: set.tiebreakFor === null ? null : String(set.tiebreakFor),
     won: set.won,
+    level: set.for === set.against,
   }));
 
 /**
@@ -292,3 +313,208 @@ export async function resultCardPayloads(
 
 export const seasonYear = (season: number): number | undefined =>
   SITE.seasonYears[season];
+
+// ---------------------------------------------------------------------------
+// Stat boards
+// ---------------------------------------------------------------------------
+
+/**
+ * Which end of the range is the good end.
+ *
+ * Both kinds of board are ranked biggest-first — `#1` always means the biggest
+ * number, the way the site's rank badges do it. What changes is the colour: on
+ * an unforced-errors board topping the list is the disgrace, so the ramp runs
+ * the other way and the leader's chip comes out red.
+ */
+export type Polarity = 'high' | 'low';
+
+export interface StatBoardSpec {
+  /** Slug for the filename, e.g. `winners-per-set`. */
+  id: string;
+  title: string;
+  subtitle?: string;
+  /** Column heading over the value chips, e.g. "Winners / set". */
+  metricLabel: string;
+  stat: LeaderStat;
+  /** Rank on the per-set rate rather than the raw total. */
+  perSet?: boolean;
+  /** Omit for a career board. */
+  season?: number;
+  scope?: StatScope;
+  /** How many players to show. Default 10. */
+  rows?: number;
+  polarity?: Polarity;
+  /** Fill-in matches are excluded by default, as they are on the site. */
+  includeFillIns?: boolean;
+  /** Overrides `SITE.perGameMinGames` on a rate board. */
+  minGames?: number;
+  /** Print a leader's photo in the hero band. Absent photo = no band. */
+  showPhoto?: boolean;
+  /** A transparent cut-out sits flush; a normal photo gets a framed crop. */
+  cutout?: boolean;
+  /** Extra line under the footnote the builder generates. */
+  note?: string;
+}
+
+export interface StatBoardRowPayload {
+  rank: number;
+  player: string;
+  slug: string;
+  /** For the colour chip. Null when the player has no team in this window. */
+  team: string | null;
+  /** Formatted for print. */
+  value: string;
+  /** 0 = the good end of this board, 1 = the bad end. Drives the chip ramp. */
+  tone: number;
+  /**
+   * Set when the stat is missing from some of the player's matches — the cue
+   * that a total is an undercount and a rate rests on fewer sets than it looks.
+   * A blank cell means "not recorded", never zero, so this is never silent.
+   */
+  coverage: string | null;
+}
+
+export interface StatBoardPayload {
+  kind: 'stat-board';
+  id: string;
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  metricLabel: string;
+  footnote: string;
+  rows: StatBoardRowPayload[];
+  /** Hero band: the leader, pictured. Null when there's no photo to show. */
+  hero: { player: string; value: string; photo: string; cutout: boolean } | null;
+}
+
+/** Boards whose numbers would give away a sealed season's votes. */
+const VOTE_STATS = new Set<LeaderStat>(['votes', 'finalsVotes', 'bog']);
+
+/**
+ * Thrown rather than rendered. `sealedVoteSeasons` exists so a season's votes
+ * stay hidden until awards night, and a graphic that quietly printed them would
+ * be a worse leak than a page that did — it gets posted.
+ */
+export class SealedVotesError extends Error {}
+
+/** Values are printed, not computed — this is the only place rounding happens. */
+function formatValue(stat: LeaderStat, perSetMode: boolean, v: number): string {
+  if (stat === 'winPct') return `${Math.round(v * 100)}%`;
+  if (stat === 'winnerToUe') return v.toFixed(2);
+  if (perSetMode) return v.toFixed(2);
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
+/**
+ * The team whose colour the row wears. A season board uses the team the player
+ * turned out for that season; a career board uses their most recent. This is a
+ * lookup for a colour chip, not a statistic.
+ */
+function teamForChip(player: string, season?: number): string | null {
+  const mine = rows.filter(
+    (r) =>
+      !r.isSingles &&
+      r.player === player &&
+      !r.isFillIn &&
+      (season === undefined || r.season === season)
+  );
+  if (!mine.length) return null;
+  return mine.reduce((best, r) =>
+    r.season > best.season || (r.season === best.season && r.round > best.round)
+      ? r
+      : best
+  ).team;
+}
+
+/** "32 of 41 matches" when a stat is missing from some of them. */
+function coverageNote(agg: PlayerAgg, stat: LeaderStat): string | null {
+  if (stat === 'winPct' || stat === 'winnerToUe' || stat === 'bog') return null;
+  const counting = stat === 'finalsVotes' ? 'votes' : stat;
+  if (!(counting in agg.tally)) return null;
+  if (!isPartial(agg, counting as keyof PlayerAgg['tally'])) return null;
+  const t = agg.tally[counting as keyof PlayerAgg['tally']];
+  return `${t.games} of ${agg.games} matches`;
+}
+
+export function statBoardPayload(spec: StatBoardSpec): StatBoardPayload {
+  const {
+    stat,
+    season,
+    perSet: rate = false,
+    polarity = 'high',
+    includeFillIns = false,
+  } = spec;
+  // A hero band costs roughly three rows' worth of canvas, so a board that
+  // asks for a photo without saying how many rows it wants gets the shorter
+  // list rather than ten rows squeezed to fit.
+  const rowCount = spec.rows ?? (spec.showPhoto ? 7 : 10);
+
+  if (VOTE_STATS.has(stat) && season !== undefined && isVotesSealed(season)) {
+    throw new SealedVotesError(
+      `Season ${season}'s votes are sealed (SITE.sealedVoteSeasons), so the ` +
+        `"${spec.title}" board can't be rendered. Remove ${season} from ` +
+        `sealedVoteSeasons once the votes are public — until then this board ` +
+        `would post the count that's meant to be a surprise.`
+    );
+  }
+
+  const board = leaderboard(stat, rows, {
+    season,
+    perSet: rate,
+    scope: spec.scope,
+    includeFillIns,
+    minGames: spec.minGames,
+  }).slice(0, rowCount);
+
+  // The ramp spans the players actually shown, so every board uses its full
+  // range — a top ten separated by 0.3 of a winner still reads as a gradient.
+  const values = board.map((e) => e.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min;
+  const toneOf = (v: number) => {
+    if (!span || !Number.isFinite(span)) return 0;
+    const fromTop = (max - v) / span; // 0 at the biggest number
+    return polarity === 'high' ? fromTop : 1 - fromTop;
+  };
+
+  const payloadRows: StatBoardRowPayload[] = board.map((e, i) => ({
+    rank: i + 1,
+    player: e.player,
+    slug: e.slug,
+    team: teamForChip(e.player, season),
+    value: formatValue(stat, rate, e.value),
+    tone: toneOf(e.value),
+    coverage: coverageNote(e.agg, stat),
+  }));
+
+  const notes: string[] = [];
+  if (!includeFillIns) notes.push('Fill-in matches excluded');
+  if (rate) notes.push(`Min. ${spec.minGames ?? SITE.perGameMinGames} matches`);
+  if (spec.note) notes.push(spec.note);
+
+  const leader = payloadRows[0];
+  const photo = spec.showPhoto && leader ? avatarPhoto(leader.slug) : null;
+
+  return {
+    kind: 'stat-board',
+    id: spec.id,
+    eyebrow: season === undefined ? 'All time' : eyebrowLabel(season),
+    title: spec.title,
+    subtitle: spec.subtitle ?? '',
+    metricLabel: spec.metricLabel,
+    footnote: notes.join(' · '),
+    rows: payloadRows,
+    hero:
+      photo && leader
+        ? {
+            player: leader.player,
+            value: leader.value,
+            // Absolute: the template is loaded from `graphics/templates/`, so a
+            // path relative to the repo root would resolve under that folder.
+            photo: pathToFileURL(resolve(PHOTOS_DIR, photo.file)).href,
+            cutout: spec.cutout ?? false,
+          }
+        : null,
+  };
+}
