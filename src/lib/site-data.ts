@@ -1,5 +1,5 @@
 import { loadStatRows } from './normalize.ts';
-import { ladder, teamRoster, records, leaderboard, winStreaks, type TeamRoster } from './stats.ts';
+import { ladderWithPairings, teamRoster, records, leaderboard, winStreaks, type TeamRoster } from './stats.ts';
 import type { LadderRow, StatRow } from './types.ts';
 import { seasonTeamConfig } from '../config/seasons/index.ts';
 import { seasonLabel } from '../config/site.ts';
@@ -22,10 +22,7 @@ export function seasonRosters(season: number): Record<string, TeamRoster> {
 
 /** Ladder with pairing labels already resolved. */
 export function seasonLadder(season: number): LadderRow[] {
-  const rosters = seasonRosters(season);
-  const pairings: Record<string, string> = {};
-  for (const [team, r] of Object.entries(rosters)) pairings[team] = r.pairingName;
-  return ladder(season, rows, pairings);
+  return ladderWithPairings(season, rows, (team) => seasonTeamConfig(season, team));
 }
 
 export interface Fixture {

@@ -6,6 +6,7 @@ import {
   fillInVotes,
   headToHead,
   ladder,
+  ladderWithPairings,
   leaderboard,
   matchSides,
   perSet,
@@ -138,6 +139,54 @@ describe('ladder math', () => {
     const t = ladder(2, r2);
     expect(t[0].team).toBe('Zeta'); // 2 wins
     expect(t[1].team).toBe('Alpha'); // 1 win
+  });
+
+  describe('ladderWithPairings', () => {
+    it('labels each row with its pairing and keeps ladder order', () => {
+      const t = ladderWithPairings(1, rows);
+      expect(t.map((r) => r.team)).toEqual(ladder(1, rows).map((r) => r.team));
+      // One player per team here, so the derived label is that player alone —
+      // and crucially not the bare team colour that `ladder` falls back to.
+      expect(t.map((r) => r.pairingName)).toEqual(['P1', 'N1', 'R1']);
+      expect(ladder(1, rows).map((r) => r.pairingName)).toEqual(['Pink', 'Navy', 'Red']);
+      expect(t.map((r) => r.rank)).toEqual([1, 2, 3]);
+    });
+
+    it('takes the pairing order from the season config, captain first', () => {
+      const r = normalizeRows([
+        raw({ Team: 'Pink', Opponent: 'Navy', Season: '1', Round: '1', Player: 'Angus Hume', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '2' }),
+        raw({ Team: 'Pink', Opponent: 'Navy', Season: '1', Round: '1', Player: 'Luke Sharrock', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '2' }),
+        raw({ Team: 'Pink', Opponent: 'Navy', Season: '1', Round: '2', Player: 'Angus Hume', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '2' }),
+        raw({ Team: 'Pink', Opponent: 'Navy', Season: '1', Round: '2', Player: 'Luke Sharrock', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '2' }),
+        raw({ Team: 'Navy', Opponent: 'Pink', Season: '1', Round: '1', Player: 'N1', 'Team Score': '2', 'Opponent Score': '6' }),
+        raw({ Team: 'Navy', Opponent: 'Pink', Season: '1', Round: '2', Player: 'N1', 'Team Score': '2', 'Opponent Score': '6' }),
+      ]);
+      // Hume has the alphabetical edge and equal games; the config's order wins.
+      const withConfig = ladderWithPairings(1, r, (team) =>
+        team === 'Pink' ? { pair: ['Luke Sharrock', 'Angus Hume'] } : undefined
+      );
+      expect(withConfig[0].pairingName).toBe('L. Sharrock & A. Hume');
+      expect(ladderWithPairings(1, r)[0].pairingName).toBe('A. Hume & L. Sharrock');
+    });
+
+    it('gives the ladder as it stood, when handed a mid-season slice', () => {
+      // Rounds 1-2 only. Navy's round-3 win hasn't happened yet, so it can't
+      // have lifted them above Red — and on games ratio alone (2/6 v 4/6) the
+      // team that beat them in round 3 is the one sitting last.
+      const upTo2 = rows.filter((row) => row.round <= 2);
+      const t = ladderWithPairings(1, upTo2);
+      expect(t.map((r) => [r.team, r.wins, r.matchesPlayed])).toEqual([
+        ['Pink', 2, 2],
+        ['Red', 0, 1],
+        ['Navy', 0, 1],
+      ]);
+      // ...whereas the full season has Navy second on that round-3 win.
+      expect(ladderWithPairings(1, rows).map((r) => r.team)).toEqual([
+        'Pink',
+        'Navy',
+        'Red',
+      ]);
+    });
   });
 });
 

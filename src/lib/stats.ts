@@ -190,6 +190,34 @@ export function ladder(
   return table;
 }
 
+/**
+ * The ladder as it's actually displayed: every team's pairing label resolved
+ * through `teamRoster` first, so the rows read "L. Sharrock & A. Hume" rather
+ * than "Pink", captain-first where a season config says so.
+ *
+ * This is the whole composition — derive the labels, then rank — and it lives
+ * here so there's exactly one of it. The site's ladder page and the Instagram
+ * renderer both call it; a second copy of these six lines is how the printed
+ * ladder and the posted ladder start disagreeing about who's third.
+ *
+ * `rows` is a parameter rather than a default so a caller can hand over a
+ * mid-season slice (rounds 1..N) and get the ladder as it stood that night.
+ */
+export function ladderWithPairings(
+  season: number,
+  rows: StatRow[],
+  teamConfig?: (team: string) => { pair?: string[]; captain?: string } | undefined
+): LadderRow[] {
+  const teams = [
+    ...new Set(rows.filter((r) => r.season === season).map((r) => r.team)),
+  ];
+  const pairings: Record<string, string> = {};
+  for (const team of teams) {
+    pairings[team] = teamRoster(team, season, rows, teamConfig?.(team)).pairingName;
+  }
+  return ladder(season, rows, pairings);
+}
+
 // ---------------------------------------------------------------------------
 // Player aggregates
 // ---------------------------------------------------------------------------
