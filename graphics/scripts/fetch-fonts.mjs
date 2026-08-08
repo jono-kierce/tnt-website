@@ -30,11 +30,10 @@ const FONT_DIR = resolve(HERE, '../templates/fonts');
  * one differently between machines.
  */
 const FAMILIES = [
+  // Display: headlines, ranks, seeds, the wordmark.
   { family: 'Cinzel', weights: [400, 600, 700] },
+  // Body: pairings, every number, the column headings.
   { family: 'Barlow Condensed', weights: [400, 500, 600, 700] },
-  { family: 'Anton', weights: [400] },
-  { family: 'Oswald', weights: [400, 500, 600, 700] },
-  { family: 'Cormorant Garamond', weights: [400, 600, 700] },
 ];
 
 /** Chrome asks for woff2; any other UA is served a fatter, older format. */

@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <title>TNT — Result (A / Broadsheet)</title>
-<link rel="stylesheet" href="../../templates/_tokens.css">
-<link rel="stylesheet" href="../../templates/_fonts.css">
-<link rel="stylesheet" href="../../templates/_assets.css">
-<link rel="stylesheet" href="../../templates/_base.css">
-<link rel="stylesheet" href="_theme.css">
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
 <style>
   /* The card is photo-first, so it opts out of the canvas padding and places
      its own layers. Crop safety is handled per-layer instead. */
@@ -71,7 +71,9 @@
     display: flex; align-items: center; gap: 24px;
     padding: 26px 0;
     border-top: 1px solid var(--rule);
+    position: relative;
   }
+  .side > * { position: relative; z-index: 1; }
   .seed {
     width: 52px; flex: none; text-align: center;
     font-family: var(--display); font-weight: 600; font-size: 32px;
@@ -87,14 +89,30 @@
     font-size: 62px; font-weight: 700; line-height: 1;
   }
   /* A set won is set solid; a set dropped is set back. Reading the row is then
-     a matter of counting the bright numbers. */
+     a matter of counting the bright numbers. A set left level — 5-5, 6-6, the
+     breaker never recorded — was won by nobody, so it stays solid on both
+     sides rather than being printed as a loss twice. */
   .set.lost { color: rgba(244, 241, 232, 0.45); }
 
+  /* Who won the MATCH is the CSV's `win?`, not a count of bright numbers — a
+     tie decided on a level set has no winning set to point at. So the winning
+     side gets the ladder's leader treatment: a gold spine and a wash off the
+     left edge, which owes nothing to the scoreline. */
+  .side.won::before {
+    content: '';
+    position: absolute; inset: 0 calc(var(--safe) * -1);
+    background: linear-gradient(90deg, rgba(217,185,106,0.16), rgba(217,185,106,0.02) 54%, transparent);
+    pointer-events: none;
+  }
+  .side.won::after {
+    content: '';
+    position: absolute; left: calc(var(--safe) * -1); top: 0; bottom: 0; width: 5px;
+    background: var(--gold);
+  }
   .side.won .names { font-weight: 600; }
   .side.won .seed { color: var(--gold); }
   .side.won .set { color: var(--gold-soft); }
   .side.won .set.lost { color: rgba(239, 217, 163, 0.45); }
-  /* Winner marker — a gold rule the length of the row, under the winning side. */
   .side.won { border-top-color: var(--gold); }
   .side.lost .names { color: rgba(244, 241, 232, 0.74); }
 </style>
@@ -128,15 +146,19 @@ const DATA = {
   photo: null,
   sides: [
     { team: 'Pink',  pairing: 'L. Sharrock & A. Hume', seed: 1, won: true,
-      sets: [{ games: '6', tiebreak: null, won: true }, { games: '7', tiebreak: null, won: true }] },
+      sets: [{ games: '6', tiebreak: null, won: true, level: false },
+             { games: '7', tiebreak: null, won: true, level: false }] },
     { team: 'White', pairing: 'J. Kierce & L. Godden', seed: 7, won: false,
-      sets: [{ games: '4', tiebreak: null, won: false }, { games: '6', tiebreak: '3', won: false }] },
+      sets: [{ games: '4', tiebreak: null, won: false, level: false },
+             { games: '6', tiebreak: '3', won: false, level: false }] },
   ],
 };
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const setHtml = (s) =>
-  `<div class="set ${s.won ? 'won' : 'lost'}">${esc(s.games)}${s.tiebreak ? `<span class="tb">${esc(s.tiebreak)}</span>` : ''}</div>`;
+  `<div class="set ${s.won ? 'won' : s.level ? 'level' : 'lost'}">${esc(s.games)}${
+    s.tiebreak ? `<span class="tb">${esc(s.tiebreak)}</span>` : ''
+  }</div>`;
 
 window.__render = function (d) {
   const canvas = document.getElementById('canvas');

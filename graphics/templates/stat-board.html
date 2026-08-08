@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Stat board</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  header { flex: none; position: relative; }
+  .eyebrow { margin-top: -64px; }
+  .headline { font-size: 88px; margin-top: 16px; }
+  .sub { margin-top: 12px; }
+  header .mark { position: absolute; right: 0; top: -34px; width: 92px; color: var(--gold); }
+  .rule-gold {
+    height: 2px; margin-top: 24px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  .thead {
+    flex: none; display: flex; align-items: flex-end; gap: 20px;
+    padding: 18px 8px 10px;
+    font-size: 19px; font-weight: 600;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: rgba(244, 241, 232, 0.4);
+  }
+  .c-pos { width: 54px; }
+  .c-bar { width: 10px; }
+  .c-name { flex: 1; }
+  .c-value { width: 210px; text-align: center; }
+
+  .rows { flex: 1; display: flex; flex-direction: column; }
+
+  .row {
+    flex: 1;
+    display: flex; align-items: center; gap: 20px;
+    padding: 0 8px;
+    border-top: 1px solid var(--rule);
+  }
+  .row:first-child { border-top: 0; }
+
+  .pos {
+    width: 54px; text-align: center;
+    font-family: var(--display); font-weight: 600; font-size: 38px;
+    color: var(--gold);
+  }
+  /* Only the podium is gilded; below that the rank is furniture. */
+  .row:nth-child(n+4) .pos { color: rgba(244, 241, 232, 0.45); }
+
+  .bar { width: 10px; height: 54px; border-radius: 5px; flex: none;
+         background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  /* A player with no team in this window still gets a spine, just a mute one. */
+  .row.no-team .bar { background: rgba(244, 241, 232, 0.18); }
+
+  .who { flex: 1; min-width: 0; }
+  .name { font-size: 42px; font-weight: 500; letter-spacing: 0.015em; line-height: 1.1; }
+  /* Coverage — the games this number was actually recorded over. Printed
+     because a blank cell means "not recorded", and a total that quietly
+     skipped nine matches shouldn't look like a complete one. */
+  .coverage {
+    font-size: 19px; font-weight: 500; letter-spacing: 0.12em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.38);
+    margin-top: 1px;
+  }
+
+  /* The value chip. Its fill is the ramp position, set per row as --chip. */
+  .chip-wrap { width: 210px; display: flex; justify-content: center; flex: none; }
+  .chip-value {
+    min-width: 152px; padding: 8px 22px 10px;
+    border-radius: 999px; text-align: center;
+    background: var(--chip); color: var(--chip-ink);
+    font-size: 42px; font-weight: 700; line-height: 1.05;
+  }
+
+  /* ---- Hero band: the leader, pictured. Absent when there's no photo. ---- */
+  .hero {
+    flex: none; display: none; align-items: flex-end; gap: 32px;
+    height: 300px; margin-top: 18px; padding-top: 20px;
+    border-top: 2px solid var(--gold);
+  }
+  .canvas.has-hero .hero { display: flex; }
+
+  .hero-text { flex: 1; padding-bottom: 12px; }
+  .hero-kicker {
+    font-family: var(--display); font-weight: 600; font-size: 22px;
+    letter-spacing: 0.34em; text-transform: uppercase; color: var(--gold);
+  }
+  .hero-name {
+    font-family: var(--display); font-weight: 700; font-size: 62px;
+    line-height: 1.02; text-transform: uppercase; margin-top: 12px;
+  }
+  .hero-value { font-size: 40px; font-weight: 600; color: var(--gold-soft); margin-top: 8px; }
+
+  .hero-photo { width: 300px; height: 100%; flex: none; position: relative; }
+  .hero-photo img { width: 100%; height: 100%; object-fit: cover; object-position: center 22%;
+                    border-radius: 10px; border: 1px solid var(--rule); }
+  /* A true cut-out (transparent PNG) stands on the baseline unframed; an
+     ordinary photo gets the frame, because pretending it's a cut-out just
+     looks like a mistake. */
+  .canvas.cutout .hero-photo img {
+    object-fit: contain; object-position: bottom center;
+    border: 0; border-radius: 0;
+  }
+
+  footer {
+    flex: none; display: flex; justify-content: space-between; align-items: flex-end;
+    gap: 28px; padding-top: 20px; margin-bottom: -74px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+    white-space: nowrap;
+  }
+  /* Boards carry the longest footnotes of the three templates — coverage
+     caveats stack up — so this one wraps rather than shoving the wordmark
+     onto two lines. */
+  footer .footnote { text-align: right; line-height: 1.4; font-size: 19px; }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette" id="canvas">
+  <header>
+    <div class="mark mark--crest"></div>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="thead">
+    <div class="c-pos">#</div>
+    <div class="c-bar"></div>
+    <div class="c-name">Player</div>
+    <div class="c-value" id="metric-label"></div>
+  </div>
+
+  <div class="rows" id="rows"></div>
+
+  <div class="hero">
+    <div class="hero-text">
+      <div class="hero-kicker">Leading the way</div>
+      <div class="hero-name" id="hero-name"></div>
+      <div class="hero-value" id="hero-value"></div>
+    </div>
+    <div class="hero-photo"><img id="hero-photo" alt=""></div>
+  </div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+    <div class="footnote" id="footnote"></div>
+  </footer>
+</div>
+
+<script type="module">
+const DATA = {
+  eyebrow: 'All time',
+  title: 'Winners Per Set',
+  subtitle: 'Every season · finals included',
+  metricLabel: 'Winners / set',
+  footnote: 'Fill-in matches excluded · Min. 4 matches',
+  rows: [
+    { rank: 1, player: 'Charlie Simpson',  team: 'Navy',       value: '5.64', tone: 0.00, coverage: '11 of 15 matches' },
+    { rank: 2, player: 'Jonathan Kierce',  team: 'White',      value: '5.44', tone: 0.11, coverage: '32 of 43 matches' },
+    { rank: 3, player: 'Adam Dickson',     team: 'Green',      value: '4.70', tone: 0.52, coverage: '10 of 11 matches' },
+    { rank: 4, player: 'Ethan Seamer',     team: 'Light Blue', value: '4.57', tone: 0.59, coverage: '30 of 36 matches' },
+    { rank: 5, player: 'Lachlan Jenkin',   team: 'Navy',       value: '4.53', tone: 0.61, coverage: '15 of 19 matches' },
+    { rank: 6, player: 'Jimmy Gorton',     team: 'Orange',     value: '4.36', tone: 0.71, coverage: '28 of 37 matches' },
+    { rank: 7, player: 'Will Mumme',       team: 'Yellow',     value: '4.26', tone: 1.00, coverage: '27 of 30 matches' },
+  ],
+  hero: null,
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/**
+ * Interpolate the four ramp stops declared in `_theme.css`. Reading them from
+ * CSS rather than hard-coding them here keeps every colour in the stylesheet,
+ * which is where the rest of the design lives.
+ *
+ * `getPropertyValue` on a custom property hands back the token exactly as it
+ * was written — `#4fbf83`, not `rgb(79, 191, 131)` — because a custom property
+ * has no type until something uses it. So parse the hex, and accept an `rgb()`
+ * stop too in case someone retunes the ramp that way.
+ */
+function readColor(name) {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const hex = /^#?([0-9a-f]{6})$/i.exec(raw);
+  if (hex) {
+    const n = parseInt(hex[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const nums = raw.match(/[\d.]+/g);
+  if (nums && nums.length >= 3) return nums.slice(0, 3).map(Number);
+  throw new Error(`Ramp stop ${name} is not a colour this can read: "${raw}"`);
+}
+
+const RAMP = ['--tone-0', '--tone-1', '--tone-2', '--tone-3'].map(readColor);
+
+function toneColor(t) {
+  const x = Math.min(Math.max(t, 0), 1) * (RAMP.length - 1);
+  const i = Math.min(Math.floor(x), RAMP.length - 2);
+  const f = x - i;
+  const [a, b] = [RAMP[i], RAMP[i + 1]];
+  const mix = a.map((c, j) => Math.round(c + (b[j] - c) * f));
+  return `rgb(${mix.join(',')})`;
+}
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+  document.getElementById('subtitle').textContent = d.subtitle;
+  document.getElementById('metric-label').textContent = d.metricLabel;
+  document.getElementById('footnote').textContent = d.footnote;
+
+  document.getElementById('rows').innerHTML = d.rows.map((r) => `
+    <div class="row ${r.team ? '' : 'no-team'}" ${r.team ? `data-team="${esc(r.team)}"` : ''}
+         style="--chip: ${toneColor(r.tone)}">
+      <div class="pos">${r.rank}</div>
+      <div class="bar"></div>
+      <div class="who">
+        <div class="name">${esc(r.player)}</div>
+        ${r.coverage ? `<div class="coverage">${esc(r.coverage)}</div>` : ''}
+      </div>
+      <div class="chip-wrap"><div class="chip-value">${esc(r.value)}</div></div>
+    </div>`).join('');
+
+  const canvas = document.getElementById('canvas');
+  canvas.classList.toggle('has-hero', !!d.hero);
+  canvas.classList.toggle('cutout', !!d.hero?.cutout);
+  if (d.hero) {
+    document.getElementById('hero-name').textContent = d.hero.player;
+    document.getElementById('hero-value').textContent = `${d.hero.value} ${d.metricLabel}`;
+    document.getElementById('hero-photo').src = d.hero.photo;
+  }
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

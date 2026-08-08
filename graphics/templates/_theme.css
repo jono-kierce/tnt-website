@@ -79,3 +79,23 @@ body {
   text-transform: uppercase;
   color: rgba(244, 241, 232, 0.42);
 }
+
+/* --------------------------------------------------------------------------
+   Value ramp — the stat-board chips.
+
+   Four stops from the good end of a board to the bad end, the green → pink →
+   red the account has always run. Which end a board's leader sits at is the
+   `polarity` flag in the spec: most winners is green at the top, most unforced
+   errors is red at the top.
+
+   `stat-board.html` reads these four properties and interpolates between them,
+   so retuning the ramp is a CSS edit and nothing else. All four are light
+   enough to carry `--chip-ink` at better than 4.5:1.
+   -------------------------------------------------------------------------- */
+:root {
+  --tone-0: #4fbf83;
+  --tone-1: #c9c05a;
+  --tone-2: #ef5da8;
+  --tone-3: #e0453c;
+  --chip-ink: #12140f;
+}
