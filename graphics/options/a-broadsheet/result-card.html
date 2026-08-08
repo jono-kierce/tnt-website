@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Result (A / Broadsheet)</title>
+<link rel="stylesheet" href="../../templates/_tokens.css">
+<link rel="stylesheet" href="../../templates/_fonts.css">
+<link rel="stylesheet" href="../../templates/_assets.css">
+<link rel="stylesheet" href="../../templates/_base.css">
+<link rel="stylesheet" href="_theme.css">
+<style>
+  /* The card is photo-first, so it opts out of the canvas padding and places
+     its own layers. Crop safety is handled per-layer instead. */
+  .canvas { padding: 0; }
+
+  .photo { position: absolute; inset: 0; z-index: 0; background: var(--ink-deep) center/cover no-repeat; }
+  /* Scrim: dark at both ends so the eyebrow reads over a bright sky and the
+     panel has something to sit on. Deliberately light through the middle —
+     that's the part of the photo anyone actually wants to see. */
+  .photo::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg,
+      rgba(5,11,7,0.82) 0%, rgba(5,11,7,0.22) 26%,
+      rgba(5,11,7,0.10) 46%, rgba(5,11,7,0.72) 100%);
+  }
+  /* No photo: a plain court-green field rather than a hole. */
+  .canvas.no-photo .photo {
+    background: linear-gradient(168deg, #14281c 0%, var(--ink) 55%, var(--ink-deep) 100%);
+  }
+  .canvas.no-photo .ghost { display: block; }
+  .ghost {
+    display: none; position: absolute; z-index: 1;
+    width: 620px; left: 50%; top: 300px; transform: translateX(-50%);
+    color: var(--paper); opacity: 0.05;
+  }
+
+  .topbar {
+    position: absolute; z-index: 3; left: var(--safe); right: var(--safe); top: 74px;
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .topbar .eyebrow { font-size: 23px; letter-spacing: 0.4em; }
+  .topbar .stage {
+    font-family: var(--display); font-weight: 600; font-size: 27px;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--paper);
+  }
+
+  /* Frosted scoreboard. backdrop-filter is a Chromium feature and Playwright
+     is Chromium, so it renders the same locally and in CI. */
+  .panel {
+    position: absolute; z-index: 3; left: 0; right: 0; bottom: 0;
+    padding: 44px var(--safe) 128px;
+    background: rgba(8, 16, 11, 0.5);
+    backdrop-filter: blur(30px) saturate(115%);
+    -webkit-backdrop-filter: blur(30px) saturate(115%);
+    border-top: 2px solid var(--gold);
+  }
+
+  .panel-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 26px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 700; font-size: 40px;
+    letter-spacing: 0.055em; text-transform: uppercase; line-height: 1;
+  }
+  .panel-head .sub { font-size: 22px; letter-spacing: 0.2em; margin-top: 9px; }
+  .panel-head .mark { width: 86px; color: var(--gold); }
+
+  .side {
+    display: flex; align-items: center; gap: 24px;
+    padding: 26px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .seed {
+    width: 52px; flex: none; text-align: center;
+    font-family: var(--display); font-weight: 600; font-size: 32px;
+    color: rgba(244, 241, 232, 0.5);
+  }
+  .side .bar { width: 11px; height: 64px; flex: none; border-radius: 6px;
+               background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  .names { flex: 1; font-size: 50px; font-weight: 500; letter-spacing: 0.01em; }
+
+  .sets { display: flex; gap: 26px; flex: none; }
+  .set {
+    width: 66px; text-align: center;
+    font-size: 62px; font-weight: 700; line-height: 1;
+  }
+  /* A set won is set solid; a set dropped is set back. Reading the row is then
+     a matter of counting the bright numbers. */
+  .set.lost { color: rgba(244, 241, 232, 0.45); }
+
+  .side.won .names { font-weight: 600; }
+  .side.won .seed { color: var(--gold); }
+  .side.won .set { color: var(--gold-soft); }
+  .side.won .set.lost { color: rgba(239, 217, 163, 0.45); }
+  /* Winner marker — a gold rule the length of the row, under the winning side. */
+  .side.won { border-top-color: var(--gold); }
+  .side.lost .names { color: rgba(244, 241, 232, 0.74); }
+</style>
+</head>
+<body>
+<div class="canvas grain" id="canvas">
+  <div class="photo" id="photo"></div>
+  <div class="mark mark--crest ghost"></div>
+
+  <div class="topbar">
+    <div class="eyebrow" id="eyebrow"></div>
+    <div class="stage" id="stage"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div>
+        <div class="wordmark">Tuesday Night Tennis</div>
+        <div class="sub" id="round"></div>
+      </div>
+      <div class="mark mark--crest"></div>
+    </div>
+    <div id="sides"></div>
+  </div>
+</div>
+
+<script type="module">
+const DATA = {
+  eyebrow: 'Season 4 · 2025',
+  roundLabel: 'Grand Final',
+  photo: null,
+  sides: [
+    { team: 'Pink',  pairing: 'L. Sharrock & A. Hume', seed: 1, won: true,
+      sets: [{ games: '6', tiebreak: null, won: true }, { games: '7', tiebreak: null, won: true }] },
+    { team: 'White', pairing: 'J. Kierce & L. Godden', seed: 7, won: false,
+      sets: [{ games: '4', tiebreak: null, won: false }, { games: '6', tiebreak: '3', won: false }] },
+  ],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const setHtml = (s) =>
+  `<div class="set ${s.won ? 'won' : 'lost'}">${esc(s.games)}${s.tiebreak ? `<span class="tb">${esc(s.tiebreak)}</span>` : ''}</div>`;
+
+window.__render = function (d) {
+  const canvas = document.getElementById('canvas');
+  canvas.classList.toggle('no-photo', !d.photo);
+  document.getElementById('photo').style.backgroundImage = d.photo ? `url("${d.photo}")` : '';
+
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('stage').textContent = d.roundLabel;
+  document.getElementById('round').textContent = d.roundLabel;
+
+  document.getElementById('sides').innerHTML = d.sides.map((s) => `
+    <div class="side ${s.won ? 'won' : 'lost'}" data-team="${esc(s.team)}">
+      <div class="seed">${s.seed ?? ''}</div>
+      <div class="bar"></div>
+      <div class="names">${esc(s.pairing)}</div>
+      <div class="sets">${s.sets.map(setHtml).join('')}</div>
+    </div>`).join('');
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

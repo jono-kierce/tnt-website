@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Ladder (A / Broadsheet)</title>
+<link rel="stylesheet" href="../../templates/_tokens.css">
+<link rel="stylesheet" href="../../templates/_fonts.css">
+<link rel="stylesheet" href="../../templates/_assets.css">
+<link rel="stylesheet" href="../../templates/_base.css">
+<link rel="stylesheet" href="_theme.css">
+<style>
+  header { flex: none; }
+  /* The eyebrow and the footnote live in the band Instagram's grid crops off,
+     so the headline and the table get the whole square to themselves. */
+  .eyebrow { margin-top: -64px; }
+  .headline { font-size: 96px; margin-top: 16px; }
+  .sub { margin-top: 14px; }
+  .rule-gold {
+    height: 2px; margin-top: 26px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  .thead {
+    flex: none;
+    display: flex; align-items: flex-end; gap: 20px;
+    padding: 20px 8px 12px;
+    font-size: 19px; font-weight: 600;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: rgba(244, 241, 232, 0.4);
+  }
+  .c-pos { width: 56px; }
+  .c-bar { width: 10px; }
+  .c-team { flex: 1; }
+  .c-num { width: 78px; text-align: center; }
+  .c-ratio { width: 118px; text-align: right; }
+
+  .rows { flex: 1; display: flex; flex-direction: column; }
+
+  .row {
+    flex: 1;
+    display: flex; align-items: center; gap: 20px;
+    padding: 0 8px;
+    border-top: 1px solid var(--rule);
+    position: relative;
+  }
+  .row:first-child { border-top: 0; }
+
+  /* Below the cut. Quietened by removing the gold and easing the ink back —
+     never by dropping opacity far enough to fail in sunlight. */
+  .row.missed { opacity: var(--dim); }
+  .row.missed .ratio { color: rgba(244, 241, 232, 0.75); }
+
+  /* Leader: a gold wash off the left edge, out to the pairing name. */
+  .row.lead::before {
+    content: '';
+    position: absolute; inset: 0 -8px;
+    background: linear-gradient(90deg, rgba(217,185,106,0.20), rgba(217,185,106,0.02) 58%, transparent);
+    pointer-events: none;
+  }
+  .row.lead::after {
+    content: '';
+    position: absolute; left: -8px; top: 0; bottom: 0; width: 4px;
+    background: var(--gold);
+  }
+  .row.lead > * { position: relative; }
+
+  .pos {
+    width: 56px; text-align: center;
+    font-family: var(--display); font-weight: 600; font-size: 42px;
+    color: var(--gold);
+  }
+  .row.missed .pos { color: rgba(244, 241, 232, 0.5); }
+
+  .bar { width: 10px; height: 60px; border-radius: 5px; flex: none;
+         background: linear-gradient(180deg, var(--team), var(--team-2)); }
+
+  .team { flex: 1; font-size: 43px; font-weight: 500; letter-spacing: 0.015em; }
+  .row.lead .team { font-weight: 600; }
+
+  .num { width: 78px; text-align: center; font-size: 43px; font-weight: 600; }
+  .ratio { width: 118px; text-align: right; font-size: 43px; font-weight: 600; color: var(--gold-soft); }
+
+  /* The finals cut, drawn between rows rather than under one — it's a line the
+     season draws, not a property of the team above it. */
+  .cutline {
+    flex: none; display: flex; align-items: center; gap: 16px;
+    padding: 0 8px; margin: 2px 0;
+    font-size: 17px; font-weight: 600; letter-spacing: 0.26em;
+    text-transform: uppercase; color: var(--gold);
+  }
+  .cutline::before, .cutline::after {
+    content: ''; height: 1px; background: var(--rule-strong);
+  }
+  .cutline::before { width: 56px; }
+  .cutline::after { flex: 1; }
+
+  footer {
+    flex: none; display: flex; justify-content: space-between; align-items: flex-end;
+    padding-top: 22px; margin-bottom: -74px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+  }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette">
+  <div class="mark mark--crest watermark"></div>
+
+  <header>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="thead">
+    <div class="c-pos">#</div>
+    <div class="c-bar"></div>
+    <div class="c-team">Team</div>
+    <div class="c-num">P</div>
+    <div class="c-num">W</div>
+    <div class="c-ratio">Ratio</div>
+  </div>
+
+  <div class="rows" id="rows"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+    <div class="footnote" id="footnote"></div>
+  </footer>
+</div>
+
+<script type="module">
+/* Sample data, so this file opens straight in a browser and looks like the
+   real thing. `render.mjs` calls __render() again with the CSV's numbers. */
+const DATA = {
+  eyebrow: 'Season 4 · 2025',
+  title: 'Final Ladder',
+  subtitle: 'Home & away complete · Top 8 play finals',
+  footnote: 'Ratio = games won ÷ games lost',
+  finalsCutoff: 8,
+  rows: [
+    { rank: 1, team: 'Pink',       pairing: 'L. Sharrock & A. Hume',    played: 8, wins: 8, ratio: '1.67', qualifies: true },
+    { rank: 2, team: 'Green',      pairing: 'A. Dickson & D. Croucher', played: 8, wins: 6, ratio: '1.52', qualifies: true },
+    { rank: 3, team: 'Orange',     pairing: 'J. Gorton & E. Simpson',   played: 8, wins: 5, ratio: '1.33', qualifies: true },
+    { rank: 4, team: 'Red',        pairing: 'Q. Feikema & W. Burgess',  played: 8, wins: 5, ratio: '1.21', qualifies: true },
+    { rank: 5, team: 'Navy',       pairing: 'L. Jenkin & J. Virgona',   played: 8, wins: 4, ratio: '0.95', qualifies: true },
+    { rank: 6, team: 'Light Blue', pairing: 'S. Inlander & E. Seamer',  played: 8, wins: 3, ratio: '0.58', qualifies: true },
+    { rank: 7, team: 'White',      pairing: 'J. Kierce & L. Godden',    played: 8, wins: 2, ratio: '0.85', qualifies: true },
+    { rank: 8, team: 'Black',      pairing: 'E. Wise & L. Mossman',     played: 8, wins: 2, ratio: '0.78', qualifies: true },
+    { rank: 9, team: 'Yellow',     pairing: 'A. Littlejohn & W. Mumme', played: 8, wins: 1, ratio: '0.69', qualifies: false },
+  ],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+  document.getElementById('subtitle').textContent = d.subtitle;
+  document.getElementById('footnote').textContent = d.footnote;
+
+  const html = [];
+  d.rows.forEach((r, i) => {
+    if (i === d.finalsCutoff) html.push(`<div class="cutline">Finals cut</div>`);
+    html.push(`
+      <div class="row ${r.rank === 1 ? 'lead' : ''} ${r.qualifies ? '' : 'missed'}" data-team="${esc(r.team)}">
+        <div class="pos">${r.rank}</div>
+        <div class="bar"></div>
+        <div class="team">${esc(r.pairing)}</div>
+        <div class="num">${r.played}</div>
+        <div class="num">${r.wins}</div>
+        <div class="ratio">${esc(r.ratio)}</div>
+      </div>`);
+  });
+  document.getElementById('rows').innerHTML = html.join('');
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>
