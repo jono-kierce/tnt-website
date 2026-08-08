@@ -15,7 +15,7 @@
 
 - file: season-1/szn-wrapup.jpeg
   players: []
-  season: 4
+  season: 1
   caption:
 
 - file: season-1/s1-dickson.jpg
@@ -125,6 +125,11 @@
 
 - file: season-4/s4-runnersup.jpg
   players: [lachy-godden]
+  season: 4
+  caption:
+
+- file: season-4/quinn-serve.jpeg
+  players: [quinn-feikema]
   season: 4
   caption:
 
@@ -254,3 +259,8 @@
   players: [jack-raines]
   season: 1
   caption:
+
+- file: season-1/s1mvps.jpeg
+  players: [jonathan-kierce, luke-sharrock, archie-littlejohn]
+  season: 1
+  caption: The Season 1 MVPs- a 3-way tie on 12 votes!
