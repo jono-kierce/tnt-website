@@ -1,0 +1,78 @@
+/* ==========================================================================
+   GENERATED from src/config/site.ts by graphics/lib/tokens.ts.
+   Do not edit — run the renderer (or `node graphics/render.mjs --tokens`)
+   and this file is rewritten from the TEAMS map.
+   ========================================================================== */
+
+:root {
+  /* Canvas */
+  --w: 1080px;
+  --h: 1350px;
+  --safe: 64px;
+  --crop: 135px;
+
+  /* Brand */
+  --ink: #0a130d;
+  --ink-2: #101d14;
+  --ink-deep: #050b07;
+  --paper: #f4f1e8;
+  --gold: #d9b96a;
+  --gold-soft: #efd9a3;
+
+  /* Neutral fallback for a team the TEAMS map has never seen. */
+  --team: #8b8f99;
+  --team-2: #4a4e57;
+  --team-ink: #0d0d0d;
+}
+
+/* --- Team palette — one block per entry in TEAMS ------------------------- */
+[data-team="Pink"] {
+  --team: #ff2d9b;
+  --team-2: #e6007e;
+  --team-ink: #0d0d0d;
+}
+[data-team="Navy"] {
+  --team: #26346f;
+  --team-2: #161f45;
+  --team-ink: #f5f5f0;
+}
+[data-team="Orange"] {
+  --team: #f26522;
+  --team-2: #c74a10;
+  --team-ink: #0d0d0d;
+}
+[data-team="Light Blue"] {
+  --team: #44b8e8;
+  --team-2: #2b8fc4;
+  --team-ink: #0d0d0d;
+}
+[data-team="Green"] {
+  --team: #2fae5f;
+  --team-2: #1c7a40;
+  --team-ink: #0d0d0d;
+}
+[data-team="Black"] {
+  --team: #8b8f99;
+  --team-2: #4a4e57;
+  --team-ink: #0d0d0d;
+}
+[data-team="Red"] {
+  --team: #e23b3b;
+  --team-2: #b32020;
+  --team-ink: #f5f5f0;
+}
+[data-team="Yellow"] {
+  --team: #eac53b;
+  --team-2: #c9a11c;
+  --team-ink: #0d0d0d;
+}
+[data-team="White"] {
+  --team: #e8e8e0;
+  --team-2: #b8b8ae;
+  --team-ink: #0d0d0d;
+}
+[data-team="Brown"] {
+  --team: #8a5a34;
+  --team-2: #5c3a1f;
+  --team-ink: #f5f5f0;
+}

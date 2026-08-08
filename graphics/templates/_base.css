@@ -1,0 +1,124 @@
+/* ==========================================================================
+   TNT graphics — shared canvas machinery.
+
+   Everything in here is true of every post regardless of visual direction:
+   the frame, where Instagram crops it, the logo mask, the film grain. Colour
+   and type belong to a direction's own `_theme.css`.
+   ========================================================================== */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: var(--w);
+  height: var(--h);
+  overflow: hidden;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The 1080x1350 frame. Everything draws inside one of these. */
+.canvas {
+  position: relative;
+  width: var(--w);
+  height: var(--h);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --------------------------------------------------------------------------
+   Crop safety
+
+   Instagram shows a 4:5 post at full height in the feed but crops it to a
+   centre square in the profile grid — the top and bottom 135px are gone there.
+   `--crop` is that band: eyebrows, footnotes and rules may sit in it, the
+   headline and the data may not.
+   -------------------------------------------------------------------------- */
+.canvas { padding: var(--crop) var(--safe); }
+
+/* Reference overlay: add `?guides` to the URL when designing to see the
+   square crop and the safe margins. Never rendered by the CLI. */
+body.guides .canvas::after {
+  content: '';
+  position: absolute;
+  inset: var(--crop) 0;
+  outline: 1px dashed rgba(255, 0, 90, 0.7);
+  pointer-events: none;
+  z-index: 99;
+}
+body.guides .canvas::before {
+  content: '';
+  position: absolute;
+  inset: 0 var(--safe);
+  outline: 1px dashed rgba(0, 190, 255, 0.6);
+  pointer-events: none;
+  z-index: 99;
+}
+
+/* --------------------------------------------------------------------------
+   The mark
+
+   One greyscale mask, tinted by whatever `color` is in force — so the crest is
+   gold on the dark directions and deep green on the light one without shipping
+   three PNGs of the same logo. Set a width; `aspect-ratio` (declared alongside
+   each mask in the generated `_assets.css`) supplies the height.
+   -------------------------------------------------------------------------- */
+.mark {
+  display: block;
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+
+/* --------------------------------------------------------------------------
+   Texture
+
+   Film grain and a vignette, both pure CSS. Large flat fills photograph like
+   a spreadsheet without them; the grain costs nothing and survives Instagram's
+   re-compression better than a smooth gradient does.
+   -------------------------------------------------------------------------- */
+.grain::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  opacity: var(--grain, 0.055);
+  mix-blend-mode: var(--grain-blend, normal);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.vignette::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(
+    ellipse at 50% 34%,
+    transparent 38%,
+    var(--vignette, rgba(0, 0, 0, 0.55)) 100%
+  );
+}
+
+/* --------------------------------------------------------------------------
+   Scorelines
+
+   A set lost on a breaker prints its points small and high — `7-6³` — the way
+   tennis has always set them and the way the site does (see
+   `src/lib/score.ts`). Writing `7-6(3)` at this size pushes a set score out of
+   the column it lives in.
+   -------------------------------------------------------------------------- */
+.tb {
+  font-size: 0.42em;
+  font-weight: 600;
+  vertical-align: super;
+  line-height: 1;
+  margin-left: 0.04em;
+  letter-spacing: 0;
+}
