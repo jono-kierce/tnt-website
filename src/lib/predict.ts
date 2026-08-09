@@ -67,7 +67,7 @@ export const ELO = {
    * to get a player off 1500 inside a season — most of a big swing comes from
    * `personalScores` being far from 0.5, not from K itself.
    */
-  k: 32,
+  k: 20,
   /**
    * How far ratings are pulled back toward the mean between seasons, 0–1.
    *
@@ -106,7 +106,7 @@ export const ELO = {
    */
   performanceScale: 4,
   /** The logistic scale. 400 is Elo's own, and there's no reason to move it. */
-  scale: 400,
+  scale: 250,
 } as const;
 
 /** A pair of players and the rating the model gives them. */
