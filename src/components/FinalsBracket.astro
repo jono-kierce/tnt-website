@@ -97,11 +97,17 @@ const centreRow = (m: FinalsMatch) => {
   return s[0] + s[1] + 2;
 };
 
-/** Vertical line joining this match's two feeders, or null if it has none. */
+/**
+ * Vertical line joining this match's feeders, or null if it has none. A bye
+ * (one side a bare seed, no match feeding it) leaves only one real feeder —
+ * still draw the short segment down to the tie's own centre, or its has-in
+ * tick has nothing to meet and the join reads as a break in the line.
+ */
 function connector(m: FinalsMatch): [number, number] | null {
   const fed = feeders(m).filter((f): f is FinalsMatch => !!f);
-  if (fed.length < 2) return null;
+  if (fed.length === 0) return null;
   const centres = fed.map(centreRow);
+  if (fed.length === 1) centres.push(centreRow(m));
   return [Math.min(...centres), Math.max(...centres)];
 }
 

@@ -38,6 +38,10 @@ const honours = cfg?.honours ?? [];
 const podiumMedals = ['🥇', '🥈', '🥉'];
 const rounds = seasonRoundList(season);
 const openRound = defaultScheduleRound(season);
+// No match in the bracket has a result yet: seeds are reading off the live,
+// still-moving ladder, so the whole draw is a projection, not a fixture.
+const finalsIsProjected = (cfg?.finals ?? []).length > 0
+  && !(cfg?.finals ?? []).some((r) => r.matches.some((m) => m.result));
 const pairings = Object.fromEntries(
   Object.entries(seasonRosters(season)).map(([team, r]) => [team, r.pairingName])
 );
@@ -130,6 +134,12 @@ const pairings = Object.fromEntries(
   <section class="section container">
     <p class="eyebrow">The Run Home</p>
     <h2 class="serif-title" style="margin-bottom:14px">Finals</h2>
+    {finalsIsProjected && (
+      <p class="muted finenote mb-16">
+        Projected bracket — seeds are off the current ladder and will keep
+        moving as the season is played. Not a fixture yet.
+      </p>
+    )}
     <FinalsBracket finals={cfg?.finals ?? []} ladder={table} />
   </section>
 </Layout>
