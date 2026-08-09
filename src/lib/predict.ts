@@ -50,7 +50,7 @@ export const ELO = {
    * standards, and what the data asks for: this is a form model over nine
    * nights, not a rating built over hundreds of games.
    */
-  k: 64,
+  k: 32,
   /**
    * How far ratings are pulled back toward the mean between seasons, 0–1.
    *
@@ -71,7 +71,7 @@ export const ELO = {
    * Applied to everyone, played that season or not, so a player who sits one
    * out drifts back toward average rather than being singled out for missing.
    */
-  seasonRegression: 0.9,
+  seasonRegression: 0.35,
   /**
    * How much of a side's movement the contribution split can shift, 0–1. At 0
    * both players move identically, which is plain doubles Elo; at 1 one player
@@ -83,7 +83,7 @@ export const ELO = {
    * four players the league would put at the top come out 2nd, 4th, 8th and
    * 10th of 25; with it on, 1st, 3rd, 4th and 7th.
    */
-  contributionWeight: 0.6,
+  contributionWeight: 0.75,
   /**
    * The gap in net stats, within a side, that counts as decisive. A player
    * this far clear of their partner takes about 76% of the tilt (tanh(1)).
