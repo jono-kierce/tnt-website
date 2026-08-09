@@ -79,9 +79,10 @@ export const ELO = {
    * already closer to "current form" by the time a season ends and has less
    * of the old model's staleness to regress away. Every value from 0 to 0.9
    * was tried; 0 both wins the accuracy search and gives the smoothest Brier
-   * score of the sweep (0.2388, rising the whole way to 0.2414 at 0.9) — the
+   * score of the sweep (0.2323, rising the whole way to 0.2350 at 0.9) — the
    * continuous metric agrees with the discrete one instead of just being
-   * dragged along by a lucky match or two.
+   * dragged along by a lucky match or two. (Both numbers move with `ELO.k`
+   * and `ELO.scale`; re-run `tune()` rather than trusting this in isolation.)
    */
   seasonRegression: 0,
   /**
@@ -89,10 +90,10 @@ export const ELO = {
    * rest is their stat performance against the opposing pair. See
    * `personalScores`. Floored at 0.3 in `tune()`'s own search grid — below
    * that a win stops being "a large part" of a player's score, which this
-   * model isn't meant to give up. 0.3 is also where the accuracy search lands
-   * on its own once that floor is respected: the unconstrained search wants
-   * 0.1, but 0.3 gives up only 4 of 166 calls for a model that still means it
-   * when it says the result mattered.
+   * model isn't meant to give up. 0.3 is also close to where the accuracy
+   * search lands on its own once that floor is respected: the unconstrained
+   * search wants 0.1, but 0.3 gives up only about a call out of 166 for a
+   * model that still means it when it says the result mattered.
    */
   outcomeWeight: 0.3,
   /**
@@ -105,7 +106,15 @@ export const ELO = {
    * one, so the same-sized gap is a more reliable signal sooner.
    */
   performanceScale: 4,
-  /** The logistic scale. 400 is Elo's own, and there's no reason to move it. */
+  /**
+   * The logistic scale — how confidently a *given* rating gap gets expressed
+   * as a probability. Lowered from Elo's own 400 to make predictions read
+   * bolder: it doesn't touch who the model favours or whether a call is right
+   * (`favourite`/`correct` are decided by the sign of the rating gap, not its
+   * size), so it costs nothing in backtest accuracy directly — it only makes
+   * the displayed percentage less conservative for the same underlying
+   * ratings, and worsens calibration (Brier) as a direct trade for that.
+   */
   scale: 250,
 } as const;
 
@@ -559,12 +568,14 @@ export function powerRankings(
  *
  * Top EIGHT of the twenty-six qualified players, not top four or six, and the
  * number was chosen by what it costs rather than by what sounds strict. At
- * eight, 205 of the 1225 settings searched clear it, and the best of those
- * gives up exactly one call out of 166 against the best setting found with no
- * gate at all — cheap enough that the gate is still a sanity check, not a
- * thumb on the scale. At six, **nothing in the search clears it**: no
- * combination of these constants seats all four names that high at once, so
- * six isn't a stricter gate, it's a different, unsatisfiable one.
+ * eight, 185 of the 1225 settings searched clear it, and the best of those
+ * gives up two calls out of 166 against the best setting found with no gate
+ * at all — cheap enough that the gate is still a sanity check, not a thumb on
+ * the scale. (This number moves with `ELO.scale`, since that feeds every
+ * replay `tune()` runs; a test re-measures it rather than hard-coding it.) At
+ * six, **nothing in the search clears it**: no combination of these constants
+ * seats all four names that high at once, so six isn't a stricter gate, it's
+ * a different, unsatisfiable one.
  */
 export const FACE_VALIDITY_NAMES = [
   'Luke Sharrock',

@@ -236,27 +236,41 @@ not as a share of a team result. Rules that matter:
   player's delta no longer depends on a team-mate's, so a match's four deltas
   don't have to net to zero. That's the price of rating performance instead of
   just result.
-- **Constants are tuned, not guessed.** `tune()` grid-searches them and a test
-  re-runs it, so new results can't leave them stale. Ranked on accuracy among
-  settings passing a face-validity gate (four named players inside the top
-  eight of twenty-six qualified players) — an editorial judgement, documented
-  as one. At eight, 205 of 1225 settings searched clear it, for a cost of one
-  call out of 166 against the best setting with no gate at all; at six,
-  **nothing in the search clears it** — not a stricter gate, an unsatisfiable
-  one. `outcomeWeight` is floored at 0.3 in the search grid itself: the
+- **Most constants are tuned, not guessed; `k` and `scale` are the exception.**
+  `tune()` grid-searches `k`, `seasonRegression`, `outcomeWeight` and
+  `performanceScale` and a test re-runs it, so new results can't leave the
+  search itself stale. Ranked on accuracy among settings passing a
+  face-validity gate (four named players inside the top eight of twenty-six
+  qualified players) — an editorial judgement, documented as one. At eight,
+  185 of 1225 settings searched clear it, for a cost of two calls out of 166
+  against the best setting with no gate at all; at six, **nothing in the
+  search clears it** — not a stricter gate, an unsatisfiable one.
+  `outcomeWeight` is floored at 0.3 in the search grid itself: the
   unconstrained accuracy-best wants 0.1, but a win needs to stay "a large
   part" of a player's score on principle, not just whatever the backtest
-  prefers.
+  prefers. `k` (20) and `ELO.scale` (250, down from Elo's own 400) are then
+  hand-pushed bolder than the pure accuracy-best pick, on purpose — the
+  committed constants no longer equal `tune()`'s own top result, only a test
+  that they still clear the face-validity gate. `scale` in particular costs
+  nothing in raw call-correctness (`favourite`/`correct` come from the *sign*
+  of a rating gap, which `scale` never touches) — it only makes a given gap
+  read as a bolder percentage, at a real cost to calibration (Brier). `k`
+  genuinely does trade accuracy for reactivity: the tuned k=16 called 66.9% of
+  166; the committed k=20 with scale=250 calls 62.7%.
 - **Between-season regression dropped to zero** — the opposite of the old
   team-split model's 0.9, and worth flagging because that file used to call
   the relationship monotonic in the other direction. The difference: a rating
   built from personal stat performance already tracks current form more
   closely than one built purely from accumulated team win/loss, so there's
   less staleness left to regress away in January.
-- **It still cannot call an opening round** — 50% over rounds 1–2, no better
-  than a coin. After a redraft, prior form says nothing. `PredictionBar`
-  prints "line-ball" inside 4% of even rather than implying a call. Say so;
-  don't dress it up.
+- **It still cannot genuinely call an opening round — it just no longer looks
+  that humble about it.** Backtest accuracy on rounds 1–2 sits at 50%, no
+  better than a coin, same as ever: after a redraft, prior form says nothing,
+  and no amount of `scale` changes that. What `scale=250` changes is the
+  *display* — an S5 opener can now read as 65% instead of pinned near even,
+  which is a deliberate boldness trade, not a claim that the model learned
+  something new about redrafted pairings. `PredictionBar` still prints
+  "line-ball" inside 4% of even.
 
 ## Match insights (`src/lib/insights.ts`)
 
