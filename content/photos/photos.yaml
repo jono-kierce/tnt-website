@@ -264,3 +264,33 @@
   players: [jonathan-kierce, luke-sharrock, archie-littlejohn]
   season: 1
   caption: The Season 1 MVPs- a 3-way tie on 12 votes!
+
+- file: season-4/dec-smile.JPG
+  players: [declan-croucher]
+  season: 4
+  caption:
+
+- file: season-4/declan-fh.JPG
+  players: [declan-croucher]
+  season: 4
+  caption:
+
+- file: season-4/lewis.png
+  players: [lewis-mossman]
+  season: 4
+  caption:
+
+- file: season-4/luke.png
+  players: [luke-sharrock]
+  season: 4
+  caption:
+
+- file: season-3/ed.JPG
+  players: [ed-simpson]
+  season: 3
+  caption:
+
+- file: season-4/burge.JPG
+  players: [will-burgess]
+  season: 4
+  caption:
