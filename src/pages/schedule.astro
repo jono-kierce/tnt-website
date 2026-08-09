@@ -2,7 +2,6 @@
 import Layout from '../layouts/Layout.astro';
 import RoundCarousel from '../components/RoundCarousel.astro';
 import LadderTable from '../components/LadderTable.astro';
-import PowerRatings from '../components/PowerRatings.astro';
 import { SITE, seasonLabel } from '../config/site.ts';
 import { seasonHref } from '../lib/url.ts';
 import {
@@ -54,21 +53,14 @@ const toPlay = rounds.filter((r) => r.matches.some((m) => m.scheduled)).length;
     )}
   </section>
 
-  <section class="section container grid grid-2" style="align-items:start">
-    <div>
-      <p class="eyebrow">Standings</p>
-      <h2 class="serif-title" style="margin-bottom:14px">Ladder</h2>
-      <LadderTable
-        rows={table}
-        cutoff={8}
-        caption="Wins, then games ratio (for ÷ against). Top eight make finals."
-      />
-      <p class="mt-16"><a href={seasonHref(season)}>Season {season} in full →</a></p>
-    </div>
-    <div>
-      <p class="eyebrow">The model</p>
-      <h2 class="serif-title" style="margin-bottom:14px">Power Ratings</h2>
-      <PowerRatings limit={10} />
-    </div>
+  <section class="section container">
+    <p class="eyebrow">Standings</p>
+    <h2 class="serif-title" style="margin-bottom:14px">Ladder</h2>
+    <LadderTable
+      rows={table}
+      cutoff={8}
+      caption="Wins, then games ratio (for ÷ against). Top eight make finals."
+    />
+    <p class="mt-16"><a href={seasonHref(season)}>Season {season} in full →</a></p>
   </section>
 </Layout>
