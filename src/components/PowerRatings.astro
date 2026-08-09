@@ -42,11 +42,11 @@ const headline = showAccuracy ? accuracyHeadline() : null;
 </div>
 {headline && (
   <p class="finenote">
-    Per-player Elo, replayed from the first night of Season 1. Each night's
-    result is split between team-mates by who did the work — winners, aces and
-    errors forced, less unforced errors and double faults — so a passenger
-    doesn't take a partner's credit. Ratings regress toward the middle every
-    season, because the league redrafts. The model has called <strong>{headline}</strong>,
+    Per-player Elo, replayed from the first night of Season 1. Each player is
+    rated on their own performance against the pair across the net — winners,
+    aces and errors forced, less unforced errors and double faults — blended
+    with the match result, so a standout night doesn't ride on a partner's, and
+    a passenger doesn't ride on theirs. The model has called <strong>{headline}</strong>,
     though it gets an opening round right about as often as a coin: after a
     redraft, last season's form says very little.
   </p>

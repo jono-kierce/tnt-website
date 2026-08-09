@@ -205,33 +205,58 @@ rules that matter here:
 ## The prediction model (`src/lib/predict.ts`)
 
 Per-player Elo, replayed chronologically over every played match from S1 R1. A
-pair rates at the mean of its two players; the logistic expectation comes from
-the pair-rating difference. Rules that matter:
+pair rates at the mean of its two players for prediction purposes, but each
+player is *updated* individually against the opposing pair's mean rating —
+not as a share of a team result. Rules that matter:
 
 - **It never reads `votes`** — a test greps the file to prove it. That's what
   makes it safe against a sealed season.
 - **Outcomes come from `win?`**, via `MatchRecord.winner`, never from counting
   sets. A match with both sides flagged alike scores 0.5 (no such match exists;
   the S4 R9 `5-5` has a winner — it's the *set* that has no breaker recorded).
-- **Each night's result is split between team-mates by contribution**:
-  `(winners + aces + errors forced) − (unforced errors + double faults)`, each
-  player against their own side's mean, through `tanh`, tilted by whether the
-  side won. Win and the bigger contributor gains more; lose and they lose less.
-  Forced errors are deliberately out of the ledger — they're the opponent's
-  credit, and already counted there. **The weights average 1**, so a match stays
-  zero-sum and the pair's *mean* is untouched: the split changes individual
-  ratings and reaches a prediction only through re-pairings. Falls back to an
-  even split when a match has no stats, which is every finals night on record.
+- **A player's own score blends the result with personal performance against
+  the pair across the net**, not a share of a team-wide delta. `outcomeWeight`
+  (0.3) of the score is the match result — the same for both team-mates, a win
+  or a loss; the rest is `0.5 + 0.5 × tanh((own net stat − opponent pair's mean
+  net stat) / performanceScale)`, where net stat is `(winners + aces + errors
+  forced) − (unforced errors + double faults)`. Forced errors stay out of the
+  ledger — they're the opponent's credit, already counted on their side. This
+  is the direct fix for the old model's blind spot: a player who performed well
+  personally could previously only ever lose *less* on a losing side, never
+  gain — because the team's delta was fixed by the result and only reallocated.
+  Now each player is rated against the opponent pair's rating directly, so a
+  standout night against a strong pair can be a net gain even in a loss, and a
+  passenger's rating no longer rides on a team-mate's night. **Opponent
+  strength is priced in only once**, through the surrounding Elo expectation
+  (`expectedScore(playerRating, opponentPairRating)`) — the stat comparison
+  itself doesn't also weight by opponent rating, which would double-count the
+  same signal. Falls back to the result alone when either side has no stat
+  line, which is every finals night on record bar Season 3's.
+- **The model gives up classic Elo's zero-sum property, on purpose.** A
+  player's delta no longer depends on a team-mate's, so a match's four deltas
+  don't have to net to zero. That's the price of rating performance instead of
+  just result.
 - **Constants are tuned, not guessed.** `tune()` grid-searches them and a test
   re-runs it, so new results can't leave them stale. Ranked on accuracy among
   settings passing a face-validity gate (four named players inside the top
-  eight) — an editorial judgement, documented as one, and pegged at eight
-  because there the gate costs nothing: the best setting that passes is the best
-  setting overall. At top-six it would have cost 4.3 points.
-- **It cannot call an opening round** — 48% over the season openers, at every
-  setting tried, and carrying more of last season's rating makes it worse. After
-  a redraft, prior form says nothing. `PredictionBar` prints "line-ball" inside
-  4% of even rather than implying a call. Say so; don't dress it up.
+  eight of twenty-six qualified players) — an editorial judgement, documented
+  as one. At eight, 205 of 1225 settings searched clear it, for a cost of one
+  call out of 166 against the best setting with no gate at all; at six,
+  **nothing in the search clears it** — not a stricter gate, an unsatisfiable
+  one. `outcomeWeight` is floored at 0.3 in the search grid itself: the
+  unconstrained accuracy-best wants 0.1, but a win needs to stay "a large
+  part" of a player's score on principle, not just whatever the backtest
+  prefers.
+- **Between-season regression dropped to zero** — the opposite of the old
+  team-split model's 0.9, and worth flagging because that file used to call
+  the relationship monotonic in the other direction. The difference: a rating
+  built from personal stat performance already tracks current form more
+  closely than one built purely from accumulated team win/loss, so there's
+  less staleness left to regress away in January.
+- **It still cannot call an opening round** — 50% over rounds 1–2, no better
+  than a coin. After a redraft, prior form says nothing. `PredictionBar`
+  prints "line-ball" inside 4% of even rather than implying a call. Say so;
+  don't dress it up.
 
 ## Match insights (`src/lib/insights.ts`)
 
