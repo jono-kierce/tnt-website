@@ -2,7 +2,6 @@
 import RankChip from './RankChip.astro';
 import { isPartial, perSet, type CountingStat, type PlayerAgg } from '../lib/stats.ts';
 import type { RankBadge, RankMetric, RankMode } from '../lib/ranks.ts';
-import { SITE } from '../config/site.ts';
 
 interface Props {
   /** All matches, finals included — the source of every rate. */
@@ -225,59 +224,4 @@ const ranked = Object.keys(ranks).length > 0;
     </div>
   </div>
 
-  <p class="finenote" style="margin:10px 0 0">
-    {rateMode ? (
-      <>
-        Per-set rates count finals — a three-set final counts as three sets, not
-        one big night. Votes and Best on Ground are awarded once a match, so
-        they stay per match.
-      </>
-    ) : (
-      <>
-        Totals cover the home-and-away season, so a deep finals run can't pad
-        them. Win–loss and the ratio count everything.
-      </>
-    )}
-    {' '}
-    {ranked ? (
-      rateMode ? (
-        <>
-          Badges grade this player against everyone with {SITE.rankMinMatches}+ matches
-          in this window — a short season swings a rate hard, so read a per-set rank
-          with that in mind. Hover a tile for the rank and the size of the field.
-        </>
-      ) : (
-        <>
-          A total says as much about how many Tuesdays you've turned up to as how you
-          played, so totals aren't graded — only a top-{SITE.rankTopTotals} finish in
-          this window earns a badge. Hover the tile for the rank and the size of the field.
-        </>
-      )
-    ) : (
-      <>
-        No badges: fewer than {SITE.rankMinMatches} matches in this window, which is
-        too small a sample to rank{rateMode ? ' — especially per set' : ''}.
-      </>
-    )}
-    The Finals MVP is voted separately (4-3-2-1) and never counts toward MVP votes.
-    {mvp.votesEraAdjusted && (
-      <>
-        {' '}Career vote tallies count Season 1 era-adjusted — under the old 2/1
-        system a best-on-court 2 counts as 6 and a 1 as 4, matching the two-voter
-        3-2-1 scale — while a season panel shows the votes as cast.
-      </>
-    )}
-    {fillIns === undefined && (
-      <>
-        {' '}Fill-in appearances count toward these career numbers — except the vote
-        tallies, since those votes were cast for another team.
-      </>
-    )}
-    {anyExcluded && (
-      <>
-        {' '}A fill-in match was played for another team, so it sits outside this
-        season — the tiles above show what was left out. It still counts all-time.
-      </>
-    )}
-  </p>
 </div>

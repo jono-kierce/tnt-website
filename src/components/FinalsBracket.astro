@@ -74,13 +74,29 @@ function feeders(m: FinalsMatch): (FinalsMatch | undefined)[] {
 const span = new Map<string, [number, number]>();
 let leaves = 0;
 
+/**
+ * A bare seed (no match feeding it — a bye straight into this round) claims
+ * no space of its own: the tie sits flush on whichever real feeder it has,
+ * rather than being padded out to the average of a feeder that isn't there.
+ * Only a tie with two bare seeds (an actual first-round pairing) allocates
+ * fresh leaves. A tie with two real feeders spans the union, as ever.
+ */
 function assign(m: FinalsMatch): [number, number] {
   const existing = span.get(m.id);
   if (existing) return existing;
   // Claim the id first so a malformed self/cyclic reference can't loop forever.
   span.set(m.id, [leaves, leaves]);
-  const parts = feeders(m).map((f) => (f && f.id !== m.id ? assign(f) : ([leaves++, leaves - 1] as [number, number])));
-  const s: [number, number] = [Math.min(...parts.map((p) => p[0])), Math.max(...parts.map((p) => p[1]))];
+  const parts = feeders(m).map((f) => (f && f.id !== m.id ? assign(f) : null));
+  const real = parts.filter((p): p is [number, number] => p !== null);
+  let s: [number, number];
+  if (real.length === 0) {
+    s = [leaves, leaves + 1];
+    leaves += 2;
+  } else if (real.length === 1) {
+    s = real[0];
+  } else {
+    s = [Math.min(...real.map((p) => p[0])), Math.max(...real.map((p) => p[1]))];
+  }
   span.set(m.id, s);
   return s;
 }
@@ -98,16 +114,15 @@ const centreRow = (m: FinalsMatch) => {
 };
 
 /**
- * Vertical line joining this match's feeders, or null if it has none. A bye
- * (one side a bare seed, no match feeding it) leaves only one real feeder —
- * still draw the short segment down to the tie's own centre, or its has-in
- * tick has nothing to meet and the join reads as a break in the line.
+ * Vertical line joining this match's two feeders, or null if it has fewer
+ * than two — a bye tie has only one real feeder, and since it now sits
+ * flush on that feeder's own span (see `assign`), their centres already
+ * coincide with no line needed to bridge them.
  */
 function connector(m: FinalsMatch): [number, number] | null {
   const fed = feeders(m).filter((f): f is FinalsMatch => !!f);
-  if (fed.length === 0) return null;
+  if (fed.length < 2) return null;
   const centres = fed.map(centreRow);
-  if (fed.length === 1) centres.push(centreRow(m));
   return [Math.min(...centres), Math.max(...centres)];
 }
 
@@ -116,7 +131,13 @@ const orderedRounds = finals.map((r) => ({
   ...r,
   matches: [...r.matches].sort((a, b) => rowStart(a) - rowStart(b)),
 }));
-const lastRound = finals.length - 1;
+// The join ticks are data-driven, not positional: a bare seed pairing sitting
+// in a later column (a 3 v 6 alongside a wildcard winner) feeds from nothing,
+// so it must not draw a stub pointing back into empty space. Likewise a tie
+// nobody references forward draws no stub out.
+const referenced = new Set(allMatches.flatMap((m) => feeders(m).filter((f) => !!f).map((f) => f!.id)));
+const hasIn = (m: FinalsMatch) => feeders(m).some((f) => !!f);
+const hasOut = (m: FinalsMatch) => referenced.has(m.id);
 
 function side(m: FinalsMatch, which: 'home' | 'away') {
   const slot = m[which];
@@ -132,7 +153,7 @@ function side(m: FinalsMatch, which: 'home' | 'away') {
 ) : (
   <div class="bracket-wrap">
     <div class="bracket">
-      {orderedRounds.map((round, ri) => (
+      {orderedRounds.map((round) => (
         <div class="bracket-col">
           <div class="bracket-head">
             <p class="finenote bracket-round">{round.name}</p>
@@ -145,7 +166,7 @@ function side(m: FinalsMatch, which: 'home' | 'away') {
           {round.matches.map((m) => {
             const h = side(m, 'home'), a = side(m, 'away');
             return (
-              <div class:list={['tie', 'card', { 'has-in': ri > 0, 'has-out': ri < lastRound }]}
+              <div class:list={['tie', 'card', { 'has-in': hasIn(m), 'has-out': hasOut(m) }]}
                 style={`grid-row: ${rowStart(m)} / ${rowEnd(m)}`}>
                 {m.label && <span class="tie-label">{m.label}</span>}
                 {[h, a].map((s) => (
@@ -177,10 +198,14 @@ function side(m: FinalsMatch, which: 'home' | 'away') {
      bracket lines get their own slightly brighter tone. */
   .bracket { display: flex; gap: var(--gap); min-width: min-content; align-items: stretch; --gap: 26px; --bracket-line: color-mix(in srgb, var(--muted) 42%, transparent); }
   .bracket-col { display: flex; flex-direction: column; min-width: 230px; }
-  /* Explicit rows + spans put every tie on its feeders' midpoint. */
-  .bracket-ties { flex: 1; display: grid; }
-  .tie { align-self: center; margin: 5px 0; }
-  .connector { justify-self: start; width: 1px; margin-left: calc(var(--gap) / -2); background: var(--bracket-line); }
+  /* Explicit rows + spans put every tie on its feeders' midpoint. The single
+     explicit column and the grid-column on the children are load-bearing: ties
+     and connectors deliberately overlap on the row axis, and without a column
+     to pin them to, auto-placement flows the overlaps into implicit extra
+     columns — which silently widens the round and staggers its ties sideways. */
+  .bracket-ties { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); }
+  .tie { grid-column: 1; align-self: center; margin: 5px 0; }
+  .connector { grid-column: 1; justify-self: start; width: 1px; margin-left: calc(var(--gap) / -2); background: var(--bracket-line); }
   .tie.has-in::before, .tie.has-out::after {
     content: ''; position: absolute; top: 50%; width: calc(var(--gap) / 2); height: 1px; background: var(--bracket-line);
   }

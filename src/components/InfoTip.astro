@@ -1,0 +1,41 @@
+---
+/**
+ * A small "i" glyph that reveals a short methodology note on click/tap.
+ * Native <details>/<summary> — no JS, keyboard-accessible, closes on
+ * outside click for free via the browser's own toggle behaviour.
+ */
+interface Props {
+  label?: string;
+  align?: 'left' | 'right';
+}
+const { label = 'How this is calculated', align = 'right' } = Astro.props;
+---
+<details class="infotip" data-align={align}>
+  <summary class="infotip-btn" aria-label={label}>i</summary>
+  <div class="infotip-panel"><slot /></div>
+</details>
+
+<style>
+  .infotip { position: relative; display: inline-block; }
+  .infotip-btn {
+    display: flex; align-items: center; justify-content: center;
+    list-style: none; cursor: pointer; user-select: none;
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 1px solid var(--line); color: var(--muted);
+    font-family: var(--serif); font-size: 0.72rem; font-style: italic;
+  }
+  .infotip-btn::-webkit-details-marker,
+  .infotip-btn::marker { display: none; content: ''; }
+  .infotip-btn:hover,
+  .infotip[open] .infotip-btn { color: var(--gold); border-color: var(--gold); }
+  .infotip-panel {
+    position: absolute; top: calc(100% + 6px); z-index: 30;
+    width: min(280px, 78vw); padding: 10px 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--card-2);
+    box-shadow: var(--shadow);
+    font-size: 0.76rem; line-height: 1.45; color: var(--ivory-dim);
+    font-style: normal;
+  }
+  .infotip[data-align='right'] .infotip-panel { right: 0; }
+  .infotip[data-align='left'] .infotip-panel { left: 0; }
+</style>

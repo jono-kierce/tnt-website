@@ -2,10 +2,8 @@
 /**
  * The model's win probability for a match, as a two-sided bar.
  *
- * The one thing this must never do is dress up a coin flip. After a redraft
- * the model genuinely knows nothing — measured at 48% on opening rounds — so
- * anything inside `EVEN` of level says so in words instead of implying a call
- * the numbers don't support.
+ * The one thing this must never do is dress up a coin flip: inside `EVEN` of
+ * level, no side is marked as favourite and no "Called it" verdict is shown.
  */
 import TeamChip from './TeamChip.astro';
 import { teamMeta } from '../config/site.ts';
@@ -56,24 +54,6 @@ const ink = (team: string) => teamMeta(team).color;
       <TeamChip team={b.team} plain />
     </span>
   </div>
-
-  {!compact && (
-    <p class="finenote pred-note">
-      {level ? (
-        <>
-          Line-ball. The two pairings rate within a whisker of each other, so the
-          model is not calling this one — and after a redraft it rarely can:
-          it gets opening rounds right about as often as a coin.
-        </>
-      ) : (
-        <>
-          {favourite!.team} rate ahead on form carried into this match.
-          {' '}Per-player Elo, replayed from the first night of Season 1 — it never
-          sees the result, only what came before it.
-        </>
-      )}
-    </p>
-  )}
 </div>
 
 <style>
@@ -99,7 +79,6 @@ const ink = (team: string) => teamMeta(team).color;
   .end { display: flex; align-items: center; gap: 8px; }
   .end--right { flex-direction: row; }
   .ends b { font-variant-numeric: tabular-nums; font-size: 1.05rem; }
-  .pred-note { margin: 2px 0 0; }
   .pred--compact .ends { font-size: 0.82rem; }
   .pred--compact .ends b { font-size: 0.92rem; }
 </style>

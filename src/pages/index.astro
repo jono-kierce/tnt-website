@@ -5,7 +5,6 @@ import MatchCard from '../components/MatchCard.astro';
 import { SITE, seasonLabel } from '../config/site.ts';
 import { withBase, seasonHref, scheduleHref } from '../lib/url.ts';
 import {
-  declaredTeams,
   headlineRound,
   rotatingFunStat,
   seasonLadder,
@@ -24,20 +23,11 @@ const headline = headlineRound(season);
 const pairings = Object.fromEntries(
   Object.entries(seasonRosters(season)).map(([team, r]) => [team, r.pairingName])
 );
-const teamCount = declaredTeams(season).length;
-const TEAM_WORDS: Record<number, string> = {
-  8: 'Eight', 9: 'Nine', 10: 'Ten', 11: 'Eleven', 12: 'Twelve',
-};
-const teamWord = TEAM_WORDS[teamCount] ?? String(teamCount);
 ---
 <Layout title="Home">
   <section class="section container hero">
     <p class="eyebrow">Melbourne · Social Doubles · Est. 2022</p>
     <h1 class="tabloid">Tuesday<br />Night Tennis</h1>
-    <p class="lead" style="max-width:640px">
-      {teamWord} teams. One trophy. Every ace, winner and double fault recorded since
-      the beginning. This is the official record of TNT — {seasonLabel(season)} in progress.
-    </p>
     <div class="pill-row mt-16">
       <a class="btn" href={scheduleHref()}>Schedule</a>
       <a class="btn" href={withBase('/ladder/')}>Current Ladder</a>

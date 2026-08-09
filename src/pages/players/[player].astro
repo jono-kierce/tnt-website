@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import Avatar from '../../components/Avatar.astro';
 import TeamChip from '../../components/TeamChip.astro';
-import VotesNote from '../../components/VotesNote.astro';
+import InfoTip from '../../components/InfoTip.astro';
 import StatSummary from '../../components/StatSummary.astro';
 import TrendChart from '../../components/TrendChart.astro';
 import OpponentTile from '../../components/OpponentTile.astro';
@@ -172,6 +172,12 @@ const photos = playerPhotos(slug);
             {seasons.map((s) => <option value={String(s)}>{seasonLabel(s)}</option>)}
           </select>
         </label>
+        <InfoTip label="How these numbers work">
+          Per-set rates count finals; votes and BOG stay per match. Badges need
+          {' '}{SITE.rankMinMatches}+ matches in this window. Finals MVP (4-3-2-1) is
+          separate from season MVP votes. Career totals rescale Season 1 votes —
+          a 2 counts as 6, a 1 as 4. Fill-ins count everywhere except votes.
+        </InfoTip>
       </div>
     </div>
 
@@ -197,7 +203,6 @@ const photos = playerPhotos(slug);
         </div>
       ))
     )}
-    <VotesNote compact />
   </section>
 
   {h2h && (
