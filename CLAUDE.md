@@ -108,6 +108,25 @@ rules that matter here:
 
 ## Data conventions (must respect)
 
+- **Fixtures live in the CSV.** A drawn-but-unplayed match is 4 rows sharing
+  Team/Opponent/Season/Round/Player with **every other column blank**. The blank
+  `win?` is the sole discriminator — a played row always carries one, even a
+  finals result entered as a scoreline with no stats. Defined once, in
+  `normalize.ts` (`StatRow.scheduled`); `isPlayed`/`playedRows` in `stats.ts` is
+  the gate, applied inside `matchSides`, `playerRows`, `fixtureSides`,
+  `winStreaks`, `bestSingleGame` and `teamRoster` so nothing downstream — the
+  graphics included — has to remember. A fixture counts toward **nothing**.
+  Filling in the stats and `win?` turns it into a played row with no other
+  change. `allSeasons` counts a drawn season (the page must exist); `allPlayers`
+  does not (a player with no played rows has no slug, so no page).
+- **Byes are derived, never stored:** a round's byes are the season's declared
+  teams minus the teams with a fixture. That team set can't come from the CSV —
+  a team on a bye in round one has no rows at all — so it's passed in from the
+  season config's `teams` keys (`declaredTeams` in `site-data.ts`), which is
+  also what seeds a live ladder at 0/0/0. Round sizes vary on purpose: S5 runs
+  five rounds of five matches and four of four. `check-data` reports byes and
+  never warns about an uneven round; the one thing it errors on is a team drawn
+  twice in the same round.
 - **Canonical names:** `Lachlan Jenkin` (not Lachie), `Jim Papa` (not James).
   Aliases applied after stripping `(Fill-in)`.
 - **Pairing display order is captain-first, draftee-second.** Set via `pair` in
@@ -183,20 +202,63 @@ rules that matter here:
   `og.png` bake the colour in instead: a tab and a link preview are composited
   by somebody else's renderer.
 
+## The prediction model (`src/lib/predict.ts`)
+
+Per-player Elo, replayed chronologically over every played match from S1 R1. A
+pair rates at the mean of its two players; the logistic expectation comes from
+the pair-rating difference. Rules that matter:
+
+- **It never reads `votes`** — a test greps the file to prove it. That's what
+  makes it safe against a sealed season.
+- **Outcomes come from `win?`**, via `MatchRecord.winner`, never from counting
+  sets. A match with both sides flagged alike scores 0.5 (no such match exists;
+  the S4 R9 `5-5` has a winner — it's the *set* that has no breaker recorded).
+- **Each night's result is split between team-mates by contribution**:
+  `(winners + aces + errors forced) − (unforced errors + double faults)`, each
+  player against their own side's mean, through `tanh`, tilted by whether the
+  side won. Win and the bigger contributor gains more; lose and they lose less.
+  Forced errors are deliberately out of the ledger — they're the opponent's
+  credit, and already counted there. **The weights average 1**, so a match stays
+  zero-sum and the pair's *mean* is untouched: the split changes individual
+  ratings and reaches a prediction only through re-pairings. Falls back to an
+  even split when a match has no stats, which is every finals night on record.
+- **Constants are tuned, not guessed.** `tune()` grid-searches them and a test
+  re-runs it, so new results can't leave them stale. Ranked on accuracy among
+  settings passing a face-validity gate (four named players inside the top
+  eight) — an editorial judgement, documented as one, and pegged at eight
+  because there the gate costs nothing: the best setting that passes is the best
+  setting overall. At top-six it would have cost 4.3 points.
+- **It cannot call an opening round** — 48% over the season openers, at every
+  setting tried, and carrying more of last season's rating makes it worse. After
+  a redraft, prior form says nothing. `PredictionBar` prints "line-ball" inside
+  4% of even rather than implying a call. Say so; don't dress it up.
+
+## Match insights (`src/lib/insights.ts`)
+
+Pure detectors over `stats.ts`, each returning `Insight | null`, **silent when
+nothing qualifies**. A detector only ever sees matches played *strictly before*
+the one being described, so an insight on a 2023 match reads as the preview it
+would have been. Keep them stingy: "revenge match" once fired on 78% of the
+fixture list (it looked back across seasons, where a redraft means the two teams
+share only a colour), and a label that's nearly always true says nothing. A test
+fails if the share of matches with an insight leaves the 40–85% band.
+
 ## Current state / open TODOs (owner to fill)
 
 - **S4 (2025) is complete** — full results, honours filled, votes loaded and
-  **unsealed**; `sealedVoteSeasons` is empty. All honours for all four seasons
-  are filled in (no `TODO` honours remain).
-- **Season 5 (2026) is drafted but not live**: `season-5.ts` has all ten teams
-  from the draft (honours/finals still empty) and `seasonYears` maps 5 → 2026.
-  S5 is the first **ten-team** season — **Brown** was added to `TEAMS` in
-  `site.ts` alongside the original nine. When the first S5
-  rows land in the CSV, flip `currentSeason` to 5 in `src/config/site.ts` —
-  until then the homepage keeps showing S4, because a season with no rows has
-  an empty ladder and no `/seasons/5/` page to link to. Add 5 to
-  `sealedVoteSeasons` at the same time if votes are to stay hidden until
+  unsealed.
+- **Season 5 (2026) is LIVE and yet to be played.** `currentSeason` is 5 and
+  `sealedVoteSeasons` is `[5]`. Round 1's four fixtures are in the CSV (Brown
+  and Pink on a bye); nothing has been played, so the ladder shows all ten teams
+  at 0/0/0 and every S5 prediction sits near 50/50 — which is honest, not a bug.
+  S5 is the first **ten-team** season; **Brown** is in `TEAMS` alongside the
+  original nine. `season-5.ts` has all ten pairings, captain-first; honours and
+  finals fill in at season's end. **Remove 5 from `sealedVoteSeasons`** on
   awards night.
+- **`npm run graphics` with no arguments exits 0 and renders nothing** while S5
+  has fixtures but no results — a round with no scores is not something a result
+  card can show. That's deliberate, so the CI graphics job stays green between
+  the draft and the first result. Pass `--season 4` to render the archive.
 - All four brackets have full results. Finals **player stats**: S3 has finals
   MVP votes in the CSV (28/28 rows; the derived 4-3-2-1 tally matches the
   recorded Finals MVP). S1, S2 and S4 finals are **scorelines only** — no
@@ -212,3 +274,14 @@ rules that matter here:
 - Most team **captains** are blank except S4 and Kierce's teams.
 - `npm run check-data` flags 2 ambiguous S1 R8 rows (Hume, Dickson — two
   non-fill-in rows in one round); pre-existing data, left as-is.
+
+### Deliberately not built (hooks left, nothing wired)
+
+- **Model accuracy tracker UI.** `backtest()` already returns every match with
+  its pre-match call, so a "how the model is doing" page is a component away.
+- **Round-preview Instagram graphic.** `predictionFor` + `insightsFor` give a
+  preview card everything it needs; it would be a fourth template family and a
+  payload builder, following the same "no graphic computes a statistic" rule.
+- **Finals odds / Monte Carlo ladder.** `replay()` is deterministic and cheap,
+  so simulating the run home is tractable — but it needs a story about how to
+  present uncertainty, not just the numbers.

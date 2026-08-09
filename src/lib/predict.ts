@@ -77,13 +77,18 @@ export const ELO = {
    * both players move identically, which is plain doubles Elo; at 1 one player
    * could take the entire result. See `sideWeights`.
    *
-   * 0.6 costs nothing in accuracy — the split can't change a pair's mean rating,
-   * so it only reaches a prediction through re-pairings — and it markedly
-   * improves the individual ratings it does change. With the split off, the
-   * four players the league would put at the top come out 2nd, 4th, 8th and
-   * 10th of 25; with it on, 1st, 3rd, 4th and 7th.
+   * Anything from 0.4 to 0.85 costs nothing in accuracy — the split can't move
+   * a pair's mean rating, so it only reaches a prediction through re-pairings —
+   * and it markedly improves the individual ratings it does change. With the
+   * split off, the four players the league would put at the top come out 1st,
+   * 7th, 10th and 5th of 25, and the face-validity gate fails; at 0.85 they are
+   * 1st, 6th, 7th and 2nd.
+   *
+   * 0.85 rather than 0.75 because it is better calibrated at identical
+   * accuracy, and rather than 0.95 because that tips over the end of the
+   * plateau and gives a match back (61.2% to 60.6%) for no gain anywhere else.
    */
-  contributionWeight: 0.75,
+  contributionWeight: 0.85,
   /**
    * The gap in net stats, within a side, that counts as decisive. A player
    * this far clear of their partner takes about 76% of the tilt (tanh(1)).
