@@ -67,7 +67,7 @@ export const ELO = {
    * to get a player off 1500 inside a season — most of a big swing comes from
    * `personalScores` being far from 0.5, not from K itself.
    */
-  k: 16,
+  k: 32,
   /**
    * How far ratings are pulled back toward the mean between seasons, 0–1.
    *
