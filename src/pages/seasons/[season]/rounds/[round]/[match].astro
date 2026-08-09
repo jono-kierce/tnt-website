@@ -1,0 +1,288 @@
+---
+/**
+ * One page per match — every match TNT has ever played, plus every one it has
+ * drawn but not yet played. The two variants share a shell and differ in what
+ * there is to show: a result has a scoreline and stat lines, a fixture has
+ * line-ups and averages. Both carry the model's call and whatever the insight
+ * detectors found.
+ */
+import Layout from '../../../../../layouts/Layout.astro';
+import TeamChip from '../../../../../components/TeamChip.astro';
+import SetScore from '../../../../../components/SetScore.astro';
+import PredictionBar from '../../../../../components/PredictionBar.astro';
+import InsightList from '../../../../../components/InsightList.astro';
+import VotesNote from '../../../../../components/VotesNote.astro';
+import Avatar from '../../../../../components/Avatar.astro';
+import { SITE, seasonLabel, teamMeta, isVotesSealed } from '../../../../../config/site.ts';
+import { matchHref, playerHref, roundSlug, matchSlug, seasonHref } from '../../../../../lib/url.ts';
+import { allPlayers, playerAgg, perSet, type MatchRecord } from '../../../../../lib/stats.ts';
+import { allRows, declaredTeams, rows, seasonSchedule, siteSeasons } from '../../../../../lib/site-data.ts';
+import { predictionFor } from '../../../../../lib/predict.ts';
+import { insightsFor } from '../../../../../lib/insights.ts';
+
+export function getStaticPaths() {
+  return siteSeasons().flatMap((season) =>
+    seasonSchedule(season).map((match) => ({
+      params: {
+        season: String(season),
+        round: roundSlug(match.round, match.stage),
+        match: matchSlug(match.sides[0].team, match.sides[1].team),
+      },
+      props: { match },
+    }))
+  );
+}
+
+const { match } = Astro.props as { match: MatchRecord };
+const season = match.season;
+const sealed = isVotesSealed(season);
+const prediction = predictionFor(match);
+const insights = insightsFor(match, allRows, declaredTeams(season));
+
+const heading = match.isFinals
+  ? match.roundLabel === 'Final'
+    ? 'The Final'
+    : match.roundLabel === 'SF'
+      ? 'Semi Final'
+      : 'Qualifying Final'
+  : `Round ${match.roundLabel}`;
+
+const title = `${match.sides[0].team} v ${match.sides[1].team} — ${heading}`;
+
+/** Only link a name that actually has a page. A debutant doesn't yet. */
+const played = new Set(allPlayers(rows));
+
+/**
+ * A player's career line, for the fixture variant. Career window, so fill-in
+ * nights count — a night on court is a night on court — as on the player page.
+ */
+const careerLine = (player: string) => {
+  const agg = playerAgg(player, rows, { includeFillIns: true });
+  return {
+    agg,
+    winners: perSet(agg, 'winners'),
+    ue: perSet(agg, 'unforcedErrors'),
+  };
+};
+
+/** Every counting stat on the completed-match table, with its heading. */
+const STAT_COLUMNS = [
+  { key: 'winners', label: 'W', title: 'Winners' },
+  { key: 'unforcedErrors', label: 'UE', title: 'Unforced errors' },
+  { key: 'aces', label: 'Ace', title: 'Aces' },
+  { key: 'doubleFaults', label: 'DF', title: 'Double faults' },
+  { key: 'forcedErrors', label: 'FE', title: 'Forced errors' },
+  { key: 'errorsForced', label: 'EF', title: 'Errors forced (S2+)' },
+] as const;
+
+/** Whether any player in the match recorded this stat at all. */
+const hasStat = (key: (typeof STAT_COLUMNS)[number]['key']) =>
+  match.sides.some((s) => s.players.some((p) => p[key] !== null));
+const columns = STAT_COLUMNS.filter((c) => hasStat(c.key));
+const anyStats = columns.length > 0;
+
+const accent = teamMeta(match.winner ?? match.sides[0].team);
+---
+<Layout
+  title={title}
+  description={`${seasonLabel(season)}, ${heading}: ${match.sides[0].team} v ${match.sides[1].team}.`}
+  accent={{ color: accent.color, color2: accent.color2, ink: accent.ink }}
+>
+  <section class="section container">
+    <p class="eyebrow">
+      <a href={seasonHref(season)}>{seasonLabel(season)}</a> · {heading}
+      {match.scheduled && <> · <span class="to-play">Yet to be played</span></>}
+    </p>
+
+    <div class="scoreboard card card--dark">
+      {match.sides.map((side) => {
+        const m = teamMeta(side.team);
+        const won = !match.scheduled && match.winner === side.team;
+        return (
+          <div
+            class:list={['sb-side', { won, lost: !match.scheduled && !won && match.winner !== null }]}
+            style={`--team-color:${m.color};--team-color-2:${m.color2};--team-ink:${m.ink}`}
+          >
+            <span class="sb-spine"></span>
+            <div class="sb-team">
+              <h2 class="sb-name">{side.team}</h2>
+              <ul class="sb-lineup">
+                {side.players.filter((p) => !p.isSingles).map((p) => (
+                  <li>
+                    {played.has(p.player) ? (
+                      <a href={playerHref(p.slug)}>{p.player}</a>
+                    ) : (
+                      <span>{p.player}</span>
+                    )}
+                    {p.isFillIn && <span class="badge badge--fill">Fill-in</span>}
+                  </li>
+                ))}
+                {side.players.some((p) => p.isSingles) && <li><em>Singles game</em></li>}
+              </ul>
+            </div>
+            <div class="sb-score">
+              {match.scheduled ? (
+                <span class="sb-dash" aria-label="Not yet played">—</span>
+              ) : (
+                <SetScore score={side.score} />
+              )}
+            </div>
+          </div>
+        );
+      })}
+      {match.isDraw && !match.scheduled && (
+        <p class="finenote sb-note">No side is recorded as having won this match.</p>
+      )}
+    </div>
+  </section>
+
+  <section class="section container grid grid-2" style="align-items:start">
+    <div class="card">
+      <PredictionBar prediction={prediction} winner={match.winner} />
+    </div>
+    <div>
+      <InsightList insights={insights} />
+      {insights.length === 0 && (
+        <p class="muted mb-0">
+          Nothing much to separate these two beyond the result itself.
+        </p>
+      )}
+    </div>
+  </section>
+
+  {!match.scheduled && anyStats && (
+    <section class="section container">
+      <p class="eyebrow">The night in numbers</p>
+      <h2 class="serif-title" style="margin-bottom:12px">Player stats</h2>
+      <div class="card card--dark">
+        <div class="table-wrap">
+          <table class="stat matchstats">
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>Team</th>
+                {columns.map((c) => <th title={c.title}>{c.label}</th>)}
+                {!sealed && <th title="Votes as cast">V</th>}
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {match.sides.flatMap((side) =>
+                side.players.filter((p) => !p.isSingles).map((p) => (
+                  <tr>
+                    <td class="c-name">
+                      {played.has(p.player) ? (
+                        <a href={playerHref(p.slug)}>{p.player}</a>
+                      ) : (
+                        p.player
+                      )}
+                    </td>
+                    <td><TeamChip team={side.team} plain /></td>
+                    {columns.map((c) => <td>{p[c.key] ?? '—'}</td>)}
+                    {!sealed && <td>{p.votes ?? '—'}</td>}
+                    <td class="c-tags">
+                      {!sealed && p.bog && <span class="badge badge--bog">BOG</span>}
+                      {p.isFillIn && <span class="badge badge--fill">Fill-in</span>}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {sealed ? (
+        <p class="finenote">
+          Season {season} votes stay sealed until awards night, so votes and best
+          on ground are hidden here.
+        </p>
+      ) : (
+        <VotesNote compact />
+      )}
+    </section>
+  )}
+
+  {!match.scheduled && !anyStats && (
+    <section class="section container">
+      <p class="muted">
+        No player stats were recorded for this match — the scoreline is all there is.
+        {match.isFinals && ' Finals are usually written up as a result on the night.'}
+      </p>
+    </section>
+  )}
+
+  {match.scheduled && (
+    <section class="section container">
+      <p class="eyebrow">Who's playing</p>
+      <h2 class="serif-title" style="margin-bottom:12px">Form guide</h2>
+      <div class="grid grid-2 form-grid">
+        {match.sides.map((side) => (
+          <div class="card">
+            <div style="margin-bottom:10px"><TeamChip team={side.team} /></div>
+            {side.players.filter((p) => !p.isSingles).map((p) => {
+              const { agg, winners, ue } = careerLine(p.player);
+              return (
+                <div class="form-row">
+                  <div class="form-face"><Avatar slug={p.slug} name={p.player} team={side.team} /></div>
+                  <div class="form-body">
+                    <p class="form-name">
+                      {played.has(p.player) ? (
+                        <a href={playerHref(p.slug)}>{p.player}</a>
+                      ) : (
+                        p.player
+                      )}
+                    </p>
+                    {agg.games === 0 ? (
+                      <p class="muted mb-0 form-stats">First TNT match.</p>
+                    ) : (
+                      <p class="form-stats mb-0">
+                        <span>{agg.games} matches</span>
+                        <span>{agg.wins}W–{agg.losses}L</span>
+                        {winners !== null && <span>{winners.toFixed(1)} winners/set</span>}
+                        {ue !== null && <span>{ue.toFixed(1)} UE/set</span>}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <p class="finenote">
+        Career numbers across every season, fill-in nights included — a night on
+        court is a night on court. Rates are per set.
+      </p>
+    </section>
+  )}
+
+  <section class="section container">
+    <p><a href={seasonHref(season)}>← {seasonLabel(season)}</a></p>
+  </section>
+</Layout>
+
+<style>
+  .to-play { color: var(--gold-soft); }
+  .scoreboard { display: flex; flex-direction: column; gap: 4px; }
+  .sb-side { display: grid; grid-template-columns: 4px 1fr auto; gap: 16px; align-items: center; padding: 14px 4px; }
+  .sb-spine { width: 4px; height: 100%; min-height: 48px; border-radius: 3px; background: linear-gradient(180deg, var(--team-color), var(--team-color-2)); }
+  .sb-name { font-family: var(--serif); font-size: clamp(1.3rem, 4vw, 2rem); margin: 0; }
+  .sb-lineup { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .sb-lineup li { display: flex; align-items: center; gap: 6px; color: var(--ivory-dim); font-size: 0.92rem; }
+  .sb-score { font-size: clamp(1.5rem, 5vw, 2.4rem); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .sb-side.won .sb-score { color: var(--gold); }
+  .sb-side.lost .sb-name, .sb-side.lost .sb-score { color: var(--ivory-dim); opacity: 0.75; }
+  .sb-dash { color: var(--muted); }
+  .sb-note { margin: 4px 0 0; }
+
+  .matchstats .c-name { text-align: left; white-space: nowrap; }
+  .matchstats .c-tags { width: 100%; text-align: left; white-space: nowrap; }
+
+  .form-grid { align-items: start; gap: 14px; }
+  .form-row { display: grid; grid-template-columns: 52px 1fr; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+  .form-row:first-of-type { border-top: 0; }
+  .form-face { width: 52px; }
+  .form-name { font-family: var(--serif); font-weight: 700; margin: 0 0 2px; }
+  /* The numbers wrap onto their own line on a phone rather than shrinking. */
+  .form-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+</style>

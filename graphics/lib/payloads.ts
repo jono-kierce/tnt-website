@@ -83,11 +83,17 @@ export function resolveRound(input: string | number): RoundRef {
   };
 }
 
-/** Every round played in a season, in the order they were played. */
+/**
+ * Every round played in a season, in the order they were played.
+ *
+ * Played, emphatically: a round that has only been drawn has no scores, no
+ * stats and no winner, and `npm run graphics` with no arguments renders "the
+ * latest round" — which must never resolve to a match nobody has played.
+ */
 export function seasonRounds(season: number): RoundRef[] {
   const seen = new Map<number, string>();
   for (const r of rows) {
-    if (r.season !== season) continue;
+    if (r.season !== season || r.scheduled) continue;
     seen.set(r.round, r.stage ?? String(r.round));
   }
   return [...seen.entries()]
@@ -104,7 +110,7 @@ export function latestRound(season: number): RoundRef | null {
 /** The last home-and-away round of a season — the one that seeds the finals. */
 function lastHomeAndAwayRound(season: number): number {
   const nums = rows
-    .filter((r) => r.season === season && !r.isFinals)
+    .filter((r) => r.season === season && !r.isFinals && !r.scheduled)
     .map((r) => r.round);
   return nums.length ? Math.max(...nums) : 0;
 }
@@ -491,6 +497,7 @@ function teamForChip(player: string, season?: number): string | null {
   const mine = rows.filter(
     (r) =>
       !r.isSingles &&
+      !r.scheduled &&
       r.player === player &&
       !r.isFillIn &&
       (season === undefined || r.season === season)

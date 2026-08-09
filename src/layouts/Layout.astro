@@ -15,6 +15,7 @@ const fullTitle = title ? `${title} — ${SITE.short}` : `${SITE.title}`;
 const path = Astro.url.pathname;
 const nav = [
   { href: withBase('/'), label: 'Home' },
+  { href: withBase('/schedule/'), label: 'Schedule' },
   { href: withBase('/ladder/'), label: 'Ladder' },
   { href: withBase('/players/'), label: 'Players' },
   { href: withBase('/leaderboards/'), label: 'Leaderboards' },

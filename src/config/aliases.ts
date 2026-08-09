@@ -28,12 +28,22 @@ export function canonicalName(strippedName: string): string {
   return NAME_ALIASES[strippedName] ?? strippedName;
 }
 
-/** URL/file slug for a canonical name, e.g. "Lachlan Jenkin" -> "lachlan-jenkin". */
-export function playerSlug(canonical: string): string {
-  return canonical
+/** Lowercase, hyphenated, URL-safe. The one slug rule the site has. */
+export function slugify(s: string): string {
+  return s
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+/** URL/file slug for a canonical name, e.g. "Lachlan Jenkin" -> "lachlan-jenkin". */
+export function playerSlug(canonical: string): string {
+  return slugify(canonical);
+}
+
+/** URL slug for a team colour, e.g. "Light Blue" -> "light-blue". */
+export function teamSlug(team: string): string {
+  return slugify(team);
 }
 
 /** Broadcast-style short name: "Angus Hume" -> "A. Hume". */

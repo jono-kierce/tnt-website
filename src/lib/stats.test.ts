@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { loadStatRows, normalizeRows, parseScore } from './normalize.ts';
 import {
+  allPlayers,
+  allSeasons,
   bestWorstOpponent,
   fillInRecord,
   fillInVotes,
@@ -12,6 +14,8 @@ import {
   perSet,
   playerAgg,
   records,
+  seasonMatches,
+  seasonRounds,
   teamRoster,
   winStreaks,
 } from './stats.ts';
@@ -837,4 +841,215 @@ describe('finals data matches the brackets', () => {
       for (const r of csvRows) expect(stages).toContain(r.stage);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Fixtures — matches drawn but not played
+// ---------------------------------------------------------------------------
+
+/**
+ * A scheduled fixture as the CSV holds one: the four key columns and the two
+ * players a side, every other cell blank. The blank `win?` is the whole
+ * discriminator.
+ */
+function fixtureRaw(o: Partial<Record<string, string>>): Record<string, string> {
+  return {
+    Team: '', Opponent: '', Season: '', Round: '', Score: '', Player: '',
+    Aces: '', 'Unforced Errors': '', 'Forced Errors': '',
+    '1st Serve In': '', '1st Serve Out': '', 'Double Faults': '',
+    Winners: '', 'Errors Forced': '', 'win?': '',
+    'Team Score': '', 'Opponent Score': '', votes: '',
+    ...o,
+  };
+}
+
+/** Both sides of one drawn match. */
+function drawnMatch(
+  season: string,
+  round: string,
+  a: [string, string, string],
+  b: [string, string, string]
+) {
+  const [teamA, p1, p2] = a;
+  const [teamB, p3, p4] = b;
+  return [
+    fixtureRaw({ Team: teamA, Opponent: teamB, Season: season, Round: round, Player: p1 }),
+    fixtureRaw({ Team: teamA, Opponent: teamB, Season: season, Round: round, Player: p2 }),
+    fixtureRaw({ Team: teamB, Opponent: teamA, Season: season, Round: round, Player: p3 }),
+    fixtureRaw({ Team: teamB, Opponent: teamA, Season: season, Round: round, Player: p4 }),
+  ];
+}
+
+describe('fixture classification', () => {
+  it('a blank win? marks the row scheduled; FALSE does not', () => {
+    const rows = normalizeRows([
+      ...drawnMatch('5', '1', ['Pink', 'A One', 'B Two'], ['Navy', 'C Three', 'D Four']),
+      raw({ Team: 'Pink', Opponent: 'Navy', Season: '4', Round: '1', Score: '4-6',
+            Player: 'A One', 'win?': 'FALSE', 'Team Score': '4', 'Opponent Score': '6' }),
+    ]);
+    expect(rows.filter((r) => r.scheduled).map((r) => r.player)).toEqual([
+      'A One', 'B Two', 'C Three', 'D Four',
+    ]);
+    // A recorded loss is a played match, not a fixture.
+    expect(rows.find((r) => r.season === 4)!.scheduled).toBe(false);
+  });
+
+  it('keeps fixtures out of the ladder, aggregates, boards, records and streaks', () => {
+    const played = [
+      raw({ Team: 'Pink', Opponent: 'Navy', Season: '5', Round: '1', Score: '6-4',
+            Player: 'A One', Winners: '5', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '4' }),
+      raw({ Team: 'Navy', Opponent: 'Pink', Season: '5', Round: '1', Score: '4-6',
+            Player: 'C Three', Winners: '2', 'win?': 'FALSE', 'Team Score': '4', 'Opponent Score': '6' }),
+    ];
+    const withFixtures = normalizeRows([
+      ...played,
+      ...drawnMatch('5', '2', ['Pink', 'A One', 'B Two'], ['Navy', 'C Three', 'D Four']),
+    ]);
+    const only = normalizeRows(played);
+
+    expect(ladder(5, withFixtures)).toEqual(ladder(5, only));
+    expect(playerAgg('A One', withFixtures)).toEqual(playerAgg('A One', only));
+    // A fixture is not a loss: one match played, one win, not 2-1.
+    const agg = playerAgg('A One', withFixtures);
+    expect([agg.games, agg.wins, agg.losses]).toEqual([1, 1, 0]);
+    expect(leaderboard('winners', withFixtures)).toEqual(leaderboard('winners', only));
+    expect(records(withFixtures)).toEqual(records(only));
+    expect(winStreaks(withFixtures)).toEqual(winStreaks(only));
+    expect(headToHead('A One', withFixtures)).toEqual(headToHead('A One', only));
+    expect(matchSides(withFixtures, 5)).toEqual(matchSides(only, 5));
+  });
+
+  it('never derives a BOG from a fixture', () => {
+    const rows = normalizeRows(
+      drawnMatch('5', '1', ['Pink', 'A One', 'B Two'], ['Navy', 'C Three', 'D Four'])
+    );
+    expect(rows.some((r) => r.bog)).toBe(false);
+  });
+
+  it('a season that has only been drawn still counts as a season, its players do not', () => {
+    const rows = normalizeRows(
+      drawnMatch('5', '1', ['Pink', 'A One', 'B Two'], ['Navy', 'C Three', 'D Four'])
+    );
+    // The season page has to exist before the first ball is hit.
+    expect(allSeasons(rows)).toEqual([5]);
+    // A player page would have no stats and — worse — no slug to live at.
+    expect(allPlayers(rows)).toEqual([]);
+  });
+});
+
+describe('match records and rounds', () => {
+  const rows = normalizeRows([
+    raw({ Team: 'Pink', Opponent: 'Navy', Season: '5', Round: '1', Score: '6-4',
+          Player: 'A One', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '4' }),
+    raw({ Team: 'Pink', Opponent: 'Navy', Season: '5', Round: '1', Score: '6-4',
+          Player: 'B Two', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '4' }),
+    raw({ Team: 'Navy', Opponent: 'Pink', Season: '5', Round: '1', Score: '4-6',
+          Player: 'C Three', 'win?': 'FALSE', 'Team Score': '4', 'Opponent Score': '6' }),
+    raw({ Team: 'Navy', Opponent: 'Pink', Season: '5', Round: '1', Score: '4-6',
+          Player: 'D Four', 'win?': 'FALSE', 'Team Score': '4', 'Opponent Score': '6' }),
+    ...drawnMatch('5', '2', ['Pink', 'A One', 'B Two'], ['Green', 'E Five', 'F Six']),
+  ]);
+
+  it('folds both team-sides into one match, ordered by team name', () => {
+    const matches = seasonMatches(rows, 5);
+    expect(matches.length).toBe(2);
+    const [r1, r2] = matches;
+    expect(r1.key).toBe('5|1|Navy|Pink');
+    expect(r1.sides.map((s) => s.team)).toEqual(['Navy', 'Pink']);
+    expect(r1.sides.map((s) => s.players.length)).toEqual([2, 2]);
+    expect(r1.winner).toBe('Pink');
+    expect(r1.scheduled).toBe(false);
+    expect(r2.scheduled).toBe(true);
+    expect(r2.winner).toBe(null);
+  });
+
+  it('reads the winner from win?, not from the scoreline', () => {
+    // A set nobody recorded the breaker for: 5-5, and Green won the match.
+    const level = normalizeRows([
+      raw({ Team: 'Green', Opponent: 'Yellow', Season: '4', Round: '9', Score: '5-5',
+            Player: 'A One', 'win?': 'TRUE', 'Team Score': '5', 'Opponent Score': '5' }),
+      raw({ Team: 'Yellow', Opponent: 'Green', Season: '4', Round: '9', Score: '5-5',
+            Player: 'C Three', 'win?': 'FALSE', 'Team Score': '5', 'Opponent Score': '5' }),
+    ]);
+    const m = seasonMatches(level, 4)[0];
+    expect(m.winner).toBe('Green');
+    expect(m.isDraw).toBe(false);
+    expect(m.sides.every((s) => s.setScores.every((set) => !set.won))).toBe(true);
+  });
+
+  it('calls a match nobody won a draw', () => {
+    const drawn = normalizeRows([
+      raw({ Team: 'Green', Opponent: 'Yellow', Season: '4', Round: '9', Score: '5-5',
+            Player: 'A One', 'win?': 'FALSE', 'Team Score': '5', 'Opponent Score': '5' }),
+      raw({ Team: 'Yellow', Opponent: 'Green', Season: '4', Round: '9', Score: '5-5',
+            Player: 'C Three', 'win?': 'FALSE', 'Team Score': '5', 'Opponent Score': '5' }),
+    ]);
+    const m = seasonMatches(drawn, 4)[0];
+    expect(m.isDraw).toBe(true);
+    expect(m.winner).toBe(null);
+  });
+
+  it('derives byes from the declared field, not from the CSV', () => {
+    const field = ['Pink', 'Navy', 'Green', 'Brown'];
+    const rounds = seasonRounds(rows, 5, field);
+    expect(rounds.map((r) => r.round)).toEqual([1, 2]);
+    expect(rounds[0].played).toBe(true);
+    expect(rounds[0].byes).toEqual(['Brown', 'Green']);
+    expect(rounds[1].played).toBe(false);
+    expect(rounds[1].byes).toEqual(['Brown', 'Navy']);
+    // Without the declared field, a team with no rows at all is invisible —
+    // which is exactly why the field has to be passed in.
+    expect(seasonRounds(rows, 5)[0].byes).toEqual(['Green']);
+  });
+
+  it('seeds the ladder with declared teams that have not played', () => {
+    const field = ['Pink', 'Navy', 'Green', 'Brown'];
+    const table = ladder(5, rows, undefined, field);
+    // Wins, then games ratio, exactly as ever: Navy has lost 4-6 and so carries
+    // a ratio of 0.67, which outranks the 0 of a team yet to take the court.
+    expect(table.map((r) => r.team)).toEqual(['Pink', 'Navy', 'Brown', 'Green']);
+    const brown = table.find((r) => r.team === 'Brown')!;
+    expect([brown.matchesPlayed, brown.wins, brown.losses]).toEqual([0, 0, 0]);
+    // Unchanged when no field is declared — the archive ladders must not move.
+    expect(ladder(5, rows).map((r) => r.team)).toEqual(['Pink', 'Navy']);
+  });
+});
+
+describe('the real CSV, with Season 5 fixtures in it', () => {
+  const all = loadStatRows();
+  const played = all.filter((r) => !r.scheduled);
+
+  it('has fixtures, and they are all Season 5 with nothing but names on them', () => {
+    const drawn = all.filter((r) => r.scheduled);
+    expect(drawn.length).toBeGreaterThan(0);
+    for (const r of drawn) {
+      expect(r.season).toBe(5);
+      expect(r.score).toBe('');
+      expect(r.win).toBe(false);
+      expect(r.teamScore).toBe(0);
+      expect(r.votes).toBe(null);
+      expect(r.winners).toBe(null);
+      expect(r.bog).toBe(false);
+    }
+  });
+
+  it('leaves every archive season exactly as it was', () => {
+    for (const season of [1, 2, 3, 4]) {
+      expect(ladder(season, all)).toEqual(ladder(season, played));
+    }
+    expect(records(all)).toEqual(records(played));
+    expect(winStreaks(all)).toEqual(winStreaks(played));
+    expect(leaderboard('winners', all)).toEqual(leaderboard('winners', played));
+  });
+
+  it('leaves every drafted Season 5 player’s career untouched', () => {
+    const s5 = [...new Set(all.filter((r) => r.scheduled).map((r) => r.player))];
+    expect(s5.length).toBeGreaterThan(0);
+    for (const p of s5) {
+      expect(playerAgg(p, all, { includeFillIns: true })).toEqual(
+        playerAgg(p, played, { includeFillIns: true })
+      );
+      expect(headToHead(p, all)).toEqual(headToHead(p, played));
+    }
+  });
 });

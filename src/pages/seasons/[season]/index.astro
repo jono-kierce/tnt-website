@@ -1,20 +1,29 @@
 ---
-import Layout from '../../layouts/Layout.astro';
-import LadderTable from '../../components/LadderTable.astro';
-import FinalsBracket from '../../components/FinalsBracket.astro';
-import TeamChip from '../../components/TeamChip.astro';
-import VotesNote from '../../components/VotesNote.astro';
-import { seasonLabel, isVotesSealed } from '../../config/site.ts';
-import { playerHref } from '../../lib/url.ts';
-import { allSeasons } from '../../lib/stats.ts';
-import { rows, seasonLadder, seasonMvp } from '../../lib/site-data.ts';
-import { getSeasonConfig } from '../../config/seasons/index.ts';
-import { seasonRecapHtml } from '../../lib/content.ts';
-import { seasonPhotos } from '../../lib/photos.ts';
-import PhotoGallery from '../../components/PhotoGallery.astro';
+import Layout from '../../../layouts/Layout.astro';
+import LadderTable from '../../../components/LadderTable.astro';
+import FinalsBracket from '../../../components/FinalsBracket.astro';
+import TeamChip from '../../../components/TeamChip.astro';
+import VotesNote from '../../../components/VotesNote.astro';
+import { seasonLabel, isVotesSealed } from '../../../config/site.ts';
+import { playerHref } from '../../../lib/url.ts';
+import RoundCarousel from '../../../components/RoundCarousel.astro';
+import {
+  siteSeasons,
+  defaultScheduleRound,
+  seasonLadder,
+  seasonMvp,
+  seasonRoundList,
+  seasonRosters,
+} from '../../../lib/site-data.ts';
+import { getSeasonConfig } from '../../../config/seasons/index.ts';
+import { seasonRecapHtml } from '../../../lib/content.ts';
+import { seasonPhotos } from '../../../lib/photos.ts';
+import PhotoGallery from '../../../components/PhotoGallery.astro';
 
 export function getStaticPaths() {
-  return allSeasons(rows).map((s) => ({ params: { season: String(s) }, props: { season: s } }));
+  // Every season the CSV knows about, including one that has only been drawn —
+  // the schedule is the first thing a new season has to show.
+  return siteSeasons().map((s) => ({ params: { season: String(s) }, props: { season: s } }));
 }
 const { season } = Astro.props;
 const cfg = getSeasonConfig(season);
@@ -27,6 +36,11 @@ const recap = seasonRecapHtml(season);
 const photos = seasonPhotos(season);
 const honours = cfg?.honours ?? [];
 const podiumMedals = ['🥇', '🥈', '🥉'];
+const rounds = seasonRoundList(season);
+const openRound = defaultScheduleRound(season);
+const pairings = Object.fromEntries(
+  Object.entries(seasonRosters(season)).map(([team, r]) => [team, r.pairingName])
+);
 ---
 <Layout title={seasonLabel(season)}>
   <section class="section container">
@@ -57,6 +71,14 @@ const podiumMedals = ['🥇', '🥈', '🥉'];
     <section class="section container">
       <p class="eyebrow">From the Court</p>
       <PhotoGallery photos={photos} alt={seasonLabel(season)} />
+    </section>
+  )}
+
+  {rounds.length > 0 && (
+    <section class="section container">
+      <p class="eyebrow">Every match</p>
+      <h2 class="serif-title" style="margin-bottom:14px">Fixtures &amp; Results</h2>
+      <RoundCarousel rounds={rounds} openAt={openRound?.round} pairings={pairings} />
     </section>
   )}
 

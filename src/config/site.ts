@@ -46,18 +46,23 @@ export const SITE = {
   base: '/',
 
   /**
-   * The season currently being played. Drives the "current ladder" everywhere.
-   * Flip to 5 when the first Season 5 rows land in the CSV — a season with no
-   * rows has an empty ladder and no season page to link to.
+   * The season currently being played. Drives the "current ladder", the
+   * schedule page and the graphics renderer's default round.
+   *
+   * A season goes live as soon as its DRAW is in the CSV — it no longer needs
+   * results. The ladder seeds itself from the season config's declared teams,
+   * so a live season with nothing played yet shows every team at 0/0/0 and a
+   * schedule full of fixtures, which is what a season looks like in January.
    */
-  currentSeason: 4,
+  currentSeason: 5,
 
   /**
    * Seasons whose `votes` column is intentionally blank until awards night.
-   * The site shows "votes sealed" instead of zeros for these. When you commit
-   * the real votes, remove the season from this list.
+   * The site shows "votes sealed" instead of zeros for these, and the graphics
+   * renderer refuses to draw a vote-derived board at all. When you commit the
+   * real votes, remove the season from this list.
    */
-  sealedVoteSeasons: [],
+  sealedVoteSeasons: [5] as number[],
 
   /** Map season number -> calendar year for labelling ("Season 4 (2025)"). */
   seasonYears: { 1: 2022, 2: 2023, 3: 2024, 4: 2025, 5: 2026 } as Record<number, number>,

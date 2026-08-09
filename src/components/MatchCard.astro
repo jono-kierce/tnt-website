@@ -1,0 +1,93 @@
+---
+/**
+ * One match in the round carousel: a result, or a fixture with the model's
+ * call on it. Both link through to the match's own page.
+ */
+import SetScore from './SetScore.astro';
+import { teamMeta } from '../config/site.ts';
+import { shortName } from '../config/aliases.ts';
+import { matchHref } from '../lib/url.ts';
+import type { MatchRecord } from '../lib/stats.ts';
+import type { MatchPrediction } from '../lib/predict.ts';
+
+interface Props {
+  match: MatchRecord;
+  /** Omitted on a completed card where the call isn't wanted. */
+  prediction?: MatchPrediction | null;
+  /** Pairing labels by team, from the season's rosters. */
+  pairings?: Record<string, string>;
+}
+const { match, prediction = null, pairings = {} } = Astro.props;
+
+const href = matchHref(
+  match.season,
+  match.round,
+  match.stage,
+  match.sides[0].team,
+  match.sides[1].team
+);
+
+/** The line-up as written on the fixture, before anyone has played it. */
+const lineup = (team: string) => {
+  const side = match.sides.find((s) => s.team === team)!;
+  const named = side.players.filter((p) => !p.isSingles).map((p) => shortName(p.player));
+  return named.length ? named.join(' & ') : pairings[team] ?? '';
+};
+
+const pct = (side: 0 | 1) =>
+  prediction === null
+    ? null
+    : Math.round((side === 0 ? prediction.probability : 1 - prediction.probability) * 100);
+---
+<a class:list={['mcard', { 'mcard--fixture': match.scheduled }]} href={href}>
+  {match.sides.map((side, i) => {
+    const m = teamMeta(side.team);
+    const won = !match.scheduled && match.winner === side.team;
+    return (
+      <div
+        class:list={['side', { won, lost: !match.scheduled && !won && match.winner !== null }]}
+        style={`--team-color:${m.color};--team-color-2:${m.color2}`}
+      >
+        <span class="spine"></span>
+        <span class="who">
+          <span class="team">{side.team}</span>
+          <span class="pair">{lineup(side.team)}</span>
+        </span>
+        {match.scheduled ? (
+          <span class="pct">{pct(i as 0 | 1)}<small>%</small></span>
+        ) : (
+          <span class="score"><SetScore score={side.score} /></span>
+        )}
+      </div>
+    );
+  })}
+  {match.scheduled && <span class="tag">To play</span>}
+  {!match.scheduled && match.isDraw && <span class="tag">No result recorded</span>}
+</a>
+
+<style>
+  .mcard {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 12px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--card);
+    color: var(--ivory); text-decoration: none;
+  }
+  .mcard:hover { border-color: var(--gold); text-decoration: none; }
+  .side { display: grid; grid-template-columns: 3px 1fr auto; gap: 10px; align-items: center; padding: 5px 0; }
+  .spine { width: 3px; height: 100%; min-height: 26px; border-radius: 2px; background: linear-gradient(180deg, var(--team-color), var(--team-color-2)); }
+  .who { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .team { font-family: var(--serif); font-weight: 700; font-size: 1rem; }
+  .pair { font-size: 0.76rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .score, .pct { font-variant-numeric: tabular-nums; font-size: 1.05rem; font-weight: 600; }
+  .pct small { font-size: 0.7em; color: var(--muted); margin-left: 1px; }
+  /* The loser recedes rather than the winner shouting — a column of these
+     otherwise reads as a wall of gold. */
+  .side.lost .team, .side.lost .score { color: var(--ivory-dim); opacity: 0.72; }
+  .side.won .score { color: var(--gold-soft); }
+  .tag {
+    align-self: flex-start; margin-top: 6px;
+    font-family: var(--serif); font-size: 0.68rem; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .mcard--fixture { border-style: dashed; }
+</style>

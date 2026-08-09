@@ -88,6 +88,35 @@ flattering everyone who played it.
 most votes in a match. Ties share it; a match with no recorded votes has no BOG.
 Just record votes and BOG follows automatically.
 
+### Fixtures — entering a match before it's played
+
+A match that's been **drawn but not played** goes in the same CSV, as four rows
+with the line-ups named and **every other column blank**:
+
+```
+Orange,Red,5,1,,Jimmy Gorton,,,,,,,,,,,,,
+Orange,Red,5,1,,Lachy Godden,,,,,,,,,,,,,
+Red,Orange,5,1,,Lachlan Jenkin,,,,,,,,,,,,,
+Red,Orange,5,1,,Jamie Harris,,,,,,,,,,,,,
+```
+
+Only `Team`, `Opponent`, `Season`, `Round` and `Player` are filled in. **The
+blank `win?` is what makes it a fixture** — that one cell, and nothing else. It
+works because a played row always has a `win?`, even a finals result recorded as
+a scoreline with no player stats.
+
+A fixture appears on the schedule, gets its own match page and a win
+probability, and **counts toward nothing**: not the ladder, not an average, not
+a leaderboard, not a record, not a streak. When the night is over, type the
+stats and the `win?` onto those same rows and they become ordinary played rows.
+Nothing else needs changing.
+
+**Byes are not entered** — they're worked out. A team with no fixture in a round
+is on a bye, and the round shows it. That's why the season config lists every
+team (`src/config/seasons/season-<N>.ts`): a team on a bye in round one has no
+rows in the CSV at all, so the config is the only place its existence is
+recorded. `npm run check-data` prints each round's match count and byes.
+
 ### Data quirks — all handled in one place (`src/lib/normalize.ts`)
 
 - **Name variants** are merged via `src/config/aliases.ts` (e.g. `Lachie Jenkin`
@@ -200,7 +229,9 @@ domain?** Add a `CNAME` and set `SITE_BASE` to `/` (in the workflow env or
 data/alltimestats.csv          source of truth
 src/config/                     site + season config, name aliases
 src/lib/normalize.ts           the single normalization layer
-src/lib/stats.ts               ladder, aggregates, leaderboards, records
+src/lib/stats.ts               ladder, aggregates, leaderboards, records, matches
+src/lib/predict.ts             the Elo model — win probabilities, power ratings
+src/lib/insights.ts            the "worth knowing" lines on a match page
 src/lib/stats.test.ts          unit tests (name merge, ladder, votes eras, ...)
 src/components/  src/pages/     UI
 content/                        bios, photos, recaps (you edit these)

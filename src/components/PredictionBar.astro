@@ -1,0 +1,105 @@
+---
+/**
+ * The model's win probability for a match, as a two-sided bar.
+ *
+ * The one thing this must never do is dress up a coin flip. After a redraft
+ * the model genuinely knows nothing — measured at 48% on opening rounds — so
+ * anything inside `EVEN` of level says so in words instead of implying a call
+ * the numbers don't support.
+ */
+import TeamChip from './TeamChip.astro';
+import { teamMeta } from '../config/site.ts';
+import type { MatchPrediction } from '../lib/predict.ts';
+
+interface Props {
+  prediction: MatchPrediction;
+  /** Show the actual result against the call. Completed matches only. */
+  winner?: string | null;
+  compact?: boolean;
+}
+const { prediction, winner = null, compact = false } = Astro.props;
+
+/** Inside this of even, the model has no opinion worth printing. */
+const EVEN = 0.04;
+
+const [a, b] = prediction.sides;
+const pctA = prediction.probability * 100;
+const pctB = 100 - pctA;
+const level = Math.abs(prediction.probability - 0.5) < EVEN;
+const favourite = level ? null : pctA > pctB ? a : b;
+const called = winner && favourite ? favourite.team === winner : null;
+
+const ink = (team: string) => teamMeta(team).color;
+---
+<div class:list={['pred', { 'pred--compact': compact }]}>
+  <div class="pred-head">
+    <span class="eyebrow" style="margin:0">The model</span>
+    {called !== null && (
+      <span class:list={['verdict', called ? 'hit' : 'miss']}>
+        {called ? 'Called it' : 'Got it wrong'}
+      </span>
+    )}
+  </div>
+
+  <div class="bar" role="img" aria-label={`${a.team} ${pctA.toFixed(0)} percent, ${b.team} ${pctB.toFixed(0)} percent`}>
+    <span class="seg" style={`width:${pctA}%;background:${ink(a.team)}`}></span>
+    <span class="seg" style={`width:${pctB}%;background:${ink(b.team)}`}></span>
+  </div>
+
+  <div class="ends">
+    <span class="end">
+      <TeamChip team={a.team} plain />
+      <b>{pctA.toFixed(0)}%</b>
+    </span>
+    <span class="end end--right">
+      <b>{pctB.toFixed(0)}%</b>
+      <TeamChip team={b.team} plain />
+    </span>
+  </div>
+
+  {!compact && (
+    <p class="finenote pred-note">
+      {level ? (
+        <>
+          Line-ball. The two pairings rate within a whisker of each other, so the
+          model is not calling this one — and after a redraft it rarely can:
+          it gets opening rounds right about as often as a coin.
+        </>
+      ) : (
+        <>
+          {favourite!.team} rate ahead on form carried into this match.
+          {' '}Per-player Elo, replayed from the first night of Season 1 — it never
+          sees the result, only what came before it.
+        </>
+      )}
+    </p>
+  )}
+</div>
+
+<style>
+  .pred { display: flex; flex-direction: column; gap: 8px; }
+  .pred-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .verdict {
+    font-family: var(--serif); font-size: 0.75rem; letter-spacing: 0.06em;
+    text-transform: uppercase; padding: 2px 9px; border-radius: 999px;
+    border: 1px solid var(--line);
+  }
+  .verdict.hit { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 45%, transparent); }
+  .verdict.miss { color: var(--muted); }
+  /* The two segments meet without a gap: the bar is one hundred per cent, split.
+     `width: 100%` is doing real work — the segments are sized in percentages, so
+     the bar's intrinsic width is near zero, and stretching a flex item doesn't
+     rescue it. Without this the whole bar collapses to about six pixels. */
+  .bar {
+    display: flex; width: 100%; height: 10px;
+    border-radius: 999px; overflow: hidden; background: var(--line-soft);
+  }
+  .seg { display: block; height: 100%; flex: none; }
+  .ends { display: flex; justify-content: space-between; gap: 10px; font-size: 0.9rem; }
+  .end { display: flex; align-items: center; gap: 8px; }
+  .end--right { flex-direction: row; }
+  .ends b { font-variant-numeric: tabular-nums; font-size: 1.05rem; }
+  .pred-note { margin: 2px 0 0; }
+  .pred--compact .ends { font-size: 0.82rem; }
+  .pred--compact .ends b { font-size: 0.92rem; }
+</style>

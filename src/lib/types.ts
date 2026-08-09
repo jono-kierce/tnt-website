@@ -58,6 +58,21 @@ export interface StatRow {
   isFillIn: boolean;
   /** True for the SINGLES GAME sentinel — valid match data, not a real player. */
   isSingles: boolean;
+  /**
+   * A fixture: a match that has been drawn but not played. Entered as four rows
+   * sharing Team/Opponent/Season/Round with the two players a side, and EVERY
+   * other column blank.
+   *
+   * The discriminator is a blank `win?`, and nothing else. It works because a
+   * played row always carries one — even a finals result reconstructed from a
+   * scoreline with no player stats says who won. `win` itself can't be the test:
+   * blank and FALSE both read as `false` by the time it's a boolean.
+   *
+   * A fixture has no result to count, so it stays out of every total (see
+   * `playedRows` in stats.ts). When the night's stats and a `win?` are typed in,
+   * the row becomes an ordinary played row with no other change anywhere.
+   */
+  scheduled: boolean;
 
   aces: number | null;
   unforcedErrors: number | null;
@@ -87,7 +102,7 @@ export interface StatRow {
   bog: boolean;
 }
 
-/** One side of one match (rows collapsed to the team result). */
+/** One side of one match (rows collapsed to the team result). Played only. */
 export interface MatchSide {
   season: number;
   round: number;

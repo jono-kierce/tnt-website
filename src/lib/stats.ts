@@ -1,4 +1,4 @@
-import type { LadderRow, MatchSide, StatRow } from './types.ts';
+import type { FinalsStage, LadderRow, MatchSide, StatRow } from './types.ts';
 import { SITE } from '../config/site.ts';
 import { shortName } from '../config/aliases.ts';
 import { loadStatRows } from './normalize.ts';
@@ -7,12 +7,39 @@ import { loadStatRows } from './normalize.ts';
 // Basics
 // ---------------------------------------------------------------------------
 
+/**
+ * Every season the CSV knows about, including one that has only been drawn —
+ * a season page has to exist before its first ball is hit.
+ */
 export function allSeasons(rows: StatRow[] = loadStatRows()): number[] {
   return [...new Set(rows.map((r) => r.season))].sort((a, b) => a - b);
 }
 
 const matchKey = (r: { season: number; round: number; team: string; opponent: string }) =>
   `${r.season}|${r.round}|${r.team}|${r.opponent}`;
+
+// ---------------------------------------------------------------------------
+// Played vs scheduled
+// ---------------------------------------------------------------------------
+
+/**
+ * A fixture has no result, so it belongs in no total: not the ladder, not an
+ * aggregate, not a leaderboard, not a record, not a streak. `StatRow.scheduled`
+ * is where the concept is defined; this is the one gate everything else uses.
+ *
+ * It's applied inside the entry points below rather than left to callers,
+ * because the callers include `graphics/lib/payloads.ts`, which loads the CSV
+ * itself. A fixture leaking into a posted graphic is exactly the failure the
+ * one-source-of-truth rule exists to prevent.
+ */
+export const isPlayed = (r: StatRow): boolean => !r.scheduled;
+
+/** Rows for matches that have actually been played. */
+export const playedRows = (rows: StatRow[]): StatRow[] => rows.filter(isPlayed);
+
+/** Rows for matches that have been drawn but not yet played. */
+export const scheduledRows = (rows: StatRow[]): StatRow[] =>
+  rows.filter((r) => r.scheduled);
 
 /**
  * Which matches an aggregate is built from.
@@ -48,6 +75,7 @@ export function matchSides(
 ): MatchSide[] {
   const seen = new Map<string, MatchSide>();
   for (const r of rows) {
+    if (r.scheduled) continue;
     if (season !== undefined && r.season !== season) continue;
     if (!inScope(r, scope)) continue;
     const key = matchKey(r);
@@ -68,6 +96,213 @@ export function matchSides(
     });
   }
   return [...seen.values()];
+}
+
+// ---------------------------------------------------------------------------
+// Matches — the whole fixture, both sides, played or not
+// ---------------------------------------------------------------------------
+
+/**
+ * One side of a match with its line-up intact.
+ *
+ * `MatchSide` above collapses a side to its team result, which is what the
+ * ladder wants. This keeps the player rows, which is what a match page, the
+ * prediction model and the insight detectors all want.
+ */
+export interface MatchLineup {
+  team: string;
+  /** The rows for this side, in CSV order. Two of them, normally. */
+  players: StatRow[];
+  /** Scoreline from this side's point of view; empty for a fixture. */
+  score: string;
+  setScores: StatRow['setScores'];
+  gamesFor: number;
+  gamesAgainst: number;
+  /** As recorded in `win?`. Always false on both sides of a fixture. */
+  win: boolean;
+}
+
+/**
+ * A whole match: both sides, both line-ups, played or merely drawn.
+ *
+ * There is exactly one of these per fixture — the two team-sides are folded
+ * together and the sides are ordered by team name, so a match has one identity
+ * whichever row you found it from. That's what makes a stable URL possible.
+ */
+export interface MatchRecord {
+  /** `season|round|teamA|teamB`, teams sorted. Stable across builds. */
+  key: string;
+  season: number;
+  round: number;
+  stage: FinalsStage | null;
+  roundLabel: string;
+  isFinals: boolean;
+  /** No result recorded yet — see StatRow.scheduled. */
+  scheduled: boolean;
+  /** Both sides, ordered by team name. */
+  sides: [MatchLineup, MatchLineup];
+  /**
+   * The winning team, from `win?` — never from counting sets. Null for a
+   * fixture, and also for a played match where nobody recorded a winner.
+   */
+  winner: string | null;
+  /** A real match with no side flagged as the winner. */
+  isDraw: boolean;
+  /** The SINGLES GAME sentinel stood in for the line-up. */
+  isSingles: boolean;
+}
+
+/** Sort key: season, then round (finals sort last), then teams for stability. */
+const byPlayingOrder = (a: MatchRecord, b: MatchRecord) =>
+  a.season - b.season || a.round - b.round || a.key.localeCompare(b.key);
+
+/**
+ * Every match in the CSV, folded from per-player rows into whole fixtures.
+ * Scheduled and played alike — the `scheduled` flag on each is what tells them
+ * apart, so a caller that wants only results filters on it.
+ */
+export function seasonMatches(
+  rows: StatRow[] = loadStatRows(),
+  season?: number
+): MatchRecord[] {
+  const bySide = new Map<string, StatRow[]>();
+  for (const r of rows) {
+    if (season !== undefined && r.season !== season) continue;
+    const key = matchKey(r);
+    (bySide.get(key) ?? bySide.set(key, []).get(key)!).push(r);
+  }
+
+  const out = new Map<string, MatchRecord>();
+  for (const [, side] of bySide) {
+    const r = side[0];
+    const [teamA, teamB] = [r.team, r.opponent].sort();
+    const key = `${r.season}|${r.round}|${teamA}|${teamB}`;
+    if (out.has(key)) continue;
+
+    const lineup = (team: string, other: string): MatchLineup => {
+      const players = bySide.get(`${r.season}|${r.round}|${team}|${other}`) ?? [];
+      const first = players[0];
+      return {
+        team,
+        players,
+        score: first?.score ?? '',
+        setScores: first?.setScores ?? [],
+        gamesFor: first?.teamScore ?? 0,
+        gamesAgainst: first?.opponentScore ?? 0,
+        win: first?.win ?? false,
+      };
+    };
+
+    const sides: [MatchLineup, MatchLineup] = [
+      lineup(teamA, teamB),
+      lineup(teamB, teamA),
+    ];
+    // A fixture is a whole match's property, not a row's: a half-entered match
+    // is still unplayed until both sides have a result.
+    const scheduled = sides.some(
+      (s) => !s.players.length || s.players.every((p) => p.scheduled)
+    );
+    const winner = sides.find((s) => s.win)?.team ?? null;
+
+    out.set(key, {
+      key,
+      season: r.season,
+      round: r.round,
+      stage: r.stage,
+      roundLabel: r.roundLabel,
+      isFinals: r.isFinals,
+      scheduled,
+      sides,
+      winner: scheduled ? null : winner,
+      // Both sides flagged the same way — nobody won it. TNT has never
+      // recorded one, but the model has to do something sane if it ever does.
+      isDraw: !scheduled && sides[0].win === sides[1].win,
+      isSingles: sides.some((s) => s.players.some((p) => p.isSingles)),
+    });
+  }
+
+  return [...out.values()].sort(byPlayingOrder);
+}
+
+/** The matches in one round of one season, played or scheduled. */
+export function roundMatches(
+  rows: StatRow[],
+  season: number,
+  round: number
+): MatchRecord[] {
+  return seasonMatches(rows, season).filter((m) => m.round === round);
+}
+
+export interface SeasonRound {
+  round: number;
+  stage: FinalsStage | null;
+  roundLabel: string;
+  matches: MatchRecord[];
+  /** True once any match in the round has a result. */
+  played: boolean;
+  /**
+   * Declared teams with no fixture this round. Derived, never stored.
+   *
+   * Home-and-away only. Missing out on September isn't a bye, it's a season —
+   * a finals round would otherwise list every team that didn't qualify.
+   */
+  byes: string[];
+}
+
+/**
+ * A season's rounds in playing order, each with its matches and its byes.
+ *
+ * `declaredTeams` is the season's full field — see `ladder`. Without it the
+ * byes are computed against whoever appears in the CSV that season, which
+ * under-reports: a team on a bye in round one, with no fixture drawn yet for
+ * any later round, isn't in the CSV at all.
+ */
+export function seasonRounds(
+  rows: StatRow[],
+  season: number,
+  declaredTeams?: string[]
+): SeasonRound[] {
+  const matches = seasonMatches(rows, season);
+  const field = new Set([
+    ...(declaredTeams ?? []),
+    ...matches.flatMap((m) => m.sides.map((s) => s.team)),
+  ]);
+
+  const byRound = new Map<number, MatchRecord[]>();
+  for (const m of matches) {
+    (byRound.get(m.round) ?? byRound.set(m.round, []).get(m.round)!).push(m);
+  }
+
+  return [...byRound.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([round, ms]) => {
+      const playing = new Set(ms.flatMap((m) => m.sides.map((s) => s.team)));
+      return {
+        round,
+        stage: ms[0].stage,
+        roundLabel: ms[0].roundLabel,
+        matches: ms,
+        played: ms.some((m) => !m.scheduled),
+        byes: ms[0].isFinals ? [] : [...field].filter((t) => !playing.has(t)).sort(),
+      };
+    });
+}
+
+/** The latest round with a result, or null for a season yet to be played. */
+export function latestPlayedRound(
+  rows: StatRow[],
+  season: number
+): SeasonRound | null {
+  const played = seasonRounds(rows, season).filter((r) => r.played);
+  return played.length ? played[played.length - 1] : null;
+}
+
+/** The earliest round with a fixture still to play, or null. */
+export function nextScheduledRound(
+  rows: StatRow[],
+  season: number
+): SeasonRound | null {
+  return seasonRounds(rows, season).find((r) => r.matches.some((m) => m.scheduled)) ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,9 +335,11 @@ export function teamRoster(
   override?: { pair?: string[]; captain?: string }
 ): TeamRoster {
   // Home-and-away only: the regular pairing is who turned up on Tuesdays, and
-  // adding up to three finals would skew the core-member threshold.
+  // adding up to three finals would skew the core-member threshold. Nights not
+  // yet played count for nothing either — a fixture is a plan, not a turnout.
   const teamRows = rows.filter(
-    (r) => r.season === season && r.team === team && !r.isSingles && !r.isFinals
+    (r) =>
+      isPlayed(r) && r.season === season && r.team === team && !r.isSingles && !r.isFinals
   );
   const matches = new Set(teamRows.map((r) => `${r.round}`)).size;
   const threshold = Math.max(2, Math.ceil(matches * SITE.coreMemberMinShare));
@@ -145,17 +382,29 @@ export function teamRoster(
 /**
  * Season ladder. Ranked by wins desc, then games ratio (for:against) desc.
  * `pairings` optionally supplies pairing labels (from teamRoster) per team.
+ *
+ * `declaredTeams` is the season's full field, for a season that has been drawn
+ * but not played out. Those teams enter at 0/0/0 so a live season shows every
+ * side from the first week rather than filling in as they take the court — and
+ * so a team on a bye in round one isn't missing from the table. It can't be
+ * read off the CSV: a team whose first fixture is round three has no rows at
+ * all yet. `site-data.ts` takes it from the season config.
  */
 export function ladder(
   season: number,
   rows: StatRow[] = loadStatRows(),
-  pairings?: Record<string, string>
+  pairings?: Record<string, string>,
+  declaredTeams?: string[]
 ): LadderRow[] {
   const sides = matchSides(rows, season);
   const teams = new Map<
     string,
     { matchesPlayed: number; wins: number; gamesFor: number; gamesAgainst: number }
   >();
+
+  for (const team of declaredTeams ?? []) {
+    teams.set(team, { matchesPlayed: 0, wins: 0, gamesFor: 0, gamesAgainst: 0 });
+  }
 
   for (const s of sides) {
     const t = teams.get(s.team) ?? {
@@ -206,16 +455,27 @@ export function ladder(
 export function ladderWithPairings(
   season: number,
   rows: StatRow[],
-  teamConfig?: (team: string) => { pair?: string[]; captain?: string } | undefined
+  teamConfig?: (team: string) => { pair?: string[]; captain?: string } | undefined,
+  declaredTeams?: string[]
 ): LadderRow[] {
+  // Fixtures count here even though they count nowhere else: a team that has
+  // been drawn to play still needs its pairing label resolved. The label comes
+  // from the season config's `pair` when there is one, and from games played
+  // when there isn't — which is why a drawn-but-unplayed season needs `pair`.
   const teams = [
-    ...new Set(rows.filter((r) => r.season === season).map((r) => r.team)),
+    ...new Set([
+      ...(declaredTeams ?? []),
+      ...rows.filter((r) => r.season === season).map((r) => r.team),
+    ]),
   ];
   const pairings: Record<string, string> = {};
   for (const team of teams) {
-    pairings[team] = teamRoster(team, season, rows, teamConfig?.(team)).pairingName;
+    // A team with no games played and no `pair` override has nothing to label
+    // itself with; leaving the key unset lets `ladder` fall back to the colour.
+    const label = teamRoster(team, season, rows, teamConfig?.(team)).pairingName;
+    if (label) pairings[team] = label;
   }
-  return ladder(season, rows, pairings);
+  return ladder(season, rows, pairings, declaredTeams);
 }
 
 // ---------------------------------------------------------------------------
@@ -414,6 +674,7 @@ export function playerRows(
   const { season, includeFillIns = false, team, scope = 'all' } = opts;
   return rows.filter(
     (r) =>
+      isPlayed(r) &&
       !r.isSingles &&
       r.player === player &&
       inScope(r, scope) &&
@@ -448,6 +709,7 @@ export function fillInRecord(
 ): { matches: number; wins: number; losses: number } {
   const played = rows.filter(
     (r) =>
+      isPlayed(r) &&
       !r.isSingles &&
       r.player === player &&
       r.isFillIn &&
@@ -473,6 +735,7 @@ export function fillInVotes(
   return rows
     .filter(
       (r) =>
+        isPlayed(r) &&
         !r.isSingles &&
         r.player === player &&
         r.isFillIn &&
@@ -482,11 +745,19 @@ export function fillInVotes(
     .reduce((sum, r) => sum + ((season === undefined ? r.adjustedVotes : r.votes) ?? 0), 0);
 }
 
-/** Canonical list of real players (excludes SINGLES GAME). */
+/**
+ * Canonical list of real players (excludes SINGLES GAME).
+ *
+ * Played rows only, unlike `allSeasons`. A player who appears in nothing but a
+ * fixture has no aggregate to show and — because `playerAgg` takes its slug
+ * from the rows it found — no slug either, so a page built for them would have
+ * an empty URL. A draftee joins this list the night they first play; until
+ * then a fixture prints their name without a link.
+ */
 export function allPlayers(rows: StatRow[] = loadStatRows()): string[] {
-  return [...new Set(rows.filter((r) => !r.isSingles).map((r) => r.player))].sort(
-    (a, b) => a.localeCompare(b)
-  );
+  return [
+    ...new Set(rows.filter((r) => isPlayed(r) && !r.isSingles).map((r) => r.player)),
+  ].sort((a, b) => a.localeCompare(b));
 }
 
 // ---------------------------------------------------------------------------
@@ -499,6 +770,8 @@ export interface H2HGame {
   round: number;
   /** "5", "QF", "SF", "Final". */
   roundLabel: string;
+  /** Finals stage, or null. Needed to build the match's URL. */
+  stage: FinalsStage | null;
   isFinals: boolean;
   /** Scoreline from this player's point of view, e.g. "4-6 7-6(4) 6-1". */
   score: string;
@@ -534,11 +807,11 @@ export interface HeadToHead {
   games: H2HGame[];
 }
 
-/** Index every team-side of every fixture, so we can look up the other side. */
+/** Index every team-side of every match, so we can look up the other side. */
 function fixtureSides(rows: StatRow[]): Map<string, StatRow[]> {
   const sides = new Map<string, StatRow[]>();
   for (const r of rows) {
-    if (r.isSingles) continue;
+    if (r.scheduled || r.isSingles) continue;
     const key = matchKey(r);
     (sides.get(key) ?? sides.set(key, []).get(key)!).push(r);
   }
@@ -558,7 +831,7 @@ export function headToHead(
   const byOpponent = new Map<string, HeadToHead>();
 
   for (const r of rows) {
-    if (r.isSingles || r.player !== player) continue;
+    if (r.scheduled || r.isSingles || r.player !== player) continue;
     const across = sides.get(`${r.season}|${r.round}|${r.opponent}|${r.team}`) ?? [];
     for (const o of across) {
       if (o.player === player) continue;
@@ -587,6 +860,7 @@ export function headToHead(
         season: r.season,
         round: r.round,
         roundLabel: r.roundLabel,
+        stage: r.stage,
         isFinals: r.isFinals,
         score: r.score,
         sets: r.sets,
@@ -791,7 +1065,7 @@ function bestSingleGame(
   pick: (r: StatRow) => number | null
 ): GameRecord[] {
   return rows
-    .filter((r) => !r.isSingles && !r.isFillIn && !r.isFinals)
+    .filter((r) => isPlayed(r) && !r.isSingles && !r.isFillIn && !r.isFinals)
     .map((r) => ({
       player: r.player,
       slug: r.slug,
@@ -812,7 +1086,7 @@ function bestSingleGame(
 export function winStreaks(rows: StatRow[]) {
   // Map each player to their team-side results in order.
   const byPlayer = new Map<string, { win: boolean; season: number; round: number }[]>();
-  const playerRowsAll = rows.filter((r) => !r.isSingles && !r.isFillIn);
+  const playerRowsAll = rows.filter((r) => isPlayed(r) && !r.isSingles && !r.isFillIn);
   for (const r of playerRowsAll) {
     const arr = byPlayer.get(r.player) ?? [];
     arr.push({ win: r.win, season: r.season, round: r.round });

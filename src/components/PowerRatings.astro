@@ -1,0 +1,68 @@
+---
+/**
+ * The all-time player ratings, straight out of the prediction model.
+ *
+ * Nothing is computed here — `powerRankings()` in `src/lib/predict.ts` owns the
+ * numbers, the minimum-matches bar and the ordering.
+ */
+import TeamChip from './TeamChip.astro';
+import { playerHref } from '../lib/url.ts';
+import { accuracyHeadline, powerRankings } from '../lib/predict.ts';
+import { playerLatestTeam, rows } from '../lib/site-data.ts';
+import { allPlayers } from '../lib/stats.ts';
+
+interface Props {
+  limit?: number;
+  showAccuracy?: boolean;
+}
+const { limit = 10, showAccuracy = true } = Astro.props;
+
+const table = powerRankings().slice(0, limit);
+const slugs = new Map(rows.map((r) => [r.player, r.slug]));
+const played = new Set(allPlayers(rows));
+const headline = showAccuracy ? accuracyHeadline() : null;
+---
+<div class="card card--dark ratings">
+  <ol class="rating-list">
+    {table.map((p) => (
+      <li>
+        <span class="rk">{p.rank}</span>
+        <span class="who">
+          {played.has(p.player) ? (
+            <a href={playerHref(slugs.get(p.player) ?? '')}>{p.player}</a>
+          ) : (
+            <span>{p.player}</span>
+          )}
+          <span class="team"><TeamChip team={playerLatestTeam(p.player)} plain /></span>
+        </span>
+        <span class="rating">{Math.round(p.rating)}</span>
+      </li>
+    ))}
+  </ol>
+</div>
+{headline && (
+  <p class="finenote">
+    Per-player Elo, replayed from the first night of Season 1. Each night's
+    result is split between team-mates by who did the work — winners, aces and
+    errors forced, less unforced errors and double faults — so a passenger
+    doesn't take a partner's credit. Ratings regress toward the middle every
+    season, because the league redrafts. The model has called <strong>{headline}</strong>,
+    though it gets an opening round right about as often as a coin: after a
+    redraft, last season's form says very little.
+  </p>
+)}
+
+<style>
+  .ratings { padding: 6px 14px; }
+  .rating-list { list-style: none; margin: 0; padding: 0; }
+  .rating-list li {
+    display: grid; grid-template-columns: 1.6rem 1fr auto; gap: 10px;
+    align-items: center; padding: 8px 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .rating-list li:last-child { border-bottom: 0; }
+  .rk { font-family: var(--serif); color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .who { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+  .team { font-size: 0.75rem; }
+  .rating { font-weight: 700; color: var(--gold-soft); font-variant-numeric: tabular-nums; }
+</style>

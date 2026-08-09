@@ -1,20 +1,70 @@
 import { loadStatRows } from './normalize.ts';
-import { ladderWithPairings, teamRoster, records, leaderboard, winStreaks, type TeamRoster } from './stats.ts';
+import {
+  allSeasons,
+  ladderWithPairings,
+  latestPlayedRound,
+  nextScheduledRound,
+  playedRows,
+  scheduledRows,
+  seasonMatches,
+  seasonRounds,
+  teamRoster,
+  records,
+  leaderboard,
+  winStreaks,
+  type MatchRecord,
+  type SeasonRound,
+  type TeamRoster,
+} from './stats.ts';
 import type { LadderRow, StatRow } from './types.ts';
-import { seasonTeamConfig } from '../config/seasons/index.ts';
+import { getSeasonConfig, seasonTeamConfig } from '../config/seasons/index.ts';
 import { seasonLabel } from '../config/site.ts';
 
-export const rows: StatRow[] = loadStatRows();
+/**
+ * Everything in the CSV, fixtures included. Only the schedule, the match pages
+ * and the prediction model want this — see `rows` below.
+ */
+export const allRows: StatRow[] = loadStatRows();
 
-/** Teams that appear in a season, in ladder order. */
+/**
+ * The rows the site's statistics are built from: played matches only.
+ *
+ * This is deliberately the short name and the default export of the module,
+ * because it's the safe one. Every page that counts anything — the ladder,
+ * leaderboards, records, player panels — imports `rows` and gets no fixtures
+ * in it without having to remember to ask.
+ */
+export const rows: StatRow[] = playedRows(allRows);
+
+/** Every drawn-but-unplayed row. */
+export const fixtures: StatRow[] = scheduledRows(allRows);
+
+/**
+ * The season's declared field, from its config — the ten S5 teams, say, even
+ * before half of them have played. Falls back to whoever the CSV knows about.
+ */
+export function declaredTeams(season: number): string[] {
+  const declared = Object.keys(getSeasonConfig(season)?.teams ?? {});
+  return declared.length ? declared : seasonTeams(season);
+}
+
+/**
+ * Every season the site builds a page for. Counts a season that has only been
+ * drawn — the schedule is the first thing a new season has to show.
+ */
+export function siteSeasons(): number[] {
+  return allSeasons(allRows);
+}
+
+/** Teams that appear in a season, drawn or played. */
 export function seasonTeams(season: number): string[] {
-  return [...new Set(rows.filter((r) => r.season === season).map((r) => r.team))];
+  return [...new Set(allRows.filter((r) => r.season === season).map((r) => r.team))];
 }
 
 /** Rosters for every team in a season, keyed by team, config overrides applied. */
 export function seasonRosters(season: number): Record<string, TeamRoster> {
   const out: Record<string, TeamRoster> = {};
-  for (const team of seasonTeams(season)) {
+  for (const team of declaredTeams(season)) {
     out[team] = teamRoster(team, season, rows, seasonTeamConfig(season, team));
   }
   return out;
@@ -22,17 +72,44 @@ export function seasonRosters(season: number): Record<string, TeamRoster> {
 
 /** Ladder with pairing labels already resolved. */
 export function seasonLadder(season: number): LadderRow[] {
-  return ladderWithPairings(season, rows, (team) => seasonTeamConfig(season, team));
+  return ladderWithPairings(
+    season,
+    allRows,
+    (team) => seasonTeamConfig(season, team),
+    declaredTeams(season)
+  );
 }
 
-export interface Fixture {
-  winner: string;
-  loser: string;
-  /** Scoreline from the winner's point of view, e.g. "6-4" or "6-4 7-6(3)". */
-  score: string;
-  /** Sets won–lost by the winner. Only worth showing for a multi-set tie. */
-  setsWon: number;
-  setsLost: number;
+// ---------------------------------------------------------------------------
+// Schedule
+// ---------------------------------------------------------------------------
+
+/** Every match of a season, played and scheduled, in playing order. */
+export function seasonSchedule(season: number): MatchRecord[] {
+  return seasonMatches(allRows, season);
+}
+
+/** A season's rounds with their matches and byes, in playing order. */
+export function seasonRoundList(season: number): SeasonRound[] {
+  return seasonRounds(allRows, season, declaredTeams(season));
+}
+
+/**
+ * The round the schedule carousel opens on: the latest one with results, or —
+ * for a season yet to start — the first one drawn. No dates are involved, and
+ * none exist in the data; "latest" means furthest through the fixture list.
+ */
+export function defaultScheduleRound(season: number): SeasonRound | null {
+  return (
+    latestPlayedRound(allRows, season) ??
+    nextScheduledRound(allRows, season) ??
+    null
+  );
+}
+
+/** The next round with fixtures still to play, or null once a season is done. */
+export function nextRound(season: number): SeasonRound | null {
+  return nextScheduledRound(allRows, season);
 }
 
 /** Heading for the round, e.g. "Round 7", "Qualifying Finals", "The Final". */
@@ -42,47 +119,25 @@ const ROUND_HEADING: Record<string, string> = {
   F: 'The Final',
 };
 
+/** The display heading for a round, finals spelled out. */
+export function roundHeading(round: SeasonRound): string {
+  return round.stage ? ROUND_HEADING[round.stage] : `Round ${round.roundLabel}`;
+}
+
 /**
- * The latest round's results for a season, one row per fixture (winner first).
- * Finals sort after the home-and-away rounds, so once they're in the CSV this
- * follows the season through to the final.
+ * What the homepage shows under "latest": the most recent round with results,
+ * or — for a season that hasn't started — the first round drawn. Returns the
+ * round and whether it's a set of results or a set of fixtures, so the panel
+ * can label itself honestly either way.
  */
-export function latestRound(season: number): {
-  round: number;
-  label: string;
-  fixtures: Fixture[];
-} {
-  const seasonRows = rows.filter((r) => r.season === season);
-  if (!seasonRows.length) return { round: 0, label: '', fixtures: [] };
-  const maxRound = Math.max(...seasonRows.map((r) => r.round));
-  const latest = seasonRows.filter((r) => r.round === maxRound);
-  const stage = latest[0].stage;
-  const label = stage ? ROUND_HEADING[stage] : `Round ${maxRound}`;
-
-  const sides = new Map<string, StatRow>();
-  for (const r of latest) {
-    const key = `${r.team}|${r.opponent}`;
-    if (!sides.has(key)) sides.set(key, r);
-  }
-
-  const fixtures: Fixture[] = [];
-  const used = new Set<string>();
-  for (const s of sides.values()) {
-    const pairKey = [s.team, s.opponent].sort().join('|');
-    if (used.has(pairKey)) continue;
-    used.add(pairKey);
-    // Always describe the fixture from the winning side's row, so the
-    // scoreline reads in the winner's favour.
-    const w = s.win ? s : sides.get(`${s.opponent}|${s.team}`) ?? s;
-    fixtures.push({
-      winner: w.win ? w.team : w.opponent,
-      loser: w.win ? w.opponent : w.team,
-      score: w.score,
-      setsWon: w.win ? w.setsWon : w.setsLost,
-      setsLost: w.win ? w.setsLost : w.setsWon,
-    });
-  }
-  return { round: maxRound, label, fixtures };
+export function headlineRound(season: number): {
+  round: SeasonRound;
+  heading: string;
+  upcoming: boolean;
+} | null {
+  const round = defaultScheduleRound(season);
+  if (!round) return null;
+  return { round, heading: roundHeading(round), upcoming: !round.played };
 }
 
 export interface FunStat { kicker: string; headline: string; detail: string; }
@@ -145,9 +200,16 @@ export function rotatingFunStat(): FunStat | null {
   return list[day % list.length];
 }
 
-/** The team a player most recently played for (for colour/theming). */
+/**
+ * The team whose colours a player wears right now.
+ *
+ * Counts a season that has only been drawn, which is the whole point: once the
+ * draft is in the CSV, a player belongs to their new team even though they
+ * haven't played a match for it. Everything statistical still reads `rows`;
+ * this is a lookup for a colour.
+ */
 export function playerLatestTeam(player: string): string {
-  const pr = rows.filter((r) => !r.isSingles && r.player === player);
+  const pr = allRows.filter((r) => !r.isSingles && r.player === player);
   if (!pr.length) return '';
   let best = pr[0];
   for (const r of pr) {

@@ -150,6 +150,10 @@ export function normalizeRows(raw: Record<string, string>[]): StatRow[] {
         errorsForced: efTracked ? numOrNull(r['Errors Forced']) : null,
 
         win: bool(r['win?']),
+        // The one place a fixture is told from a played match. See StatRow.
+        // Read off the raw cell, because `bool()` above has already collapsed
+        // blank and FALSE into the same `false`.
+        scheduled: (r['win?'] ?? '').trim() === '',
         teamScore: num(r['Team Score']),
         opponentScore: num(r['Opponent Score']),
 
@@ -184,12 +188,17 @@ function adjustVotes(
  * Best on Ground is defined as the player(s) with the most votes in a match.
  * We group rows into fixtures — one match is both sides of a
  * (season, round, {team, opponent}) pairing — and flag the top vote-getter(s).
- * Ties share the honour (as the historical data did). A fixture with no
- * recorded votes, or where the best is zero, has no BOG.
+ * Ties share the honour (as the historical data did). A match with no recorded
+ * votes, or where the best is zero, has no BOG.
+ *
+ * A scheduled fixture is skipped outright. Its blank votes would fall out of
+ * the `votes !== null` filter anyway, but a match nobody has played can't have
+ * a best on ground, and that's worth saying rather than relying on.
  */
 export function deriveBog(rows: StatRow[]): void {
   const groups = new Map<string, StatRow[]>();
   for (const r of rows) {
+    if (r.scheduled) continue;
     const pair = [r.team, r.opponent].sort().join('~');
     const key = `${r.season}|${r.round}|${pair}`;
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(r);

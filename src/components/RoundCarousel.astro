@@ -1,0 +1,181 @@
+---
+/**
+ * The season's rounds, one panel at a time, scrollable between them.
+ *
+ * **There is no date logic here, because there are no dates in the data.** The
+ * panel it opens on is chosen at build time as the latest round that has
+ * results, which puts the next round to be played exactly one scroll away —
+ * the two things anyone actually wants. Every panel is pre-rendered, so moving
+ * between them is a scroll and not a fetch, and the whole thing degrades to a
+ * horizontally scrollable list with no JavaScript at all.
+ */
+import MatchCard from './MatchCard.astro';
+import TeamChip from './TeamChip.astro';
+import type { SeasonRound } from '../lib/stats.ts';
+import { predictionFor } from '../lib/predict.ts';
+
+interface Props {
+  rounds: SeasonRound[];
+  /** Which panel to open on. Defaults to the last round with results. */
+  openAt?: number;
+  pairings?: Record<string, string>;
+  /** Show the model's call on unplayed fixtures. */
+  showPredictions?: boolean;
+}
+const {
+  rounds,
+  openAt,
+  pairings = {},
+  showPredictions = true,
+} = Astro.props;
+
+const fallback =
+  [...rounds].reverse().find((r) => r.played) ??
+  rounds.find((r) => r.matches.some((m) => m.scheduled)) ??
+  rounds[0];
+const startAt = openAt ?? fallback?.round ?? 0;
+
+const heading = (r: SeasonRound) =>
+  r.stage === 'F' ? 'The Final'
+  : r.stage === 'SF' ? 'Semi Finals'
+  : r.stage === 'QF' ? 'Qualifying Finals'
+  : `Round ${r.roundLabel}`;
+
+/** Short label for the round strip — the whole season has to fit across it. */
+const tab = (r: SeasonRound) => (r.stage ? r.stage : r.roundLabel);
+
+const predictions = new Map(
+  rounds.flatMap((r) =>
+    r.matches
+      .filter((m) => showPredictions && m.scheduled)
+      .map((m) => [m.key, predictionFor(m)] as const)
+  )
+);
+---
+{rounds.length > 0 && (
+  <div class="carousel" data-start={String(startAt)}>
+    <div class="car-head">
+      <button type="button" class="car-nav" data-dir="-1" aria-label="Previous round">‹</button>
+      <div class="car-tabs" role="tablist">
+        {rounds.map((r) => (
+          <button
+            type="button"
+            class:list={['car-tab', { 'is-open': r.round === startAt, 'is-todo': !r.played }]}
+            role="tab"
+            data-round={String(r.round)}
+            aria-selected={r.round === startAt ? 'true' : 'false'}
+            title={heading(r)}
+          >{tab(r)}</button>
+        ))}
+      </div>
+      <button type="button" class="car-nav" data-dir="1" aria-label="Next round">›</button>
+    </div>
+
+    <div class="car-track">
+      {rounds.map((r) => (
+        <section
+          class:list={['car-panel', { 'is-open': r.round === startAt }]}
+          data-round={String(r.round)}
+          aria-label={heading(r)}
+        >
+          <div class="car-panel-head">
+            <h3 class="serif-title mb-0">{heading(r)}</h3>
+            {!r.played && <span class="badge">To be played</span>}
+          </div>
+
+          <div class="car-matches">
+            {r.matches.map((m) => (
+              <MatchCard
+                match={m}
+                prediction={predictions.get(m.key) ?? null}
+                pairings={pairings}
+              />
+            ))}
+          </div>
+
+          {r.byes.length > 0 && (
+            <p class="byes">
+              <span class="byes-label">Bye</span>
+              {r.byes.map((team) => <TeamChip team={team} plain />)}
+            </p>
+          )}
+        </section>
+      ))}
+    </div>
+  </div>
+)}
+
+<script>
+  // Progressive enhancement only: with no JS every panel is simply visible and
+  // the track scrolls sideways. The script's whole job is to show one at a time.
+  for (const car of document.querySelectorAll<HTMLElement>('.carousel')) {
+    const tabs = [...car.querySelectorAll<HTMLButtonElement>('.car-tab')];
+    const panels = [...car.querySelectorAll<HTMLElement>('.car-panel')];
+    const rounds = tabs.map((t) => t.dataset.round ?? '');
+    car.classList.add('is-enhanced');
+
+    let at = Math.max(0, rounds.indexOf(car.dataset.start ?? ''));
+
+    function show(next: number) {
+      at = Math.min(Math.max(next, 0), rounds.length - 1);
+      const round = rounds[at];
+      panels.forEach((p) => p.classList.toggle('is-open', p.dataset.round === round));
+      tabs.forEach((t) => {
+        const open = t.dataset.round === round;
+        t.classList.toggle('is-open', open);
+        t.setAttribute('aria-selected', String(open));
+        if (open) t.scrollIntoView({ block: 'nearest', inline: 'center' });
+      });
+    }
+
+    tabs.forEach((t, i) => t.addEventListener('click', () => show(i)));
+    car.querySelectorAll<HTMLButtonElement>('.car-nav').forEach((b) =>
+      b.addEventListener('click', () => show(at + Number(b.dataset.dir ?? 0)))
+    );
+    car.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') show(at - 1);
+      if (e.key === 'ArrowRight') show(at + 1);
+    });
+    show(at);
+  }
+</script>
+
+<style>
+  .car-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .car-nav {
+    flex: none; width: 32px; height: 32px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ivory);
+    font-size: 1.1rem; line-height: 1; cursor: pointer;
+  }
+  .car-nav:hover { border-color: var(--gold); color: var(--gold); }
+  /* Without JS the arrows do nothing, so they don't appear. */
+  .carousel:not(.is-enhanced) .car-nav { display: none; }
+
+  .car-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; flex: 1; }
+  .car-tabs::-webkit-scrollbar { display: none; }
+  .car-tab {
+    flex: none; min-width: 34px; padding: 5px 10px;
+    font-family: var(--serif); font-size: 0.85rem;
+    border: 1px solid var(--line); border-radius: 999px;
+    background: var(--card); color: var(--ivory-dim); cursor: pointer;
+  }
+  .car-tab.is-open { background: var(--gold); border-color: var(--gold); color: #14140f; font-weight: 600; }
+  /* A round still to be played reads as an outline, so the season's edge is
+     visible in the strip itself. */
+  .car-tab.is-todo:not(.is-open) { border-style: dashed; color: var(--muted); }
+
+  .car-track { display: flex; flex-direction: column; }
+  .car-panel-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .car-matches { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+
+  /* Enhanced: one panel at a time. Unenhanced: all of them, stacked. */
+  .carousel.is-enhanced .car-panel { display: none; }
+  .carousel.is-enhanced .car-panel.is-open { display: block; }
+  .carousel:not(.is-enhanced) .car-panel + .car-panel { margin-top: 22px; }
+
+  .byes { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; margin: 12px 0 0; font-size: 0.85rem; color: var(--muted); }
+  .byes-label {
+    font-family: var(--serif); font-size: 0.7rem; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted);
+  }
+</style>

@@ -1,0 +1,49 @@
+---
+/**
+ * Whatever the insight detectors found — and nothing at all when they found
+ * nothing, which is the point. This component renders empty rather than
+ * printing a heading over an apology.
+ */
+import { teamMeta } from '../config/site.ts';
+import type { Insight } from '../lib/insights.ts';
+
+interface Props {
+  insights: Insight[];
+  heading?: string;
+}
+const { insights, heading = 'Worth knowing' } = Astro.props;
+---
+{insights.length > 0 && (
+  <div class="insights">
+    <p class="eyebrow" style="margin:0 0 8px">{heading}</p>
+    <ul class="insight-list">
+      {insights.map((i) => {
+        const accent = i.team ? teamMeta(i.team).color : 'var(--gold)';
+        return (
+          <li style={`--accent:${accent}`}>
+            <span class="ins-label">{i.label}</span>
+            <span class="ins-detail">{i.detail}</span>
+          </li>
+        );
+      })}
+    </ul>
+  </div>
+)}
+
+<style>
+  .insight-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .insight-list li {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    padding: 9px 12px; border-radius: 10px;
+    border: 1px solid var(--line-soft);
+    /* The team's colour as a spine, not a fill — these sit in a column and a
+       run of filled cards would shout over the numbers beside them. */
+    border-left: 3px solid var(--accent);
+    background: var(--card);
+  }
+  .ins-label {
+    font-family: var(--serif); font-size: 0.72rem; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent); white-space: nowrap;
+  }
+  .ins-detail { color: var(--ivory-dim); font-size: 0.95rem; flex: 1; min-width: 12ch; }
+</style>

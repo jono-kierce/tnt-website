@@ -8,7 +8,7 @@ import TrendChart from '../../components/TrendChart.astro';
 import OpponentTile from '../../components/OpponentTile.astro';
 import SetScore from '../../components/SetScore.astro';
 import { SITE, seasonLabel, teamMeta, isVotesSealed } from '../../config/site.ts';
-import { withBase } from '../../lib/url.ts';
+import { matchHref, withBase } from '../../lib/url.ts';
 import { allPlayers, bestWorstOpponent, fillInRecord, fillInVotes, playerAgg, playerRows, playerTrend } from '../../lib/stats.ts';
 import { playerRanks } from '../../lib/ranks.ts';
 import { rows, playerLatestTeam, playerSeasons } from '../../lib/site-data.ts';
@@ -237,7 +237,11 @@ const photos = playerPhotos(slug);
               <tr class={r.isFinals ? 'is-finals' : ''}>
                 <td class="c-tight">{r.season}</td>
                 <td class={`c-tight ${r.isFinals ? 'finals-rd' : ''}`}>{roundCell(r)}</td>
-                <td class="c-opp">{r.opponent}</td>
+                <td class="c-opp">
+                  <a href={matchHref(r.season, r.round, r.stage, r.team, r.opponent)}>
+                    {r.opponent}
+                  </a>
+                </td>
                 <td class="c-res">
                   <span class="res-cell">
                     <span

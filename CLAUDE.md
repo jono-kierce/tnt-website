@@ -51,8 +51,11 @@ that auto-discovery for the renderer.
 src/lib/normalize.ts     THE normalization layer: CSV -> StatRow[], all quirks here
                          (name merge, fill-in, SINGLES GAME, serve S1-only,
                           errors-forced S2+, EVERY stat null-if-blank, BOG
-                          derivation, Round->stage, Score->sets)
-src/lib/stats.ts         ladder, rosters/pairings, player aggregates, leaderboards, records
+                          derivation, Round->stage, Score->sets, played-vs-fixture)
+src/lib/stats.ts         ladder, rosters/pairings, player aggregates, leaderboards,
+                         records, and MatchRecord/seasonRounds (whole matches + byes)
+src/lib/predict.ts       the Elo model: win probabilities, power ratings, backtest
+src/lib/insights.ts      rule-based "worth knowing" lines for a match page
 src/lib/ranks.ts         where a player sits in the field — the stat-panel badges
 src/lib/site-data.ts     page-facing helpers (season ladder, MVP tally, fun stats)
 src/lib/photos.ts        photo manifest loader (content/photos/photos.yaml): tags,

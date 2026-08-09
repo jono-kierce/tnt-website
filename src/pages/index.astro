@@ -1,27 +1,45 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import LadderTable from '../components/LadderTable.astro';
-import TeamChip from '../components/TeamChip.astro';
-import SetScore from '../components/SetScore.astro';
+import MatchCard from '../components/MatchCard.astro';
 import { SITE, seasonLabel } from '../config/site.ts';
-import { withBase, seasonHref } from '../lib/url.ts';
-import { seasonLadder, latestRound, rotatingFunStat } from '../lib/site-data.ts';
+import { withBase, seasonHref, scheduleHref } from '../lib/url.ts';
+import {
+  declaredTeams,
+  headlineRound,
+  rotatingFunStat,
+  seasonLadder,
+  seasonRosters,
+} from '../lib/site-data.ts';
 
 const season = SITE.currentSeason;
 const table = seasonLadder(season);
 const snapshot = table.slice(0, 8);
-const { label: roundLabel, fixtures } = latestRound(season);
 const fun = rotatingFunStat();
+
+// The latest round with results, or — before a ball is hit — the first one
+// drawn. There are no dates in the data, so "latest" means furthest through
+// the fixture list, and the panel says which of the two it's showing.
+const headline = headlineRound(season);
+const pairings = Object.fromEntries(
+  Object.entries(seasonRosters(season)).map(([team, r]) => [team, r.pairingName])
+);
+const teamCount = declaredTeams(season).length;
+const TEAM_WORDS: Record<number, string> = {
+  8: 'Eight', 9: 'Nine', 10: 'Ten', 11: 'Eleven', 12: 'Twelve',
+};
+const teamWord = TEAM_WORDS[teamCount] ?? String(teamCount);
 ---
 <Layout title="Home">
   <section class="section container hero">
     <p class="eyebrow">Melbourne · Social Doubles · Est. 2022</p>
     <h1 class="tabloid">Tuesday<br />Night Tennis</h1>
     <p class="lead" style="max-width:640px">
-      Nine teams. One trophy. Every ace, winner and double fault recorded since
+      {teamWord} teams. One trophy. Every ace, winner and double fault recorded since
       the beginning. This is the official record of TNT — {seasonLabel(season)} in progress.
     </p>
     <div class="pill-row mt-16">
+      <a class="btn" href={scheduleHref()}>Schedule</a>
       <a class="btn" href={withBase('/ladder/')}>Current Ladder</a>
       <a class="btn" href={withBase('/leaderboards/')}>Leaderboards</a>
       <a class="btn" href={withBase('/records/')}>The Record Books</a>
@@ -47,19 +65,27 @@ const fun = rotatingFunStat();
         <p class="mt-16"><a href={withBase('/ladder/')}>Full ladder →</a></p>
       </div>
       <div>
-        <p class="eyebrow">Latest results</p>
-        <h2 class="serif-title" style="margin-bottom:14px">{roundLabel}</h2>
-        <div class="card card--dark results">
-          {fixtures.length === 0 && <p class="muted">No results recorded yet.</p>}
-          {fixtures.map((f) => (
-            <div class="result-row">
-              <span class="result-team win"><TeamChip team={f.winner} plain /></span>
-              <span class="score"><SetScore score={f.score} /></span>
-              <span class="result-team muted"><TeamChip team={f.loser} plain /></span>
-            </div>
-          ))}
-        </div>
-        <p class="mt-16"><a href={seasonHref(season)}>Season {season} in full →</a></p>
+        <p class="eyebrow">{headline?.upcoming ? 'Next up' : 'Latest results'}</p>
+        <h2 class="serif-title" style="margin-bottom:14px">
+          {headline ? headline.heading : 'No matches yet'}
+        </h2>
+        {headline ? (
+          <div class="results">
+            {headline.round.matches.map((m) => (
+              <MatchCard match={m} pairings={pairings} />
+            ))}
+          </div>
+        ) : (
+          <p class="muted">No {seasonLabel(season)} matches in the CSV yet.</p>
+        )}
+        {headline && headline.round.byes.length > 0 && (
+          <p class="finenote">Bye: {headline.round.byes.join(', ')}.</p>
+        )}
+        <p class="mt-16">
+          <a href={scheduleHref()}>Full schedule →</a>
+          <span class="muted"> · </span>
+          <a href={seasonHref(season)}>Season {season} in full →</a>
+        </p>
       </div>
     </div>
   </section>
@@ -86,13 +112,9 @@ const fun = rotatingFunStat();
   .hero { padding-top: 40px; }
   .hero .tabloid { margin: 6px 0 18px; }
   .funstat { background: linear-gradient(135deg, #12271a, #0d0d0b); border-color: var(--line); }
-  .results .result-row {
-    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-    gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--line-soft);
-  }
-  .results .result-row:last-child { border-bottom: 0; }
-  .result-team { display: flex; }
-  .result-row .result-team:last-child { justify-content: flex-end; text-align: right; }
+  /* One card per match, stacked — they widen into two columns as soon as
+     there's room, which on the home page's half-width column is most desktops. */
+  .results { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
   .nav-card { transition: transform .15s ease, border-color .15s ease; }
   .nav-card:hover { transform: translateY(-3px); border-color: var(--gold); text-decoration: none; }
 </style>

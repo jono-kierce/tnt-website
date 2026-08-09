@@ -1,0 +1,74 @@
+---
+import Layout from '../layouts/Layout.astro';
+import RoundCarousel from '../components/RoundCarousel.astro';
+import LadderTable from '../components/LadderTable.astro';
+import PowerRatings from '../components/PowerRatings.astro';
+import { SITE, seasonLabel } from '../config/site.ts';
+import { seasonHref } from '../lib/url.ts';
+import {
+  declaredTeams,
+  defaultScheduleRound,
+  seasonLadder,
+  seasonRoundList,
+  seasonRosters,
+} from '../lib/site-data.ts';
+
+const season = SITE.currentSeason;
+const rounds = seasonRoundList(season);
+const open = defaultScheduleRound(season);
+const table = seasonLadder(season);
+const rosters = seasonRosters(season);
+const pairings = Object.fromEntries(
+  Object.entries(rosters).map(([team, r]) => [team, r.pairingName])
+);
+const teams = declaredTeams(season);
+const played = rounds.filter((r) => r.played).length;
+const toPlay = rounds.filter((r) => r.matches.some((m) => m.scheduled)).length;
+---
+<Layout
+  title={`${seasonLabel(season)} Schedule`}
+  description={`Every fixture and result for ${seasonLabel(season)} of Tuesday Night Tennis.`}
+>
+  <section class="section container">
+    <p class="eyebrow">Current Season · Fixtures &amp; Results</p>
+    <h1 class="serif-title">{seasonLabel(season)} Schedule</h1>
+    <p class="lead" style="max-width:640px">
+      {teams.length} teams. {played > 0
+        ? `${played} round${played === 1 ? '' : 's'} played`
+        : 'Not a ball hit yet'}{toPlay > 0
+        ? `, ${toPlay} round${toPlay === 1 ? '' : 's'} drawn and waiting`
+        : ''}.
+      Scroll between rounds; tap a match for the full card.
+    </p>
+  </section>
+
+  <section class="section container">
+    {rounds.length === 0 ? (
+      <p class="muted">
+        No {seasonLabel(season)} fixtures in the CSV yet. Add the draw to
+        <code>data/alltimestats.csv</code> — four rows a match, players named,
+        every other column blank — and it appears here.
+      </p>
+    ) : (
+      <RoundCarousel rounds={rounds} openAt={open?.round} pairings={pairings} />
+    )}
+  </section>
+
+  <section class="section container grid grid-2" style="align-items:start">
+    <div>
+      <p class="eyebrow">Standings</p>
+      <h2 class="serif-title" style="margin-bottom:14px">Ladder</h2>
+      <LadderTable
+        rows={table}
+        cutoff={8}
+        caption="Wins, then games ratio (for ÷ against). Top eight make finals."
+      />
+      <p class="mt-16"><a href={seasonHref(season)}>Season {season} in full →</a></p>
+    </div>
+    <div>
+      <p class="eyebrow">The model</p>
+      <h2 class="serif-title" style="margin-bottom:14px">Power Ratings</h2>
+      <PowerRatings limit={10} />
+    </div>
+  </section>
+</Layout>

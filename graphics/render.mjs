@@ -28,6 +28,7 @@ import {
   latestRound,
   resolveRound,
   resultCardPayloads,
+  rows as allRows,
   statBoardPayload,
 } from './lib/payloads.ts';
 import { SITE } from '../src/config/site.ts';
@@ -99,11 +100,26 @@ if (unknown.length) {
 const needsRound = ['ladder', 'results', 'boards'].some((k) => only.has(k));
 const latest = latestRound(season);
 if (needsRound && !latest && argv.round === undefined) {
-  console.error(
-    `Season ${season} has no rows in data/alltimestats.csv, so there's nothing ` +
-      `to render. (SITE.currentSeason is ${SITE.currentSeason}.)\n` +
-      `If the season has only been drafted, try: --only draft`
-  );
+  // A season whose draw is in the CSV but whose first night hasn't happened is
+  // the normal state of things every January — not a failure. CI renders on
+  // every push to main, so this has to exit clean or it reports a broken build
+  // for the months between the draft and the first result.
+  const drawn = allRows.some((r) => r.season === season && r.scheduled);
+  const message =
+    `Season ${season} has no played rounds in data/alltimestats.csv, so there's ` +
+    `nothing to render. (SITE.currentSeason is ${SITE.currentSeason}.)\n` +
+    (drawn
+      ? `Its fixtures are drawn but unplayed — a round with no scores, no stats ` +
+        `and no winner is not something a result card can show. Add the results ` +
+        `and run again.`
+      : `That season has no rows at all.`) +
+    `\nIf the season has only been drafted, try: --only draft`;
+
+  if (drawn) {
+    console.log(message);
+    process.exit(0);
+  }
+  console.error(message);
   process.exit(1);
 }
 const round = argv.round === undefined ? latest : resolveRound(argv.round);

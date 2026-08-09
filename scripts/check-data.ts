@@ -10,8 +10,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CSV_PATH, loadStatRows } from '../src/lib/normalize.ts';
 import { readCsvFile } from '../src/lib/csv.ts';
-import { allPlayers, allSeasons, COUNTING_STATS } from '../src/lib/stats.ts';
+import {
+  allPlayers,
+  allSeasons,
+  seasonRounds,
+  COUNTING_STATS,
+} from '../src/lib/stats.ts';
 import { NAME_ALIASES } from '../src/config/aliases.ts';
+import { declaredTeams, getSeasonConfig } from '../src/config/seasons/node.ts';
 import { SITE, isVotesSealed } from '../src/config/site.ts';
 import { allPhotos, missingPhotoFiles, unlistedPhotos, photoFilesOnDisk } from '../src/lib/photos.ts';
 
@@ -66,6 +72,9 @@ for (const raw of rawRows) {
 }
 
 for (const r of rows) {
+  // A fixture has no scoreline yet, by definition. The fixture section below
+  // is what checks those.
+  if (r.scheduled) continue;
   if (!r.score) {
     if (r.isFinals) errors.push(`Finals row has no Score: ${where(r)}`);
     continue;
@@ -109,12 +118,12 @@ for (const r of rows) {
 //    rates and win streaks as if it were their own team.
 const homeTeams = new Map<string, Set<string>>();
 for (const r of rows) {
-  if (r.isFinals || r.isSingles || r.isFillIn) continue;
+  if (r.scheduled || r.isFinals || r.isSingles || r.isFillIn) continue;
   const k = `${r.season}|${r.player}`;
   (homeTeams.get(k) ?? homeTeams.set(k, new Set()).get(k)!).add(r.team);
 }
 for (const r of rows) {
-  if (!r.isFinals || r.isSingles || r.isFillIn) continue;
+  if (r.scheduled || !r.isFinals || r.isSingles || r.isFillIn) continue;
   const own = homeTeams.get(`${r.season}|${r.player}`);
   if (!own) {
     warnings.push(
@@ -132,12 +141,102 @@ for (const r of rows) {
 // 2c. Each finals tie needs both sides present, or the head-to-head is one-eyed.
 const finalsTies = new Map<string, Set<string>>();
 for (const r of rows) {
-  if (!r.isFinals || r.isSingles) continue;
+  if (r.scheduled || !r.isFinals || r.isSingles) continue;
   const key = `S${r.season} ${r.roundLabel} ${[r.team, r.opponent].sort().join(' v ')}`;
   (finalsTies.get(key) ?? finalsTies.set(key, new Set()).get(key)!).add(r.team);
 }
 for (const [tie, teams] of finalsTies) {
   if (teams.size !== 2) warnings.push(`Finals tie has only one side entered: ${tie}`);
+}
+
+// 2d. Fixtures — matches that have been drawn but not played.
+//
+//     A fixture is four rows sharing Team/Opponent/Season/Round with the two
+//     players a side and EVERY other column blank; the blank `win?` is what
+//     makes it a fixture rather than a result (see StatRow.scheduled). What can
+//     go wrong is a half-filled row, a name that isn't on that team, or a team
+//     drawn to play twice in one night.
+//
+//     Round sizes are NOT checked. TNT rounds vary — with an odd number of
+//     teams somebody always sits out, and S5 is expected to run five rounds of
+//     five matches and four of four. Byes are reported below, not judged.
+const FIXTURE_COLUMNS = new Set([
+  'Team',
+  'Opponent',
+  'Season',
+  'Round',
+  'Player',
+  '', // the trailing empty column
+]);
+
+const scheduled = rows.filter((r) => r.scheduled);
+
+for (const raw of rawRows) {
+  if ((raw['win?'] ?? '').trim() !== '') continue;
+  const player = (raw['Player'] ?? '').trim();
+  if (!player || !(raw['Season'] ?? '').trim()) continue;
+  const dirty = Object.entries(raw)
+    .filter(([k, v]) => !FIXTURE_COLUMNS.has(k) && (v ?? '').trim() !== '')
+    .map(([k]) => k);
+  if (dirty.length) {
+    warnings.push(
+      `Fixture row (blank win?) also has ${dirty.join(', ')} filled in — ` +
+        `it will read as unplayed until win? is set: ${player} S${raw['Season']} R${raw['Round']}`
+    );
+  }
+}
+
+for (const season of allSeasons(rows)) {
+  const field = await declaredTeams(season);
+  const cfg = await getSeasonConfig(season);
+  const rounds = seasonRounds(rows, season, field);
+
+  for (const round of rounds) {
+    const drawn = round.matches.filter((m) => m.scheduled);
+    if (!drawn.length) continue;
+
+    if (round.played) {
+      warnings.push(
+        `S${season} ${round.roundLabel} is half entered — ` +
+          `${round.matches.length - drawn.length} played, ${drawn.length} still fixtures`
+      );
+    }
+
+    const seen = new Map<string, number>();
+    for (const m of drawn) {
+      for (const side of m.sides) {
+        seen.set(side.team, (seen.get(side.team) ?? 0) + 1);
+        if (side.players.length !== 2) {
+          warnings.push(
+            `Fixture side has ${side.players.length} players (expected 2): ` +
+              `S${season} ${round.roundLabel} ${side.team} v ${
+                m.sides.find((s) => s !== side)!.team
+              }`
+          );
+        }
+        // The line-up should be the team's own players. A guest is fine, but
+        // it has to say so — an unflagged one silently counts as a regular.
+        const pair = cfg?.teams?.[side.team]?.pair;
+        if (!pair) continue;
+        for (const p of side.players) {
+          if (!p.isFillIn && !pair.includes(p.player)) {
+            warnings.push(
+              `Fixture names ${p.player} for ${side.team}, who isn't in that ` +
+                `team's S${season} pairing (${pair.join(' & ')}) and isn't ` +
+                `marked (Fill-in): S${season} ${round.roundLabel}`
+            );
+          }
+        }
+      }
+    }
+    for (const [team, n] of seen) {
+      if (n > 1) {
+        errors.push(
+          `${team} is drawn to play ${n} matches in S${season} ${round.roundLabel}`
+        );
+      }
+    }
+  }
 }
 
 // 3. Bios present?
@@ -163,6 +262,42 @@ for (const s of allSeasons(rows)) {
   console.log(`  S${s}: ${sr.length} player-rows, ${votes} with votes${isVotesSealed(s) ? ' (SEALED)' : ''}, ${bog} BOG (derived)`);
 }
 console.log(`bios: ${players.length - missingBios.length}/${players.length} written` + (missingBios.length ? ` — missing: ${missingBios.join(', ')}` : ''));
+
+// 4b. Fixtures. Round sizes are meant to vary — this is a report, not a test.
+if (scheduled.length) {
+  console.log('\nFixtures\n' + '-'.repeat(40));
+  const seasonsWithFixtures = [...new Set(scheduled.map((r) => r.season))].sort();
+  for (const season of seasonsWithFixtures) {
+    const field = await declaredTeams(season);
+    const rounds = seasonRounds(rows, season, field).filter((r) =>
+      r.matches.some((m) => m.scheduled)
+    );
+    console.log(`  S${season}: field of ${field.length || '?'} teams`);
+    for (const r of rounds) {
+      const drawn = r.matches.filter((m) => m.scheduled).length;
+      console.log(
+        `    R${r.roundLabel}: ${drawn} match${drawn === 1 ? '' : 'es'}` +
+          (r.byes.length ? `, bye: ${r.byes.join(', ')}` : '')
+      );
+    }
+    // Turnout across the season so far, so an accidentally lopsided draw is
+    // visible without being called an error — an uneven one is on purpose.
+    const tally = new Map<string, { drawn: number; played: number }>();
+    for (const team of field) tally.set(team, { drawn: 0, played: 0 });
+    for (const m of seasonRounds(rows, season, field).flatMap((r) => r.matches)) {
+      for (const side of m.sides) {
+        const e = tally.get(side.team) ?? { drawn: 0, played: 0 };
+        if (m.scheduled) e.drawn += 1;
+        else e.played += 1;
+        tally.set(side.team, e);
+      }
+    }
+    const line = [...tally.entries()]
+      .map(([team, e]) => `${team} ${e.played}+${e.drawn}`)
+      .join(' · ');
+    console.log(`    matches played+drawn: ${line}`);
+  }
+}
 
 // 5. Finals coverage. Scorelines make a finals count for win-loss and
 //    head-to-head on their own; the stats can arrive later, one post at a time.

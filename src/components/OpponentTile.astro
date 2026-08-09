@@ -2,7 +2,7 @@
 import Avatar from './Avatar.astro';
 import TeamChip from './TeamChip.astro';
 import SetScore from './SetScore.astro';
-import { playerHref } from '../lib/url.ts';
+import { matchHref, playerHref } from '../lib/url.ts';
 import type { HeadToHead } from '../lib/stats.ts';
 
 interface Props {
@@ -31,9 +31,12 @@ const pct = (h2h.winPct * 100).toFixed(0);
     <ul class="opp-pop-list">
       {h2h.games.map((g) => (
         <li>
-          <span class={g.isFinals ? 'when when--finals' : 'when'}>
+          <a
+            class={g.isFinals ? 'when when--finals' : 'when'}
+            href={matchHref(g.season, g.round, g.stage, g.team, g.opponentTeam)}
+          >
             S{g.season} {g.isFinals ? g.roundLabel : `R${g.roundLabel}`}
-          </span>
+          </a>
           <span class="colours">
             <TeamChip team={g.team} plain />
             {g.fillIn && <span class="badge badge--fill">Fill-in</span>}

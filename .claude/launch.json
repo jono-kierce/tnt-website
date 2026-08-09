@@ -2,11 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "tnt-dev",
+      "name": "tnt",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 4321,
-      "autoPort": true
+      "port": 4321
     }
   ]
 }
