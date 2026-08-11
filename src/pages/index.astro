@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import LadderTable from '../components/LadderTable.astro';
 import MatchCard from '../components/MatchCard.astro';
 import { SITE, seasonLabel } from '../config/site.ts';
+import { predictionFor } from '../lib/predict.ts';
 import { withBase, seasonHref, scheduleHref } from '../lib/url.ts';
 import {
   headlineRound,
@@ -22,6 +23,14 @@ const fun = rotatingFunStat();
 const headline = headlineRound(season);
 const pairings = Object.fromEntries(
   Object.entries(seasonRosters(season)).map(([team, r]) => [team, r.pairingName])
+);
+
+// Same call the schedule carousel prints: an unplayed fixture on the home page
+// shows the model's percentages, a completed one shows the score.
+const predictions = new Map(
+  (headline?.round.matches ?? [])
+    .filter((m) => m.scheduled)
+    .map((m) => [m.key, predictionFor(m)] as const)
 );
 ---
 <Layout title="Home">
@@ -62,7 +71,11 @@ const pairings = Object.fromEntries(
         {headline ? (
           <div class="results">
             {headline.round.matches.map((m) => (
-              <MatchCard match={m} pairings={pairings} />
+              <MatchCard
+                match={m}
+                prediction={predictions.get(m.key) ?? null}
+                pairings={pairings}
+              />
             ))}
           </div>
         ) : (

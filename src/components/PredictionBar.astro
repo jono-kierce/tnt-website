@@ -31,7 +31,7 @@ const ink = (team: string) => teamMeta(team).color;
 ---
 <div class:list={['pred', { 'pred--compact': compact }]}>
   <div class="pred-head">
-    <span class="eyebrow" style="margin:0">The model</span>
+    <span class="eyebrow" style="margin:0">TNT Predictor</span>
     {called !== null && (
       <span class:list={['verdict', called ? 'hit' : 'miss']}>
         {called ? 'Called it' : 'Got it wrong'}

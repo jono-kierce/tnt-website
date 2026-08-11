@@ -204,7 +204,7 @@ export function formInsight(ctx: InsightContext): Insight | null {
     kind: 'form',
     label: 'In form',
     detail:
-      `${best.player} has been well above their own career average over the ` +
+      `${best.player} has been well above his own career average over the ` +
       `last ${RECENT} matches — ${best.lift.toFixed(1)} more winners than errors per set.`,
     team: best.team,
     weight: 55,
@@ -325,7 +325,7 @@ export function milestoneInsight(ctx: InsightContext): Insight | null {
         found.push({
           kind: 'milestone',
           label: 'Milestone',
-          detail: `${player} plays their ${ordinal(n)} TNT match.`,
+          detail: `${player} plays his ${ordinal(n)} TNT match.`,
           team: side.team,
           weight: 70,
         });

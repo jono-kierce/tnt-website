@@ -147,7 +147,10 @@ const predictions = new Map(
 </script>
 
 <style>
-  .car-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  /* Left-packed: the strip takes only the width its tabs need, so the "next"
+     arrow sits beside the last round rather than stranded at the far edge of a
+     wide screen. It still shrinks and scrolls when the season won't fit. */
+  .car-head { display: flex; align-items: center; justify-content: flex-start; gap: 8px; margin-bottom: 12px; }
   .car-nav {
     flex: none; width: 32px; height: 32px; border-radius: 999px;
     border: 1px solid var(--line); background: var(--card); color: var(--ivory);
@@ -157,7 +160,7 @@ const predictions = new Map(
   /* Without JS the arrows do nothing, so they don't appear. */
   .carousel:not(.is-enhanced) .car-nav { display: none; }
 
-  .car-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; flex: 1; }
+  .car-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; flex: 0 1 auto; min-width: 0; }
   .car-tabs::-webkit-scrollbar { display: none; }
   .car-tab {
     flex: none; min-width: 34px; padding: 5px 10px;
