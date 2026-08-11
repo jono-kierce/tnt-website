@@ -9,6 +9,7 @@ import { shortName } from '../config/aliases.ts';
 import { matchHref } from '../lib/url.ts';
 import type { MatchRecord } from '../lib/stats.ts';
 import type { MatchPrediction } from '../lib/predict.ts';
+import { datetimeAttr, formatTime } from '../lib/datetime.ts';
 
 interface Props {
   match: MatchRecord;
@@ -33,6 +34,8 @@ const lineup = (team: string) => {
   const named = side.players.filter((p) => !p.isSingles).map((p) => shortName(p.player));
   return named.length ? named.join(' & ') : pairings[team] ?? '';
 };
+
+const time = formatTime(match.start);
 
 const pct = (side: 0 | 1) =>
   prediction === null
@@ -61,7 +64,11 @@ const pct = (side: 0 | 1) =>
       </div>
     );
   })}
-  {match.scheduled && <span class="tag">To play</span>}
+  {match.scheduled && (
+    <span class="tag">
+      To play{time && <> · <time datetime={datetimeAttr(match.start)}>{time}</time></>}
+    </span>
+  )}
   {!match.scheduled && match.isDraw && <span class="tag">No result recorded</span>}
 </a>
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadStatRows, normalizeRows, parseScore } from './normalize.ts';
+import { loadStatRows, normalizeRows, parseScore, parseStart } from './normalize.ts';
 import {
   allPlayers,
   allSeasons,
@@ -934,6 +934,104 @@ describe('fixture classification', () => {
     expect(allSeasons(rows)).toEqual([5]);
     // A player page would have no stats and — worse — no slug to live at.
     expect(allPlayers(rows)).toEqual([]);
+  });
+});
+
+describe('start times', () => {
+  it('accepts ISO local wall time and nothing else', () => {
+    expect(parseStart('2026-08-18T18:30')).toBe('2026-08-18T18:30');
+    // No blank, no seconds, no zone, no spreadsheet reformatting.
+    for (const bad of [
+      '', '   ', '18/08/2026 18:30', '2026-08-18 18:30', '2026-08-18T18:30:00',
+      '2026-08-18T18:30Z', '6:30pm', '2026-8-18T18:30',
+    ]) {
+      expect(parseStart(bad)).toBeNull();
+    }
+  });
+
+  it('a fixture with a start time is still a fixture', () => {
+    // Start describes the draw, not the result — it must not read as played.
+    const rows = normalizeRows(
+      drawnMatch('5', '1', ['Pink', 'A One', 'B Two'], ['Navy', 'C Three', 'D Four'])
+        .map((r) => ({ ...r, Start: '2026-08-18T18:30' }))
+    );
+    expect(rows.every((r) => r.scheduled)).toBe(true);
+    expect(rows.every((r) => r.start === '2026-08-18T18:30')).toBe(true);
+    expect(seasonMatches(rows, 5)[0].scheduled).toBe(true);
+  });
+
+  it('orders a round by start time, and puts untimed matches last', () => {
+    const rows = normalizeRows([
+      // Deliberately out of order, and deliberately alphabetically backwards:
+      // Yellow v Red at 6:30 must come before Green v Orange at 8:30.
+      ...drawnMatch('5', '1', ['Green', 'A One', 'B Two'], ['Orange', 'C Three', 'D Four'])
+        .map((r) => ({ ...r, Start: '2026-08-18T20:30' })),
+      ...drawnMatch('5', '1', ['Yellow', 'E Five', 'F Six'], ['Red', 'G Seven', 'H Eight'])
+        .map((r) => ({ ...r, Start: '2026-08-18T18:30' })),
+      // No time recorded — sorts after both rather than jumping to the front.
+      ...drawnMatch('5', '1', ['Black', 'I Nine', 'J Ten'], ['Pink', 'K Ii', 'L Twelve']),
+    ]);
+    expect(seasonMatches(rows, 5).map((m) => m.sides[0].team)).toEqual([
+      'Red', 'Green', 'Black',
+    ]);
+  });
+
+  it('derives a round date from its matches, earliest first', () => {
+    const rows = normalizeRows([
+      ...drawnMatch('5', '1', ['Green', 'A One', 'B Two'], ['Orange', 'C Three', 'D Four'])
+        .map((r) => ({ ...r, Start: '2026-08-18T18:30' })),
+      // Washed out and replayed on the Thursday — the round is still Tuesday's.
+      ...drawnMatch('5', '1', ['Yellow', 'E Five', 'F Six'], ['Red', 'G Seven', 'H Eight'])
+        .map((r) => ({ ...r, Start: '2026-08-20T18:30' })),
+    ]);
+    expect(seasonRounds(rows, 5)[0].date).toBe('2026-08-18');
+  });
+
+  it('is null everywhere it was never recorded', () => {
+    const rows = normalizeRows(
+      drawnMatch('5', '1', ['Pink', 'A One', 'B Two'], ['Navy', 'C Three', 'D Four'])
+    );
+    expect(rows.every((r) => r.start === null)).toBe(true);
+    expect(seasonRounds(rows, 5)[0].date).toBeNull();
+  });
+});
+
+describe('the real S5 draw', () => {
+  const rows = loadStatRows();
+
+  it('every S5 match has a start time, on a Tuesday night, at 6:30 or later', () => {
+    const matches = seasonMatches(rows, 5);
+    // Five rounds of four and five of five, so nine matches each for ten teams.
+    expect(matches.length).toBe(45);
+    for (const m of matches) {
+      expect(m.start, `S5 R${m.roundLabel} ${m.key}`).not.toBeNull();
+      const d = new Date(m.start + ':00Z');
+      expect(d.getUTCDay(), `${m.key} is not on a Tuesday`).toBe(2);
+      expect(d.getUTCHours() * 60 + d.getUTCMinutes()).toBeGreaterThanOrEqual(18 * 60 + 30);
+    }
+  });
+
+  it('runs ten Tuesdays, one round each, 18 Aug to 20 Oct 2026', () => {
+    const rounds = seasonRounds(rows, 5);
+    expect(rounds.map((r) => r.date)).toEqual([
+      '2026-08-18', '2026-08-25', '2026-09-01', '2026-09-08', '2026-09-15',
+      '2026-09-22', '2026-09-29', '2026-10-06', '2026-10-13', '2026-10-20',
+    ]);
+    // A round is one night: no round spans two dates.
+    for (const r of rounds) {
+      const nights = new Set(r.matches.map((m) => m.start!.slice(0, 10)));
+      expect(nights.size, `R${r.roundLabel} spans ${nights.size} nights`).toBe(1);
+    }
+  });
+
+  it('starts each round at 6:30 and never double-books a slot', () => {
+    for (const r of seasonRounds(rows, 5)) {
+      const starts = r.matches.map((m) => m.start!).sort();
+      expect(starts[0].slice(11)).toBe('18:30');
+      expect(new Set(starts).size, `R${r.roundLabel} has two matches at once`).toBe(
+        r.matches.length
+      );
+    }
   });
 });
 

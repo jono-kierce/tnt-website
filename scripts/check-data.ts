@@ -8,11 +8,12 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { CSV_PATH, loadStatRows } from '../src/lib/normalize.ts';
+import { CSV_PATH, loadStatRows, parseStart } from '../src/lib/normalize.ts';
 import { readCsvFile } from '../src/lib/csv.ts';
 import {
   allPlayers,
   allSeasons,
+  seasonMatches,
   seasonRounds,
   COUNTING_STATS,
 } from '../src/lib/stats.ts';
@@ -68,6 +69,59 @@ for (const raw of rawRows) {
       `Unknown Round "${round}" (expected a number or ${[...STAGES].join('/')}): ` +
         `${player} S${raw['Season']}`
     );
+  }
+}
+
+// 2c. Start times. `normalize.ts` degrades anything malformed to null rather
+//     than guessing, which is the safe behaviour for a build but means a typo
+//     would otherwise vanish silently — a fixture with no time just doesn't
+//     print one. This is where it gets caught. Start is optional throughout: no
+//     season before S5 has one, and a blank is "not recorded", never an error.
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+for (const raw of rawRows) {
+  const start = (raw['Start'] ?? '').trim();
+  const player = (raw['Player'] ?? '').trim();
+  if (!start || !player) continue;
+  if (parseStart(start) === null) {
+    errors.push(
+      `Unreadable Start "${start}" (expected YYYY-MM-DDTHH:MM): ` +
+        `${player} S${raw['Season']} R${raw['Round']}`
+    );
+    continue;
+  }
+  // A spreadsheet that has decided the cell is a date will happily hand back
+  // 2026-13-01. The regex can't see that; Date can.
+  const d = new Date(start + ':00Z');
+  if (Number.isNaN(d.getTime()) || !start.startsWith(d.toISOString().slice(0, 16))) {
+    errors.push(`Start "${start}" is not a real date/time: ${player} S${raw['Season']}`);
+  }
+}
+
+// The league is called Tuesday Night Tennis. A fixture on another night is
+// legal — matches get moved — but it's worth a look.
+for (const m of seasonMatches(rows)) {
+  if (!m.start) continue;
+  const day = new Date(m.start + ':00Z').getUTCDay();
+  if (day !== 2) {
+    warnings.push(
+      `Fixture is not on a Tuesday (${DAYS[day]}): ` +
+        `S${m.season} R${m.roundLabel} ${m.sides.map((s) => s.team).join(' v ')} — ${m.start}`
+    );
+  }
+}
+
+// All four rows of a match carry the same Start, the way they carry the same
+// Score. Disagreement means half a match got edited.
+const startsByMatch = new Map<string, Set<string>>();
+for (const r of rows) {
+  if (!r.start) continue;
+  const k = `S${r.season} R${r.roundLabel} ${[r.team, r.opponent].sort().join(' v ')}`;
+  (startsByMatch.get(k) ?? startsByMatch.set(k, new Set()).get(k)!).add(r.start);
+}
+for (const [k, set] of startsByMatch) {
+  if (set.size > 1) {
+    errors.push(`Match rows disagree on Start (${[...set].join(' vs ')}): ${k}`);
   }
 }
 
@@ -152,7 +206,7 @@ for (const [tie, teams] of finalsTies) {
 // 2d. Fixtures — matches that have been drawn but not played.
 //
 //     A fixture is four rows sharing Team/Opponent/Season/Round with the two
-//     players a side and EVERY other column blank; the blank `win?` is what
+//     players a side and every RESULT column blank; the blank `win?` is what
 //     makes it a fixture rather than a result (see StatRow.scheduled). What can
 //     go wrong is a half-filled row, a name that isn't on that team, or a team
 //     drawn to play twice in one night.
@@ -160,11 +214,17 @@ for (const [tie, teams] of finalsTies) {
 //     Round sizes are NOT checked. TNT rounds vary — with an odd number of
 //     teams somebody always sits out, and S5 is expected to run five rounds of
 //     five matches and four of four. Byes are reported below, not judged.
+//
+//     `Start` is on this list because it describes the fixture, not the result:
+//     knowing when a match will be played is the whole point of drawing one.
+//     It's the only column here that's filled in *before* the night and left
+//     alone afterwards.
 const FIXTURE_COLUMNS = new Set([
   'Team',
   'Opponent',
   'Season',
   'Round',
+  'Start',
   'Player',
   '', // the trailing empty column
 ]);
@@ -199,6 +259,16 @@ for (const season of allSeasons(rows)) {
       warnings.push(
         `S${season} ${round.roundLabel} is half entered — ` +
           `${round.matches.length - drawn.length} played, ${drawn.length} still fixtures`
+      );
+    }
+
+    // A round is one night. Two dates in it is usually a typo, occasionally a
+    // washed-out match moved to another week — so a warning, not an error.
+    const nights = [...new Set(round.matches.map((m) => m.start?.slice(0, 10)).filter((d) => d))];
+    if (nights.length > 1) {
+      warnings.push(
+        `S${season} ${round.roundLabel} spans ${nights.length} dates ` +
+          `(${nights.sort().join(', ')}) — rescheduled, or a typo?`
       );
     }
 

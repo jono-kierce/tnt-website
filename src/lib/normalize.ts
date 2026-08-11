@@ -77,6 +77,23 @@ export function parseScore(v: string | undefined): SetScore[] {
   return sets;
 }
 
+/** `2026-08-18T18:30` — local wall time, no zone, no seconds. */
+const START_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+
+/**
+ * The Start column: when the match begins, in Melbourne local time.
+ *
+ * Kept as the string it was written as, and validated rather than parsed —
+ * `new Date('2026-08-18T18:30')` would resolve against the *build machine's*
+ * timezone, which is how a fixture list ends up an hour out in CI. Anything
+ * that isn't exactly ISO `YYYY-MM-DDTHH:MM` degrades to null so a typo reads as
+ * "no time recorded" rather than a wrong one; `check-data` is what reports it.
+ */
+export function parseStart(v: string | undefined): string | null {
+  const s = (v ?? '').trim();
+  return START_RE.test(s) ? s : null;
+}
+
 export function parseRound(v: string | undefined): {
   round: number;
   stage: FinalsStage | null;
@@ -127,6 +144,7 @@ export function normalizeRows(raw: Record<string, string>[]): StatRow[] {
         stage,
         roundLabel,
         isFinals: stage !== null,
+        start: parseStart(r['Start']),
         score,
         setScores,
         // An unreadable scoreline counts as one set: every home-and-away round

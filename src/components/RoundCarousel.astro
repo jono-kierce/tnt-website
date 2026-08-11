@@ -2,17 +2,20 @@
 /**
  * The season's rounds, one panel at a time, scrollable between them.
  *
- * **There is no date logic here, because there are no dates in the data.** The
- * panel it opens on is chosen at build time as the latest round that has
- * results, which puts the next round to be played exactly one scroll away —
- * the two things anyone actually wants. Every panel is pre-rendered, so moving
- * between them is a scroll and not a fetch, and the whole thing degrades to a
- * horizontally scrollable list with no JavaScript at all.
+ * A round prints its date when the CSV has one, but **the panel it opens on is
+ * still chosen by results, not by the calendar**: the latest round that has
+ * been played, which puts the next round exactly one scroll away. That holds
+ * whether or not a season has dates, and it doesn't go stale — this is a static
+ * site, so "today" here means the day of the last deploy, not the day someone
+ * is reading. Every panel is pre-rendered, so moving between them is a scroll
+ * and not a fetch, and the whole thing degrades to a horizontally scrollable
+ * list with no JavaScript at all.
  */
 import MatchCard from './MatchCard.astro';
 import TeamChip from './TeamChip.astro';
 import type { SeasonRound } from '../lib/stats.ts';
 import { predictionFor } from '../lib/predict.ts';
+import { datetimeAttr, formatDateLong } from '../lib/datetime.ts';
 
 interface Props {
   rounds: SeasonRound[];
@@ -80,6 +83,9 @@ const predictions = new Map(
         >
           <div class="car-panel-head">
             <h3 class="serif-title mb-0">{heading(r)}</h3>
+            {r.date && (
+              <time class="car-date" datetime={datetimeAttr(r.date)}>{formatDateLong(r.date)}</time>
+            )}
             {!r.played && <span class="badge">To be played</span>}
           </div>
 
@@ -165,7 +171,11 @@ const predictions = new Map(
   .car-tab.is-todo:not(.is-open) { border-style: dashed; color: var(--muted); }
 
   .car-track { display: flex; flex-direction: column; }
-  .car-panel-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .car-panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+  .car-date {
+    font-family: var(--serif); font-size: 0.8rem; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--muted);
+  }
   .car-matches { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
 
   /* Enhanced: one panel at a time. Unenhanced: all of them, stacked. */

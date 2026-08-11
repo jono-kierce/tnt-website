@@ -58,6 +58,8 @@ src/lib/predict.ts       the Elo model: win probabilities, power ratings, backte
 src/lib/insights.ts      rule-based "worth knowing" lines for a match page
 src/lib/ranks.ts         where a player sits in the field — the stat-panel badges
 src/lib/site-data.ts     page-facing helpers (season ladder, MVP tally, fun stats)
+src/lib/datetime.ts      formats the Start column for display — string in, string
+                         out, never a Date (see Data conventions)
 src/lib/photos.ts        photo manifest loader (content/photos/photos.yaml): tags,
                          captions, seasons, avatar pick. Node-safe — no import.meta.env
 src/lib/stats.test.ts    unit tests — keep these green
@@ -109,8 +111,8 @@ rules that matter here:
 ## Data conventions (must respect)
 
 - **Fixtures live in the CSV.** A drawn-but-unplayed match is 4 rows sharing
-  Team/Opponent/Season/Round/Player with **every other column blank**. The blank
-  `win?` is the sole discriminator — a played row always carries one, even a
+  Team/Opponent/Season/Round/Player with **every RESULT column blank** (`Start`
+  may be filled — see below). The blank `win?` is the sole discriminator — a played row always carries one, even a
   finals result entered as a scoreline with no stats. Defined once, in
   `normalize.ts` (`StatRow.scheduled`); `isPlayed`/`playedRows` in `stats.ts` is
   the gate, applied inside `matchSides`, `playerRows`, `fixtureSides`,
@@ -124,9 +126,26 @@ rules that matter here:
   a team on a bye in round one has no rows at all — so it's passed in from the
   season config's `teams` keys (`declaredTeams` in `site-data.ts`), which is
   also what seeds a live ladder at 0/0/0. Round sizes vary on purpose: S5 runs
-  five rounds of five matches and four of four. `check-data` reports byes and
+  five rounds of four matches and five of five. `check-data` reports byes and
   never warns about an uneven round; the one thing it errors on is a team drawn
   twice in the same round.
+- **Match times are the `Start` column, in Melbourne wall time:**
+  `2026-08-18T18:30`, exactly what the sign at the courts says. Optional
+  everywhere — blank means "not recorded", which is every season before S5 —
+  and repeated across a match's four rows the same way `Score` is, because it's
+  a match-level fact and that's this file's grain. It is the one column that
+  belongs on a *fixture*: it describes the draw, not the result, so it's in
+  `FIXTURE_COLUMNS` in `check-data` and a fixture with a time is still a
+  fixture. **Never parsed into a `Date` for display** (`src/lib/datetime.ts`
+  formats the string directly): `new Date('2026-08-18T18:30')` resolves against
+  the *build machine's* timezone, and CI runs in UTC. Storing wall time is also
+  what makes the AEST→AEDT switch mid-season a non-event. `SeasonRound.date` is
+  derived from the matches — earliest wins, so a rescheduled match doesn't drag
+  the round's heading. Sorting a round by `start` is what puts its matches in
+  playing order (`byPlayingOrder`); with no times it falls back to alphabetical
+  as before. `check-data` errors on a malformed or impossible value and on a
+  match whose rows disagree, and warns on a non-Tuesday or a round spanning two
+  dates — both legal, both usually a typo.
 - **Canonical names:** `Lachlan Jenkin` (not Lachie), `Jim Papa` (not James).
   Aliases applied after stripping `(Fill-in)`.
 - **Pairing display order is captain-first, draftee-second.** Set via `pair` in
@@ -287,13 +306,14 @@ fails if the share of matches with an insight leaves the 40–85% band.
 - **S4 (2025) is complete** — full results, honours filled, votes loaded and
   unsealed.
 - **Season 5 (2026) is LIVE and yet to be played.** `currentSeason` is 5 and
-  `sealedVoteSeasons` is `[5]`. Round 1's four fixtures are in the CSV (Brown
-  and Pink on a bye); nothing has been played, so the ladder shows all ten teams
-  at 0/0/0 and every S5 prediction sits near 50/50 — which is honest, not a bug.
-  S5 is the first **ten-team** season; **Brown** is in `TEAMS` alongside the
-  original nine. `season-5.ts` has all ten pairings, captain-first; honours and
-  finals fill in at season's end. **Remove 5 from `sealedVoteSeasons`** on
-  awards night.
+  `sealedVoteSeasons` is `[5]`. **The full ten-round draw is in the CSV** — 45
+  fixtures across ten Tuesdays, 18 Aug to 20 Oct 2026, nine matches a team, five
+  rounds of four and five of five. Nothing has been played, so the ladder shows
+  all ten teams at 0/0/0 and every S5 prediction sits near 50/50 — which is
+  honest, not a bug. S5 is the first **ten-team** season; **Brown** is in
+  `TEAMS` alongside the original nine. `season-5.ts` has all ten pairings,
+  captain-first; honours and finals fill in at season's end. **Remove 5 from
+  `sealedVoteSeasons`** on awards night.
 - **`npm run graphics` with no arguments exits 0 and renders nothing** while S5
   has fixtures but no results — a round with no scores is not something a result
   card can show. That's deliberate, so the CI graphics job stays green between

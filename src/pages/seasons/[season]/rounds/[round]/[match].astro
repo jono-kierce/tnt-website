@@ -19,6 +19,7 @@ import { allPlayers, playerAgg, perSet, type MatchRecord } from '../../../../../
 import { allRows, declaredTeams, rows, seasonSchedule, siteSeasons } from '../../../../../lib/site-data.ts';
 import { predictionFor } from '../../../../../lib/predict.ts';
 import { insightsFor } from '../../../../../lib/insights.ts';
+import { datetimeAttr, formatDateLong, formatTime } from '../../../../../lib/datetime.ts';
 
 export function getStaticPaths() {
   return siteSeasons().flatMap((season) =>
@@ -91,6 +92,11 @@ const accent = teamMeta(match.winner ?? match.sides[0].team);
   <section class="section container">
     <p class="eyebrow">
       <a href={seasonHref(season)}>{seasonLabel(season)}</a> · {heading}
+      {match.start && (
+        <> · <time datetime={datetimeAttr(match.start)}>
+          {formatDateLong(match.start)}, {formatTime(match.start)}
+        </time></>
+      )}
       {match.scheduled && <> · <span class="to-play">Yet to be played</span></>}
     </p>
 

@@ -150,11 +150,28 @@ export interface MatchRecord {
   isDraw: boolean;
   /** The SINGLES GAME sentinel stood in for the line-up. */
   isSingles: boolean;
+  /**
+   * Local start time, `2026-08-18T18:30`, or null where none is recorded.
+   * A match-level fact like `score` is: taken from the rows, which all carry
+   * the same value. `check-data` is what notices if they ever disagree.
+   */
+  start: string | null;
 }
 
-/** Sort key: season, then round (finals sort last), then teams for stability. */
+/**
+ * Sort key: season, then round (finals sort last), then start time, then teams.
+ *
+ * `start` is what puts a round's matches in the order they're actually played
+ * — the 6:30 before the 8:30. It sorts as a string because ISO 8601 does that
+ * correctly, and it only breaks a tie *within* a round, so a season with no
+ * times recorded falls back to the old alphabetical-by-key order unchanged.
+ * Untimed matches sort after timed ones rather than jumping to the front.
+ */
 const byPlayingOrder = (a: MatchRecord, b: MatchRecord) =>
-  a.season - b.season || a.round - b.round || a.key.localeCompare(b.key);
+  a.season - b.season ||
+  a.round - b.round ||
+  (a.start ?? '￿').localeCompare(b.start ?? '￿') ||
+  a.key.localeCompare(b.key);
 
 /**
  * Every match in the CSV, folded from per-player rows into whole fixtures.
@@ -218,6 +235,7 @@ export function seasonMatches(
       // recorded one, but the model has to do something sane if it ever does.
       isDraw: !scheduled && sides[0].win === sides[1].win,
       isSingles: sides.some((s) => s.players.some((p) => p.isSingles)),
+      start: r.start,
     });
   }
 
@@ -238,6 +256,16 @@ export interface SeasonRound {
   stage: FinalsStage | null;
   roundLabel: string;
   matches: MatchRecord[];
+  /**
+   * The night this round is played, `2026-08-18`, or null if no match in it has
+   * a start time. Derived from the matches, never stored — a round is a night
+   * because its matches are all on one, not the other way around.
+   *
+   * It's the *earliest* date among them, so a match moved to a later night
+   * doesn't drag the round's heading with it. `check-data` warns when a round
+   * spans two dates, since that's usually a typo and occasionally a washout.
+   */
+  date: string | null;
   /** True once any match in the round has a result. */
   played: boolean;
   /**
@@ -277,11 +305,13 @@ export function seasonRounds(
     .sort((a, b) => a[0] - b[0])
     .map(([round, ms]) => {
       const playing = new Set(ms.flatMap((m) => m.sides.map((s) => s.team)));
+      const dates = ms.map((m) => m.start?.slice(0, 10)).filter((d) => d);
       return {
         round,
         stage: ms[0].stage,
         roundLabel: ms[0].roundLabel,
         matches: ms,
+        date: dates.length ? (dates.sort()[0] as string) : null,
         played: ms.some((m) => !m.scheduled),
         byes: ms[0].isFinals ? [] : [...field].filter((t) => !playing.has(t)).sort(),
       };

@@ -39,6 +39,17 @@ export interface StatRow {
   /** Display label: "5", "QF", "SF", "Final". */
   roundLabel: string;
   isFinals: boolean;
+  /**
+   * When this match starts, as local Melbourne wall time — `2026-08-18T18:30`,
+   * exactly what the sign at the courts says. Null for a match with no time on
+   * record, which is every season before S5.
+   *
+   * Deliberately not a `Date` and deliberately not UTC: a fixture list means a
+   * wall time, and storing it as one means nobody has to think about the
+   * October daylight-saving switch that lands mid-season. Compare and sort
+   * these as strings — ISO 8601 orders correctly on its own.
+   */
+  start: string | null;
   /** Raw scoreline as written in the CSV, e.g. "6-4" or "4-6 7-6(4) 6-1". */
   score: string;
   /** The scoreline parsed out, set by set, from this team's point of view. */
@@ -60,8 +71,9 @@ export interface StatRow {
   isSingles: boolean;
   /**
    * A fixture: a match that has been drawn but not played. Entered as four rows
-   * sharing Team/Opponent/Season/Round with the two players a side, and EVERY
-   * other column blank.
+   * sharing Team/Opponent/Season/Round with the two players a side, and every
+   * RESULT column blank. `Start` may be filled in — it says when the match will
+   * be played, which is a property of the draw, not of the result.
    *
    * The discriminator is a blank `win?`, and nothing else. It works because a
    * played row always carries one — even a finals result reconstructed from a
