@@ -53,7 +53,8 @@ src/lib/normalize.ts     THE normalization layer: CSV -> StatRow[], all quirks h
                           errors-forced S2+, EVERY stat null-if-blank, BOG
                           derivation, Round->stage, Score->sets, played-vs-fixture)
 src/lib/stats.ts         ladder, rosters/pairings, player aggregates, leaderboards,
-                         records, and MatchRecord/seasonRounds (whole matches + byes)
+                         records, MatchRecord/seasonRounds (whole matches + byes),
+                         the `contribution` ledger and the four match-up tiles
 src/lib/predict.ts       the Elo model: win probabilities, power ratings, backtest
 src/lib/insights.ts      rule-based "worth knowing" lines for a match page
 src/lib/ranks.ts         where a player sits in the field — the stat-panel badges
@@ -300,6 +301,53 @@ would have been. Keep them stingy: "revenge match" once fired on 78% of the
 fixture list (it looked back across seasons, where a redraft means the two teams
 share only a colour), and a label that's nearly always true says nothing. A test
 fails if the share of matches with an insight leaves the 40–85% band.
+
+## The match-up tiles (`formMatchups` in `src/lib/stats.ts`)
+
+A player page shows four, in a 2×2. The top pair (`bestWorstOpponent`) answers
+"who do you beat?" off the scoreboard; the bottom pair (`formMatchups`) answers
+"who do you play *well* against?" off the stat sheet. Rules:
+
+- **One ledger, shared with the model.** `contribution` — winners + aces +
+  errors forced, less unforced errors and double faults — now lives in
+  `stats.ts` and is re-exported from `predict.ts`, which is where it used to
+  live. Don't write a second performance score. (`insights.ts` has a private
+  `net()` that predates the move and duplicates it; fold it in if you're
+  passing.)
+- **Every match is centred on its season's league par** (`leaguePar`, memoised
+  on the row array). This is not optional. `Errors Forced` doesn't exist in S1,
+  so raw contribution per set runs S1 −3.93, S2 −2.54, S3 −2.02, S4 −1.61, and
+  a player whose meetings with someone happened mostly in 2022 would be labelled
+  "worst form against" them on the CSV's column history. Centring also absorbs
+  the general drift, which continues past the S1 gap. There's a test whose only
+  job is to stop someone simplifying it away.
+- **Set-weighted, like every other rate here:** `sum(centred) / sum(sets)`, so a
+  three-set final outweighs a one-set Tuesday. Per-match weighting was
+  considered and rejected.
+- **Statted meetings only.** Three of the four finals brackets are scorelines
+  with no player stats; a match with no ledger is not evidence about form, so it
+  joins neither the tally, the baseline, nor the qualifying count. 25 of 30
+  players qualify, against 26 for the record tiles.
+- **The baseline excludes the opponent**, so it's per opponent, not one number
+  per player. Two tiles on a page can quote slightly different norms. Correct.
+- **No shrinkage, on purpose.** Raw argmax. Shrinking moved 3 of 50 picks, which
+  didn't justify the tile's number no longer matching its popover. The cost is
+  owned in the fine print: 26% of picks rest on two matches, they're the most
+  extreme ones, and a tile can flip on one new meeting. **Don't add shrinkage
+  back without asking.**
+- **The justification line is the stat with the largest absolute deviation**,
+  among the five that make up the ledger, and it's direction-aware — the biggest
+  mover is more often a *drop* in unforced errors than a rise in winners. A stat
+  with no coverage on either side of the split is skipped, never read as zero;
+  with nothing left, the tile shows the delta alone rather than a placeholder.
+- **It never reads `votes`** — a test greps the section, same guarantee as
+  `predict.ts`, so the tiles are safe on a sealed season.
+- **Known and not worth fixing:** this is doubles, so "form against X" is always
+  "form against X *and whoever partnered X*". The record tiles have the identical
+  confound. Damon Maurice is several players' best match-up, which is partly
+  signal and partly "some opponents are easier for everyone"; the metric can't
+  separate them, and 2–6 meetings won't support a partner-adjusted version. One
+  sentence of fine print, not a bigger model.
 
 ## Current state / open TODOs (owner to fill)
 

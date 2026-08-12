@@ -4,10 +4,13 @@ import {
   allPlayers,
   allSeasons,
   bestWorstOpponent,
+  contribution,
   fillInRecord,
   fillInVotes,
+  formMatchups,
   headToHead,
   ladder,
+  leaguePar,
   ladderWithPairings,
   leaderboard,
   matchSides,
@@ -540,6 +543,257 @@ describe('head to head', () => {
       }),
     ]);
     expect(headToHead('Hero', rows).map((h) => h.opponent)).toEqual(['Bunny']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Form match-ups
+// ---------------------------------------------------------------------------
+
+describe('form match-ups', () => {
+  /**
+   * One statted match, both sides. A line is
+   * `[player, winners, unforcedErrors, errorsForced?]`, with the stats as
+   * strings so a blank cell — never recorded — stays distinguishable from a
+   * zero, which is the whole discipline this feature has to respect.
+   *
+   * `score` sets the length: '' is a one-set Tuesday, '6-4 6-3' a two-setter.
+   */
+  type Line = [string, string, string] | [string, string, string, string];
+  const statMatch = (
+    season: number,
+    round: number | string,
+    score: string,
+    home: { team: string; players: Line[] },
+    away: { team: string; players: Line[] }
+  ) => {
+    const side = (team: string, opp: string, players: Line[]) =>
+      players.map(([Player, Winners, ue, ef = '']) =>
+        raw({
+          Team: team, Opponent: opp, Season: String(season), Round: String(round),
+          Score: score, Player, Winners, 'Unforced Errors': ue, 'Errors Forced': ef,
+        })
+      );
+    return [
+      ...side(home.team, away.team, home.players),
+      ...side(away.team, home.team, away.players),
+    ];
+  };
+
+  it('centres each match on its own season, so eras compare', () => {
+    // Identical stat lines for Hero in every match — 5 winners, 5 unforced,
+    // a contribution of exactly 0 every time. Raw, all four nights are the
+    // same night and both tiles would read 0. What separates them is the
+    // league around them: S1's par is 8 below S4's, so beating par by 8 in
+    // Season 1 is the performance Season 4's flat 0 isn't.
+    const rows = normalizeRows([
+      // S1: Hero at 0 against a league averaging -8/set.
+      ...statMatch(1, 1, '', { team: 'Pink', players: [['Hero', '5', '5']] },
+                              { team: 'Navy', players: [['Ancient', '0', '16']] }),
+      ...statMatch(1, 2, '', { team: 'Pink', players: [['Hero', '5', '5']] },
+                              { team: 'Navy', players: [['Ancient', '0', '16']] }),
+      // S4: the same Hero line against a league averaging 0/set.
+      ...statMatch(4, 1, '', { team: 'Pink', players: [['Hero', '5', '5']] },
+                              { team: 'Green', players: [['Modern', '5', '5']] }),
+      ...statMatch(4, 2, '', { team: 'Pink', players: [['Hero', '5', '5']] },
+                              { team: 'Green', players: [['Modern', '5', '5']] }),
+    ]);
+    expect(leaguePar(rows).get(1)).toBe(-8);
+    expect(leaguePar(rows).get(4)).toBe(0);
+    // The raw ledger really is identical across the two eras.
+    expect([...new Set(rows.filter((r) => r.player === 'Hero').map(contribution))])
+      .toEqual([0]);
+
+    const form = formMatchups('Hero', rows)!;
+    expect(form.best.opponent).toBe('Ancient');
+    expect(form.best.perSet).toBe(8);
+    expect(form.best.baseline).toBe(0);
+    expect(form.best.delta).toBe(8);
+    expect(form.worst.opponent).toBe('Modern');
+    expect(form.worst.delta).toBe(-8);
+  });
+
+  it('ignores a meeting with no stat line at all', () => {
+    // A finals scoreline with no player stats is not evidence about form: it
+    // can't qualify an opponent, and it can't move anybody's baseline either.
+    const statted = [
+      ...statMatch(4, 1, '', { team: 'Pink', players: [['Hero', '6', '2']] },
+                              { team: 'Navy', players: [['Bunny', '2', '6']] }),
+      ...statMatch(4, 2, '', { team: 'Pink', players: [['Hero', '6', '2']] },
+                              { team: 'Navy', players: [['Bunny', '2', '6']] }),
+      ...statMatch(4, 3, '', { team: 'Pink', players: [['Hero', '2', '6']] },
+                              { team: 'Green', players: [['Bogey', '6', '2']] }),
+      ...statMatch(4, 4, '', { team: 'Pink', players: [['Hero', '2', '6']] },
+                              { team: 'Green', players: [['Bogey', '6', '2']] }),
+    ];
+    // Same fixture list plus a scoreline-only final against a third player.
+    const ghost = statMatch(4, 'F', '6-4 6-2',
+      { team: 'Pink', players: [['Hero', '', '']] },
+      { team: 'Red', players: [['Phantom', '', '']] });
+
+    const before = formMatchups('Hero', normalizeRows(statted))!;
+    const after = formMatchups('Hero', normalizeRows([...statted, ...ghost]))!;
+
+    expect(after.best.opponent).toBe(before.best.opponent);
+    expect(after.best.perSet).toBe(before.best.perSet);
+    expect(after.best.baseline).toBe(before.best.baseline);
+    expect(after.best.meetings).toBe(before.best.meetings);
+    // Phantom never made the candidate list, at any bar.
+    expect(after.worst.opponent).not.toBe('Phantom');
+  });
+
+  it('keeps the opponent out of their own baseline', () => {
+    // League par is 0 here, so the centred numbers are the raw ones. Hero is
+    // +6/set against Bunny and 0 against the other four meetings. Their
+    // career mean is +2 — leave Bunny in the baseline and the tile would read
+    // +4, understating the effect with the very matches that produce it.
+    const rows = normalizeRows([
+      ...statMatch(4, 1, '', { team: 'Pink', players: [['Hero', '8', '2']] },
+                              { team: 'Navy', players: [['Bunny', '2', '8']] }),
+      ...statMatch(4, 2, '', { team: 'Pink', players: [['Hero', '8', '2']] },
+                              { team: 'Navy', players: [['Bunny', '2', '8']] }),
+      ...statMatch(4, 3, '', { team: 'Pink', players: [['Hero', '5', '5']] },
+                              { team: 'Green', players: [['Even', '5', '5']] }),
+      ...statMatch(4, 4, '', { team: 'Pink', players: [['Hero', '5', '5']] },
+                              { team: 'Green', players: [['Even', '5', '5']] }),
+    ]);
+    expect(leaguePar(rows).get(4)).toBe(0);
+
+    const form = formMatchups('Hero', rows)!;
+    expect(form.best.opponent).toBe('Bunny');
+    expect(form.best.perSet).toBe(6);
+    expect(form.best.baseline).toBe(0);
+    expect(form.best.delta).toBe(6);
+    // ...and the mirror image: Even's baseline is the Bunny nights.
+    expect(form.worst.opponent).toBe('Even');
+    expect(form.worst.baseline).toBe(6);
+    expect(form.worst.delta).toBe(-6);
+  });
+
+  it('weights by sets, not by matches', () => {
+    // Two meetings with Bunny: +2/set over a two-setter, -2/set over a
+    // three-setter. Averaged per match that's a flat 0; set-weighted — the way
+    // every other rate on this site works — the longer night wins, at -0.4.
+    const rows = normalizeRows([
+      ...statMatch(4, 1, '6-4 6-3', { team: 'Pink', players: [['Hero', '6', '2']] },
+                                     { team: 'Navy', players: [['Bunny', '2', '6']] }),
+      ...statMatch(4, 2, '6-4 4-6 6-3', { team: 'Pink', players: [['Hero', '3', '9']] },
+                                         { team: 'Navy', players: [['Bunny', '9', '3']] }),
+      ...statMatch(4, 3, '', { team: 'Pink', players: [['Hero', '5', '5']] },
+                              { team: 'Green', players: [['Even', '5', '5']] }),
+      ...statMatch(4, 4, '', { team: 'Pink', players: [['Hero', '5', '5']] },
+                              { team: 'Green', players: [['Even', '5', '5']] }),
+    ]);
+    expect(leaguePar(rows).get(4)).toBe(0);
+
+    const form = formMatchups('Hero', rows)!;
+    expect(form.worst.opponent).toBe('Bunny');
+    expect(form.worst.games.map((g) => g.perSet)).toEqual([2, -2]);
+    expect(form.worst.perSet).toBeCloseTo(-0.4, 10);
+  });
+
+  it('adapts the bar from three meetings down to two, then gives up', () => {
+    const meet = (round: number, opponent: string, team: string, w: string, ue: string) =>
+      statMatch(4, round, '', { team: 'Pink', players: [['Hero', w, ue]] },
+                               { team, players: [[opponent, ue, w]] });
+
+    const three = normalizeRows([
+      ...meet(1, 'Bunny', 'Navy', '8', '2'),
+      ...meet(2, 'Bunny', 'Navy', '8', '2'),
+      ...meet(3, 'Bunny', 'Navy', '8', '2'),
+      ...meet(4, 'Bogey', 'Green', '2', '8'),
+      ...meet(5, 'Bogey', 'Green', '2', '8'),
+      ...meet(6, 'Bogey', 'Green', '2', '8'),
+    ]);
+    expect(formMatchups('Hero', three)!.minMeetings).toBe(3);
+
+    // Bogey only twice now — nobody's second-best opponent clears three, so
+    // the whole comparison steps down rather than being abandoned.
+    const two = normalizeRows([
+      ...meet(1, 'Bunny', 'Navy', '8', '2'),
+      ...meet(2, 'Bunny', 'Navy', '8', '2'),
+      ...meet(3, 'Bunny', 'Navy', '8', '2'),
+      ...meet(4, 'Bogey', 'Green', '2', '8'),
+      ...meet(5, 'Bogey', 'Green', '2', '8'),
+    ]);
+    const stepped = formMatchups('Hero', two)!;
+    expect(stepped.minMeetings).toBe(2);
+    expect(stepped.best.opponent).toBe('Bunny');
+    expect(stepped.worst.opponent).toBe('Bogey');
+
+    // One meeting is below the floor, which leaves one qualifying opponent
+    // and so nothing to compare them with.
+    const one = normalizeRows([
+      ...meet(1, 'Bunny', 'Navy', '8', '2'),
+      ...meet(2, 'Bunny', 'Navy', '8', '2'),
+      ...meet(3, 'Bunny', 'Navy', '8', '2'),
+      ...meet(4, 'Stranger', 'Green', '2', '8'),
+    ]);
+    expect(formMatchups('Hero', one)).toBeNull();
+  });
+
+  it('blames the stat that moved most, and skips one it cannot see', () => {
+    // Against Bunny (Season 1, before Errors Forced existed) Hero's unforced
+    // errors collapse by 6 a set and their winners rise by 2. Errors forced
+    // has the biggest gap of all on paper — 4 a set against everyone else,
+    // nothing at all against Bunny — but that is the CSV's column history
+    // talking, not Hero's, so it must not be the line the tile prints.
+    const rows = normalizeRows([
+      ...statMatch(1, 1, '', { team: 'Pink', players: [['Hero', '8', '2']] },
+                              { team: 'Navy', players: [['Bunny', '2', '8']] }),
+      ...statMatch(1, 2, '', { team: 'Pink', players: [['Hero', '8', '2']] },
+                              { team: 'Navy', players: [['Bunny', '2', '8']] }),
+      ...statMatch(4, 3, '', { team: 'Pink', players: [['Hero', '6', '8', '4']] },
+                              { team: 'Green', players: [['Even', '8', '6', '4']] }),
+      ...statMatch(4, 4, '', { team: 'Pink', players: [['Hero', '6', '8', '4']] },
+                              { team: 'Green', players: [['Even', '8', '6', '4']] }),
+    ]);
+    const reason = formMatchups('Hero', rows)!.best.reason!;
+    expect(reason.stat).toBe('unforcedErrors');
+    expect(reason.bad).toBe(true);
+    expect(reason.value).toBe(2);
+    expect(reason.baseline).toBe(8);
+    expect(reason.delta).toBe(-6);
+  });
+
+  it('never reads a blank cell as a zero', () => {
+    // Errors Forced recorded in one of the two Bunny meetings and left blank
+    // in the other. The rate is 6 a set over the night it was counted, not 3
+    // a set over both — a missing cell is silence, not a zero performance.
+    const rows = normalizeRows([
+      ...statMatch(4, 1, '', { team: 'Pink', players: [['Hero', '5', '5', '6']] },
+                              { team: 'Navy', players: [['Bunny', '5', '5', '']] }),
+      ...statMatch(4, 2, '', { team: 'Pink', players: [['Hero', '5', '5', '']] },
+                              { team: 'Navy', players: [['Bunny', '5', '5', '']] }),
+      ...statMatch(4, 3, '', { team: 'Pink', players: [['Hero', '5', '5', '1']] },
+                              { team: 'Green', players: [['Even', '5', '5', '']] }),
+      ...statMatch(4, 4, '', { team: 'Pink', players: [['Hero', '5', '5', '1']] },
+                              { team: 'Green', players: [['Even', '5', '5', '']] }),
+    ]);
+    const form = formMatchups('Hero', rows)!;
+    expect(form.best.opponent).toBe('Bunny');
+    expect(form.best.reason!.stat).toBe('errorsForced');
+    expect(form.best.reason!.value).toBe(6);
+    expect(form.best.reason!.baseline).toBe(1);
+  });
+
+  it('says nothing about the votes column', async () => {
+    // The same guarantee `predict.ts` carries, for the same reason: the form
+    // tiles have to be safe to render on a season whose votes are sealed.
+    const src = await import('node:fs').then((fs) =>
+      fs.readFileSync(new URL('./stats.ts', import.meta.url), 'utf8')
+    );
+    // Just the section — the rest of this file reads votes all day long.
+    const start = src.indexOf('// Form match-ups');
+    const end = src.indexOf('// Per-season trend', start);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const body = src
+      .slice(start, end)
+      .replace(/\/\*\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    expect(body).not.toMatch(/\bvotes\b/i);
+    expect(body).not.toMatch(/\bbog\b/i);
   });
 });
 
