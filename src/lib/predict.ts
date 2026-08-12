@@ -47,7 +47,7 @@
  */
 
 import type { StatRow } from './types.ts';
-import { contribution, seasonMatches, type MatchRecord } from './stats.ts';
+import { seasonMatches, type MatchRecord } from './stats.ts';
 import { loadStatRows } from './normalize.ts';
 import { SITE } from '../config/site.ts';
 
@@ -185,13 +185,32 @@ export function expectedScore(a: number, b: number): number {
 // ---------------------------------------------------------------------------
 
 /**
- * The net stat ledger this model rates players on. It lives in `stats.ts`
- * because it isn't only the model's any more — the player pages' form
- * match-ups measure the same thing, and one definition of "what a player did
- * on the night" is the whole point. Re-exported here because this is where it
- * was born and where most callers still look for it.
+ * A player's net ledger for one match: what they made happen, less what they
+ * gave away.
+ *
+ *   good = winners + aces + errors forced
+ *   bad  = unforced errors + double faults
+ *
+ * **Forced errors are not in it.** An error the opponent forced out of you is
+ * theirs to claim, not yours to answer for — and it already appears on their
+ * side of the ledger, because `Errors Forced` and the opponent's `Forced
+ * Errors` are the same events counted from both ends (1132 against 1122 across
+ * the whole CSV, which is as close as two hand-kept columns get).
+ *
+ * Null when the match wasn't statted, which is not the same as zero — every
+ * finals night on record is a scoreline and nothing else. Callers fall back to
+ * an even split rather than pretending a blank sheet means nobody did anything.
+ *
+ * The comparison this feeds is always between two players on the same side of
+ * the same match, so era and match length cancel: S1's serve stats and S2+'s
+ * errors forced never have to be reconciled against each other.
  */
-export { contribution } from './stats.ts';
+export function contribution(r: StatRow): number | null {
+  if (r.winners === null && r.unforcedErrors === null) return null;
+  const good = (r.winners ?? 0) + (r.aces ?? 0) + (r.errorsForced ?? 0);
+  const bad = (r.unforcedErrors ?? 0) + (r.doubleFaults ?? 0);
+  return good - bad;
+}
 
 /**
  * What each player on a side actually earns for one match: part the result,

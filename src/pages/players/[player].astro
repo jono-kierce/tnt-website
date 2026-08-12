@@ -6,11 +6,10 @@ import InfoTip from '../../components/InfoTip.astro';
 import StatSummary from '../../components/StatSummary.astro';
 import TrendChart from '../../components/TrendChart.astro';
 import OpponentTile from '../../components/OpponentTile.astro';
-import FormTile from '../../components/FormTile.astro';
 import SetScore from '../../components/SetScore.astro';
 import { SITE, seasonLabel, teamMeta, isVotesSealed } from '../../config/site.ts';
 import { matchHref, withBase } from '../../lib/url.ts';
-import { allPlayers, bestWorstOpponent, fillInRecord, fillInVotes, formMatchups, playerAgg, playerRows, playerTrend } from '../../lib/stats.ts';
+import { allPlayers, bestWorstOpponent, fillInRecord, fillInVotes, playerAgg, playerRows, playerTrend } from '../../lib/stats.ts';
 import { playerRanks } from '../../lib/ranks.ts';
 import { rows, playerLatestTeam, playerSeasons } from '../../lib/site-data.ts';
 import { bioHtml } from '../../lib/content.ts';
@@ -88,10 +87,6 @@ const trend = playerTrend(name, rows);
 
 // Best/worst opponent (all meetings count, fill-ins included on both sides).
 const h2h = bestWorstOpponent(name, rows);
-// ...and the same question asked of the stat sheet rather than the scoreboard:
-// who does this player play WELL against, whatever the result was. Statted
-// meetings only, so it qualifies a smaller field than the tiles above.
-const form = formMatchups(name, rows);
 
 // Match log (includes fill-in matches, flagged).
 const log = playerRows(name, rows, { includeFillIns: true }).sort(
@@ -210,44 +205,17 @@ const photos = playerPhotos(slug);
     )}
   </section>
 
-  {(h2h || form) && (
+  {h2h && (
     <section class="section container">
-      <p class="eyebrow">Match-ups</p>
-      <h2 class="serif-title" style="margin-bottom:12px">Who You Beat, Who You Play Well Against</h2>
+      <p class="eyebrow">Head to head</p>
+      <h2 class="serif-title" style="margin-bottom:12px">Easiest &amp; Hardest Opponent</h2>
       <div class="grid grid-2 opp-grid">
-        {h2h && (
-          <>
-            <OpponentTile label="Easiest" h2h={h2h.best} team={playerLatestTeam(h2h.best.opponent)} player={name} />
-            <OpponentTile label="Hardest" h2h={h2h.worst} team={playerLatestTeam(h2h.worst.opponent)} player={name} />
-          </>
-        )}
-        {form && (
-          <>
-            <FormTile label="Best" form={form.best} team={playerLatestTeam(form.best.opponent)} player={name} />
-            <FormTile label="Worst" form={form.worst} team={playerLatestTeam(form.worst.opponent)} player={name} />
-          </>
-        )}
+        <OpponentTile label="Easiest" h2h={h2h.best} team={playerLatestTeam(h2h.best.opponent)} player={name} />
+        <OpponentTile label="Hardest" h2h={h2h.worst} team={playerLatestTeam(h2h.worst.opponent)} player={name} />
       </div>
       <p class="finenote">
-        {h2h && (
-          <>
-            Record tiles: minimum {h2h.minMeetings} meetings, fill-in
-            appearances and finals both counting.{' '}
-          </>
-        )}
-        {form && (
-          <>
-            Form tiles: minimum {form.minMeetings} meetings with stats recorded —
-            a finals scoreline with no stat line says nothing about form.
-            Winners, aces and errors forced, less unforced errors and double
-            faults, per set, measured against the league average for that
-            season and compared with the same player's other matches. Samples
-            are small: some tiles turn on two nights, and one new meeting can
-            flip them. And this is doubles — "form against" is always form
-            against that opponent <em>and whoever partnered them</em>.{' '}
-          </>
-        )}
-        Hover or tap a tile for every meeting.
+        Minimum {h2h.minMeetings} meetings. Fill-in appearances and finals both
+        count. Hover or tap a tile for every meeting.
       </p>
     </section>
   )}

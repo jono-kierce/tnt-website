@@ -110,19 +110,11 @@ export const SITE = {
   rankTopTotals: 5,
 
   /**
-   * The qualifying bar for all four match-up tiles — best/worst opponent by
-   * record (`bestWorstOpponent`) and best/worst form against (`formMatchups`).
-   * Nobody in TNT has faced the same opponent more than a handful of times, so
-   * it's adaptive: we use `h2hPreferredMeetings` when the player has at least
-   * two opponents they've met that often, otherwise we step down one meeting
-   * at a time to `h2hMinMeetings`. Below that a "record" is noise, and the
-   * tiles are hidden.
-   *
-   * One number, two definitions of "meeting", deliberately. The record tiles
-   * count every meeting; the form tiles count only meetings with a stat line,
-   * because a finals scoreline with no stats says nothing about how anyone
-   * played. So the form pair qualifies a smaller field — 25 of 30 players
-   * against 26 — and a player can have the record tiles without them.
+   * Best/worst-opponent tiles. Nobody in TNT has faced the same opponent more
+   * than a handful of times, so the qualifying bar is adaptive: we use
+   * `h2hPreferredMeetings` when the player has at least two opponents they've
+   * met that often, otherwise we step down one meeting at a time to
+   * `h2hMinMeetings`. Below that a "record" is noise, and the tiles are hidden.
    */
   h2hPreferredMeetings: 3,
   h2hMinMeetings: 2,
