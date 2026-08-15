@@ -26,6 +26,8 @@ import {
   draftPayload,
   ladderPayload,
   latestRound,
+  nextPreviewRound,
+  previewPayload,
   resolveRound,
   resultCardPayloads,
   rows as allRows,
@@ -62,9 +64,12 @@ TNT graphics renderer
   --season <n>     Season to render. Default: SITE.currentSeason (${SITE.currentSeason}).
   --round <r>      Round number, or QF / SF / F. Default: the season's latest
                    round in the CSV.
-  --only <list>    Comma-separated: ladder, results, boards, draft.
-                   Default: ladder,results,boards — the draft board is a
-                   once-a-season post, so it only renders when you ask for it.
+  --only <list>    Comma-separated: ladder, results, boards, draft, preview.
+                   Default: ladder,results,boards — draft and preview are
+                   once-off posts, so they only render when you ask for them.
+                   preview needs no --round: it defaults to the next round
+                   with an unplayed fixture, which is the point of it — run it
+                   the day before with no flags and get next Tuesday's card.
   --photos <dir>   Folder of match photos for the result cards. A file is
                    matched to a fixture by name — "pink-v-white.jpg", any name
                    containing both team colours, or "match1.jpg" positionally.
@@ -83,9 +88,10 @@ if (!Number.isFinite(season)) {
   process.exit(1);
 }
 
-// `draft` is deliberately not in the default set — it's a once-a-season post,
-// not part of a round.
-const KINDS = ['ladder', 'results', 'boards', 'draft'];
+// `draft` and `preview` are deliberately not in the default set — a draft is a
+// once-a-season post, and a preview is a once-a-week one you ask for the day
+// before, not something every CI push should render.
+const KINDS = ['ladder', 'results', 'boards', 'draft', 'preview'];
 const only = new Set(
   (argv.only ?? 'ladder,results,boards').split(',').map((s) => s.trim()).filter(Boolean)
 );
@@ -216,6 +222,23 @@ if (only.has('draft')) {
     }),
     `s${season}-draft.png`
   );
+}
+
+if (only.has('preview')) {
+  // Never `latestRound` — that's the last *played* round, and the whole point
+  // here is the round that hasn't been played yet.
+  const previewRound =
+    argv.round === undefined ? await nextPreviewRound(season) : resolveRound(argv.round);
+  if (!previewRound) {
+    warnings.push(`Season ${season} has no upcoming fixtures to preview.`);
+  } else {
+    const payload = await previewPayload(season, previewRound);
+    if (!payload.matches.length) {
+      warnings.push(`No unplayed fixtures found for season ${season}, ${previewRound.label}.`);
+    } else {
+      await shoot('preview.html', payload, `s${season}-${previewRound.fileTag}-preview.png`);
+    }
+  }
 }
 
 if (only.has('ladder')) {

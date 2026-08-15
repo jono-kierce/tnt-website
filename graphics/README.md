@@ -26,6 +26,7 @@ npm run graphics                                    # this week
 node graphics/render.mjs --season 4 --round 9
 node graphics/render.mjs --season 4 --round 9 --only ladder
 node graphics/render.mjs --season 4 --round F --photos ./photos/2025-11-04/
+node graphics/render.mjs --only preview               # next Tuesday's fixtures
 node graphics/render.mjs --help
 ```
 
@@ -36,15 +37,15 @@ CSV — which is exactly the round you just added. PNGs land in `graphics/out/`
 | Flag | |
 |---|---|
 | `--season <n>` | Default `SITE.currentSeason`. |
-| `--round <r>` | A round number, or `QF` / `SF` / `F`. Default: the season's latest. |
-| `--only <list>` | `ladder`, `results`, `boards` — comma-separated. |
+| `--round <r>` | A round number, or `QF` / `SF` / `F`. Default: the season's latest — except for `preview`, see below. |
+| `--only <list>` | `ladder`, `results`, `boards`, `draft`, `preview` — comma-separated. Default `ladder,results,boards`; `draft` and `preview` are once-off posts, so they only render on request. |
 | `--photos <dir>` | Photos for the result cards. |
 | `--career` | Also render the all-time boards. |
 | `--out <dir>` | Default `graphics/out`. |
 
 Filenames are `s4-r09-ladder.png`, `s4-r09-match1-pink-v-white.png`,
-`s4-r09-stat-mvp-race.png`. Rounds are zero-padded and finals sort last, so a
-folder listing is in playing order.
+`s4-r09-stat-mvp-race.png`, `s5-r01-preview.png`. Rounds are zero-padded and
+finals sort last, so a folder listing is in playing order.
 
 ### Photos — the one human input
 
@@ -113,6 +114,7 @@ graphics/
     ladder.html
     result-card.html
     stat-board.html
+    preview.html
     fonts/             vendored .woff2 (committed)
   out/                 rendered PNGs — gitignored
 ```
@@ -180,7 +182,7 @@ through to a neutral default instead of to `var(--team-undefined)`.
 
 ---
 
-## The three families
+## The four families
 
 ### Ladder — `ladder.html`
 
@@ -225,6 +227,29 @@ label, row count, season or career, per-set or total, and `polarity`.
   make room. Set `cutout: true` for a transparent PNG and it sits unframed;
   an ordinary photo gets a frame rather than pretending to be a cut-out.
   The photo is whatever `avatarPhoto()` picks, so it's as good as the manifest.
+
+### Preview — `preview.html`
+
+Every unplayed fixture in a round, one board: colour bar, pairing and kickoff
+time each side, byes listed at the foot. Meant for the day before — run
+`--only preview` with no `--round` and it renders the **next round with an
+unplayed fixture**, not the latest one in the CSV (that's the played-rounds
+default every other family uses, which would render nothing for a season not
+yet started).
+
+- **No prediction ever appears here.** The board doesn't import `predict.ts`
+  at all — a graphic posted to hype up next Tuesday is not the place for a
+  win-probability tip.
+- **At most one insight per fixture**, the single top-weighted line from
+  `insightsFor` — a stat-backed, non-numeric fact ("on an 11-match win
+  streak", "first meeting"), never a percentage. Silent when nothing fires,
+  same discipline as the match page.
+- **Kickoff order, not seed order** — `MatchRecord.start` sorts the fixtures
+  the way `byPlayingOrder` sorts them everywhere else, so the board reads top
+  to bottom the way the night actually runs. A season with no times recorded
+  falls back to alphabetical, same as the site.
+- Renders nothing, cleanly, once a season's fixtures are exhausted — `draft`'s
+  and CI's philosophy applied to the other end of a season.
 
 ---
 

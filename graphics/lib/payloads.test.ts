@@ -4,6 +4,8 @@ import {
   draftPayload,
   ladderPayload,
   latestRound,
+  nextPreviewRound,
+  previewPayload,
   resolveRound,
   resultCardPayloads,
   rows,
@@ -147,6 +149,54 @@ describe('ladder payload', () => {
     const afterR9 = await ladderPayload(4, resolveRound('9'));
     expect(afterFinal.rows).toEqual(afterR9.rows);
     expect(afterFinal.title).toBe('Final Ladder');
+  });
+});
+
+describe('preview board', () => {
+  it('finds the next unplayed round rather than the latest played one', async () => {
+    // Season 5 has a full ten-round draw and nothing played, so "next" is 1 —
+    // the opposite of latestRound, which only ever looks at results.
+    expect(latestRound(5)).toBeNull();
+    const next = await nextPreviewRound(5);
+    expect(next).toMatchObject({ round: 1, stage: null, label: 'Round 1' });
+  });
+
+  it('lists every fixture in the round, kickoff order, plus the byes', async () => {
+    const p = await previewPayload(5, resolveRound('1'));
+    // 4 matches (8 teams) + 2 byes = the season's declared field of 10.
+    expect(p.matches).toHaveLength(4);
+    expect(p.matches.map((m) => [m.teamA, m.teamB])).toEqual([
+      ['Green', 'Orange'],
+      ['Black', 'Pink'],
+      ['Light Blue', 'White'],
+      ['Red', 'Yellow'],
+    ]);
+    expect(p.matches.every((m) => m.time)).toBe(true);
+    expect(p.byes).toEqual(['Brown', 'Navy'].sort());
+  });
+
+  it('takes pairings from the season config, same as the ladder and result cards', async () => {
+    const p = await previewPayload(5, resolveRound('1'));
+    const orange = p.matches.find((m) => m.teamA === 'Orange' || m.teamB === 'Orange')!;
+    const pairing = orange.teamA === 'Orange' ? orange.pairingA : orange.pairingB;
+    expect(pairing).toBe('J. Gorton & L. Godden');
+  });
+
+  it('never carries a win probability — insights only, or nothing', async () => {
+    const p = await previewPayload(5, resolveRound('1'));
+    for (const m of p.matches) {
+      if (m.insight === null) continue;
+      expect(m.insight).toEqual({ label: expect.any(String), detail: expect.any(String) });
+      expect(JSON.stringify(m.insight)).not.toMatch(/%/);
+    }
+  });
+
+  it('reports no upcoming fixtures for a season that has finished', async () => {
+    expect(await nextPreviewRound(4)).toBeNull();
+  });
+
+  it('throws rather than silently rendering an empty round', async () => {
+    await expect(previewPayload(5, resolveRound('99'))).rejects.toThrow(/no round/);
   });
 });
 

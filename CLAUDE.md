@@ -79,9 +79,10 @@ graphics/                Instagram PNGs, rendered from the same CSV — see grap
 ## Instagram graphics (`graphics/`)
 
 1080×1350 PNGs rendered by headless Chromium from the same CSV, so posting a
-round is "append rows, push, collect PNGs". Three template families — ladder,
-result card, stat board. **Read `graphics/README.md` before touching it**; the
-rules that matter here:
+round is "append rows, push, collect PNGs". Four template families — ladder,
+result card, stat board, preview (the round's unplayed fixtures, for the day
+before — no prediction, at most one `insights.ts` line per fixture). **Read
+`graphics/README.md` before touching it**; the rules that matter here:
 
 - **No graphic computes a statistic.** `graphics/lib/payloads.ts` calls
   `stats.ts` and does presentation only. A stat the graphics need but `stats.ts`
@@ -298,8 +299,42 @@ nothing qualifies**. A detector only ever sees matches played *strictly before*
 the one being described, so an insight on a 2023 match reads as the preview it
 would have been. Keep them stingy: "revenge match" once fired on 78% of the
 fixture list (it looked back across seasons, where a redraft means the two teams
-share only a colour), and a label that's nearly always true says nothing. A test
-fails if the share of matches with an insight leaves the 40–85% band.
+share only a colour), and a label that's nearly always true says nothing.
+
+- **The stinginess rule is now per detector: a test fails if any one of them
+  fires on more than 30% of matches.** That's the guard that matters, and
+  thresholds get set against it rather than by eye. The old
+  share-of-matches-with-any-insight band survives as a loose sanity check
+  (40–95%) — with fifteen detectors it can't do the same job, and a drawn but
+  unplayed round is saturated anyway: every S5 fixture sees each player's whole
+  career, so the career-window detectors all fire. `formInsight` (45%) and
+  `winStreakInsight` (40%) predate the cap and are explicitly grandfathered,
+  with a 50% ceiling of their own.
+- **Half of them say something unflattering** — this is a social league and the
+  losing streaks get more airtime than the winning ones. `cold-streak`,
+  `drought`, `basement`, `hoodoo`, `errors` and `mock-milestone` are the
+  negative kinds: a losing run *within the season* (a run carried across a
+  redraft is the "revenge match" trap again), a winless or sliding team, a
+  bottom-three fixture, a player who has never beaten somebody across the net,
+  three different readings of unforced errors, and a round number of career UEs
+  or double faults. They're deadpan on purpose — the number does the work.
+- **One negative line per match, and it isn't a public flag.** `NEGATIVE_KINDS`
+  is private to the file and exists only for `MAX_NEGATIVE`; the panel gives no
+  visual sign of which lines are the mean ones, because a chip announcing
+  itself as the roast kills the joke. Seven detectors can fire on one bad
+  month, three of them about the same player's errors.
+- **Errors over double faults.** UE is the stat people actually argue about, so
+  the two stats that carry both — `waywardInsight` and `mockMilestoneInsight` —
+  lead on unforced errors and reach for double faults only when no UE line
+  qualifies.
+- **Nothing negative reads `votes` or BOG.** These lines go onto an Instagram
+  preview card, and S5's votes are sealed.
+- Negatives are weighted below `stakes`, `milestone`, `streak` and `form`, so a
+  real ladder story still leads the panel — and the preview graphic, which
+  takes only the top-weighted line, currently never leads with banter on the
+  unplayed S5 draw (every fixture there trips "On a run", "In form" or
+  "Milestone" off the career window). Once results land, `drought` (64) and
+  `basement` (66) outrank both.
 
 ## Current state / open TODOs (owner to fill)
 
@@ -338,9 +373,6 @@ fails if the share of matches with an insight leaves the 40–85% band.
 
 - **Model accuracy tracker UI.** `backtest()` already returns every match with
   its pre-match call, so a "how the model is doing" page is a component away.
-- **Round-preview Instagram graphic.** `predictionFor` + `insightsFor` give a
-  preview card everything it needs; it would be a fourth template family and a
-  payload builder, following the same "no graphic computes a statistic" rule.
 - **Finals odds / Monte Carlo ladder.** `replay()` is deterministic and cheap,
   so simulating the run home is tractable — but it needs a story about how to
   present uncertainty, not just the numbers.

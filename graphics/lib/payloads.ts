@@ -16,14 +16,17 @@ import {
   matchSides,
   playerAgg,
   teamRoster,
+  seasonRounds as matchRoundsFor,
   type LeaderStat,
   type PlayerAgg,
   type StatScope,
 } from '../../src/lib/stats.ts';
+import { insightsFor } from '../../src/lib/insights.ts';
+import { formatDateLong, formatTime } from '../../src/lib/datetime.ts';
 import type { MatchSide, SetScore, StatRow } from '../../src/lib/types.ts';
 import { SITE, isVotesSealed } from '../../src/config/site.ts';
 import { PHOTOS_DIR, avatarPhoto } from '../../src/lib/photos.ts';
-import { getSeasonConfig, seasonTeamConfigs } from './season-configs.ts';
+import { getSeasonConfig, seasonTeamConfigs, declaredTeams } from './season-configs.ts';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -319,6 +322,110 @@ export async function resultCardPayloads(
 
 export const seasonYear = (season: number): number | undefined =>
   SITE.seasonYears[season];
+
+// ---------------------------------------------------------------------------
+// Preview — the round not yet played
+// ---------------------------------------------------------------------------
+
+/** "Qualifying Finals" — a whole round's worth of matches, unlike a single card's "Qualifying Final". */
+const ROUND_PREVIEW_TITLE = {
+  QF: 'Qualifying Finals',
+  SF: 'Semi Finals',
+  F: 'The Final',
+} as const;
+
+export interface PreviewMatchPayload {
+  teamA: string;
+  pairingA: string;
+  teamB: string;
+  pairingB: string;
+  /** "6:30pm", or null when the CSV has no Start for this fixture. */
+  time: string | null;
+  /**
+   * The single top-weighted line from `insightsFor`, if one fires. Never a win
+   * probability — that lives in `predict.ts` and this graphic doesn't read it,
+   * so a preview posted the day before a round can't be read as a tip.
+   */
+  insight: { label: string; detail: string } | null;
+}
+
+export interface PreviewPayload {
+  kind: 'preview';
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  footnote: string;
+  matches: PreviewMatchPayload[];
+  /** Declared teams with no fixture this round. */
+  byes: string[];
+}
+
+/** The season's declared field, or undefined for a season whose config names none. */
+async function previewField(season: number): Promise<string[] | undefined> {
+  const teams = await declaredTeams(season);
+  return teams.length ? teams : undefined;
+}
+
+/**
+ * The next round with an unplayed fixture — what "post it the Monday before"
+ * means. Unlike `latestRound`, which only ever looks at played rounds, this is
+ * allowed to land on a season that hasn't started a night of tennis yet.
+ */
+export async function nextPreviewRound(season: number): Promise<RoundRef | null> {
+  const field = await previewField(season);
+  const next = matchRoundsFor(rows, season, field).find((r) =>
+    r.matches.some((m) => m.scheduled)
+  );
+  return next ? resolveRound(next.stage ?? next.round) : null;
+}
+
+/**
+ * Every unplayed fixture in a round, kickoff order, each with its pairing
+ * labels and — when one fires — the single most relevant thing worth knowing
+ * about it. Byes are the round's declared field minus whoever has a fixture.
+ */
+export async function previewPayload(
+  season: number,
+  round: RoundRef
+): Promise<PreviewPayload> {
+  const field = await previewField(season);
+  const sr = matchRoundsFor(rows, season, field).find((r) => r.round === round.round);
+  if (!sr) {
+    throw new Error(
+      `Season ${season} has no round matching "${round.input}" to preview.`
+    );
+  }
+
+  const teamConfig = await seasonTeamConfigs(season);
+  const pairing = (team: string) =>
+    teamRoster(team, season, rows, teamConfig(team)).pairingName;
+
+  const matches: PreviewMatchPayload[] = sr.matches
+    .filter((m) => m.scheduled)
+    .map((m) => {
+      const [a, b] = m.sides;
+      // Top-weighted only — a preview card has room for one line, not three.
+      const [top] = insightsFor(m, rows, field, 1);
+      return {
+        teamA: a.team,
+        pairingA: pairing(a.team),
+        teamB: b.team,
+        pairingB: pairing(b.team),
+        time: formatTime(m.start),
+        insight: top ? { label: top.label, detail: top.detail } : null,
+      };
+    });
+
+  return {
+    kind: 'preview',
+    eyebrow: eyebrowLabel(season),
+    title: round.stage ? ROUND_PREVIEW_TITLE[round.stage] : `Round ${round.round}`,
+    subtitle: sr.date ? formatDateLong(sr.date)! : 'This week’s fixtures',
+    footnote: '',
+    matches,
+    byes: sr.byes,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Draft

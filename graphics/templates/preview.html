@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Preview (A / Broadsheet)</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  header { flex: none; }
+  .eyebrow { margin-top: -64px; }
+  .headline { font-size: 88px; margin-top: 16px; }
+  .sub { margin-top: 14px; }
+  .rule-gold {
+    height: 2px; margin-top: 26px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  .rows { flex: 1; display: flex; flex-direction: column; justify-content: space-evenly; }
+
+  .match {
+    padding: 22px 4px;
+    border-top: 1px solid var(--rule);
+  }
+  .match:first-child { border-top: 0; }
+
+  .teams { display: flex; align-items: center; gap: 18px; }
+  .side { flex: 1; display: flex; align-items: center; gap: 16px; min-width: 0; }
+  .side.b { flex-direction: row-reverse; text-align: right; }
+  .bar { width: 8px; height: 54px; border-radius: 4px; flex: none;
+         background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  .who { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .team-name { font-size: 34px; font-weight: 600; letter-spacing: 0.01em; }
+  .pair { font-size: 21px; color: rgba(244, 241, 232, 0.58);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .vs {
+    flex: none; font-family: var(--display); font-weight: 600; font-size: 19px;
+    letter-spacing: 0.1em; color: rgba(244, 241, 232, 0.32);
+  }
+
+  .meta { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; gap: 16px; }
+  .time {
+    flex: none; font-family: var(--display); font-weight: 600; font-size: 19px;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold-soft);
+  }
+  .insight { flex: 1; min-width: 0; }
+  .insight .label {
+    font-family: var(--display); font-weight: 600; font-size: 15px;
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold);
+  }
+  .insight .detail { font-size: 20px; color: rgba(244, 241, 232, 0.78); margin-top: 2px; }
+
+  .byes {
+    flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px;
+    padding: 20px 4px 0; margin-top: 4px; border-top: 1px solid var(--rule);
+  }
+  .byes-label {
+    font-family: var(--display); font-weight: 600; font-size: 17px;
+    letter-spacing: 0.24em; text-transform: uppercase; color: var(--gold);
+  }
+  .bye-team { display: inline-flex; align-items: center; gap: 10px;
+              font-size: 22px; font-weight: 500; color: rgba(244, 241, 232, 0.75); }
+  .bye-dot { width: 14px; height: 14px; border-radius: 50%; flex: none;
+             background: linear-gradient(180deg, var(--team), var(--team-2)); }
+
+  footer {
+    flex: none; display: flex; justify-content: space-between; align-items: flex-end;
+    padding-top: 22px; margin-bottom: -74px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+  }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette">
+  <div class="mark mark--crest watermark"></div>
+
+  <header>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="rows" id="rows"></div>
+
+  <div class="byes" id="byes"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+    <div class="footnote" id="footnote"></div>
+  </footer>
+</div>
+
+<script type="module">
+/* Sample data, so this file opens straight in a browser and looks like the
+   real thing. `render.mjs` calls __render() again with the CSV's numbers. */
+const DATA = {
+  eyebrow: 'Season 5 · 2026',
+  title: 'Round 6',
+  subtitle: 'Tue 22 Sep 2026',
+  footnote: '',
+  matches: [
+    { teamA: 'Pink', pairingA: 'L. Sharrock & A. Hume', teamB: 'White', pairingB: 'J. Kierce & L. Godden',
+      time: '6:30pm', insight: { label: 'Win streak', detail: 'Pink have won five straight — a sixth would equal the club record.' } },
+    { teamA: 'Navy', pairingA: 'L. Jenkin & J. Virgona', teamB: 'Green', pairingB: 'A. Dickson & D. Croucher',
+      time: '6:30pm', insight: null },
+    { teamA: 'Orange', pairingA: 'J. Gorton & E. Simpson', teamB: 'Red', pairingB: 'Q. Feikema & W. Burgess',
+      time: '8:30pm', insight: { label: 'Finals race', detail: 'Red (6th) are chasing Orange (4th) for a place in the eight.' } },
+    { teamA: 'Light Blue', pairingA: 'S. Inlander & E. Seamer', teamB: 'Black', pairingB: 'E. Wise & L. Mossman',
+      time: '8:30pm', insight: null },
+  ],
+  byes: ['Brown', 'Yellow'],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const sideHtml = (side, team, pairing) => `
+  <div class="side ${side}" data-team="${esc(team)}">
+    <div class="bar"></div>
+    <div class="who">
+      <div class="team-name">${esc(team)}</div>
+      <div class="pair">${esc(pairing)}</div>
+    </div>
+  </div>`;
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+  document.getElementById('subtitle').textContent = d.subtitle;
+  document.getElementById('footnote').textContent = d.footnote;
+
+  document.getElementById('rows').innerHTML = d.matches.map((m) => `
+    <div class="match">
+      <div class="teams">
+        ${sideHtml('a', m.teamA, m.pairingA)}
+        <div class="vs">V</div>
+        ${sideHtml('b', m.teamB, m.pairingB)}
+      </div>
+      <div class="meta">
+        <div class="insight">${m.insight ? `
+          <div class="label">${esc(m.insight.label)}</div>
+          <div class="detail">${esc(m.insight.detail)}</div>` : ''}</div>
+        ${m.time ? `<time class="time">${esc(m.time)}</time>` : ''}
+      </div>
+    </div>`).join('');
+
+  const byesEl = document.getElementById('byes');
+  if (d.byes.length) {
+    byesEl.style.display = 'flex';
+    byesEl.innerHTML = `<span class="byes-label">Bye</span>` +
+      d.byes.map((t) => `<span class="bye-team" data-team="${esc(t)}"><span class="bye-dot"></span>${esc(t)}</span>`).join('');
+  } else {
+    byesEl.style.display = 'none';
+  }
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>
