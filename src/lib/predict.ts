@@ -99,11 +99,16 @@ export const MODEL = {
    * win chance, `P = σ(probScale × (skillA − skillB))`. Kept separate from
    * `winWeight` on purpose: which side is favoured, and whether a call is
    * right, depend only on the *sign* of the gap, so this never touches
-   * accuracy. It only sets how bold the printed percentage is, and is tuned for
-   * calibration (Brier) rather than for calls — the same split the old model
-   * drew between `k` and `scale`.
+   * accuracy — the same split the old model drew between `k` and `scale`. It
+   * only sets how bold the printed percentage reads.
+   *
+   * Set at 2.8: bolder than the 2.0 that first shipped, chosen for a more
+   * confident read. It sits inside the band that also minimises Brier (~2.5–3),
+   * so the boldness costs no calibration — but it does embolden the redrafted
+   * S5 openers, where the model has the least real signal, which is why the
+   * opener-softness test's ceiling was loosened to match (see that test).
    */
-  probScale: 2,
+  probScale: 2.8,
   /** Display anchor: the rating a league-average skill is shown as. */
   displayMean: 1500,
   /**

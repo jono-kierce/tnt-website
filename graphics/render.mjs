@@ -24,6 +24,7 @@ import { seasonBoards, careerBoards } from './lib/boards.ts';
 import {
   SealedVotesError,
   draftPayload,
+  eyebrowLabel,
   ladderPayload,
   latestRound,
   nextPreviewRound,
@@ -53,6 +54,9 @@ const { values: argv } = parseArgs({
     out: { type: 'string' },
     subtitle: { type: 'string' },
     footnote: { type: 'string' },
+    headline: { type: 'string' },
+    subhead: { type: 'string' },
+    eyebrow: { type: 'string' },
     career: { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h', default: false },
   },
@@ -66,8 +70,9 @@ TNT graphics renderer
   --round <r>      Round number, or QF / SF / F. Default: the season's latest
                    round in the CSV.
   --only <list>    Comma-separated: ladder, results, boards, draft, preview,
-                   streaks. Default: ladder,results,boards — draft, preview and
-                   streaks are once-off posts, so they only render when asked.
+                   streaks, headline. Default: ladder,results,boards — draft,
+                   preview, streaks and headline are once-off posts, so they
+                   only render when asked.
                    streaks is the all-time record book (longest win streaks);
                    it needs no --season or --round.
                    preview needs no --round: it defaults to the next round
@@ -81,6 +86,15 @@ TNT graphics renderer
   --subtitle <s>   Override the draft board's subtitle.
   --footnote <s>   Small print bottom-right of the draft board (date, venue).
   --out <dir>      Output folder. Default: graphics/out.
+
+Headline card (--only headline) — an ad-hoc news/banter post:
+
+  --headline <s>   The big headline (required for the headline card).
+  --subhead <s>    The sub-headline along the bottom.
+  --eyebrow <s>    Small label top-left. Default: "TNT NEWS · Season <n>".
+  --photos <p>     1–2 photos. Either a folder (first 1–2 images, sorted) or a
+                   comma-separated list of file paths in left-to-right order.
+                   No photo renders on the court-green field.
 `);
   process.exit(0);
 }
@@ -94,7 +108,7 @@ if (!Number.isFinite(season)) {
 // `draft` and `preview` are deliberately not in the default set — a draft is a
 // once-a-season post, and a preview is a once-a-week one you ask for the day
 // before, not something every CI push should render.
-const KINDS = ['ladder', 'results', 'boards', 'draft', 'preview', 'streaks'];
+const KINDS = ['ladder', 'results', 'boards', 'draft', 'preview', 'streaks', 'headline'];
 const only = new Set(
   (argv.only ?? 'ladder,results,boards').split(',').map((s) => s.trim()).filter(Boolean)
 );
@@ -169,6 +183,38 @@ function matchPhotos(dir, cards) {
     if (hit) out[card.slug] = pathToFileURL(resolve(dir, hit)).href;
   });
   return out;
+}
+
+/**
+ * Resolve the headline card's 1–2 photos to absolute file:// URLs. `--photos`
+ * is either a comma-separated list of file paths (explicit left→right order) or
+ * a folder (first 1–2 images, sorted). Returns `{ photos, warnings }`; caps at
+ * two and warns about anything past that.
+ */
+function headlinePhotos(spec) {
+  const warnings = [];
+  const target = resolve(process.cwd(), spec);
+
+  let paths;
+  if (existsSync(target) && statSync(target).isDirectory()) {
+    paths = readdirSync(target)
+      .filter((f) => IMAGE_EXT.has(extname(f).toLowerCase()))
+      .sort()
+      .map((f) => resolve(target, f));
+  } else {
+    paths = spec.split(',').map((s) => s.trim()).filter(Boolean)
+      .map((p) => resolve(process.cwd(), p));
+  }
+
+  const missing = paths.filter((p) => !existsSync(p));
+  for (const p of missing) warnings.push(`--photos: no such file "${p}" — skipped.`);
+  paths = paths.filter((p) => existsSync(p));
+
+  if (paths.length > 2) {
+    warnings.push(`--photos: ${paths.length} images given; the headline card uses the first 2.`);
+    paths = paths.slice(0, 2);
+  }
+  return { photos: paths.map((p) => pathToFileURL(p).href), warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -248,6 +294,34 @@ if (only.has('streaks')) {
   // All-time record book — no season, no round. A once-off post, so it's out
   // of the default set like draft and preview.
   await shoot('streak-board.html', streakBoardPayload(), 'longest-win-streaks.png');
+}
+
+if (only.has('headline')) {
+  // Ad-hoc news/banter card — all human input, no stats. A once-off post, so
+  // it's out of the default set like draft, preview and streaks.
+  if (!argv.headline) {
+    warnings.push('--only headline needs --headline "<text>". Nothing rendered.');
+  } else {
+    let photos = [];
+    if (argv.photos) {
+      const resolved = headlinePhotos(argv.photos);
+      photos = resolved.photos;
+      warnings.push(...resolved.warnings);
+    }
+    if (!photos.length) {
+      warnings.push('No --photos for the headline card — rendered on the court-green field.');
+    }
+    await shoot(
+      'headline.html',
+      {
+        eyebrow: argv.eyebrow ?? `TNT News · ${eyebrowLabel(season)}`,
+        headline: argv.headline,
+        sub: argv.subhead ?? '',
+        photos,
+      },
+      `s${season}-headline.png`
+    );
+  }
 }
 
 if (only.has('ladder')) {

@@ -334,8 +334,11 @@ describe('a season the fit has not reached', () => {
       const p = predictionFor(m);
       expect(p.scheduled).toBe(true);
       // A redrafted pairing has no season-specific form yet: carried skills,
-      // ridge and recency decay together keep every opener well short of a lock.
-      expect(Math.abs(p.probability - 0.5)).toBeLessThan(0.3);
+      // ridge and recency decay together keep every opener short of a lock. The
+      // ceiling is looser than it was because `probScale` was pushed bolder
+      // (2.8) for a more confident read — the openers move with it, so this
+      // guards that they stay hedged rather than pinning any specific number.
+      expect(Math.abs(p.probability - 0.5)).toBeLessThan(0.35);
     }
   });
 });

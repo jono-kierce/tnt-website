@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Headline (Broadsheet)</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  /* Ad-hoc news/banter card: 1–2 photos, a big headline up top and a
+     sub-headline along the bottom. Photo-first like the result card, so it
+     opts out of the canvas padding and handles crop safety per layer. */
+  .canvas { padding: 0; }
+
+  /* ---- Photo layer(s) ------------------------------------------------------
+     One photo fills the frame; two split it vertically, half each, with a gold
+     seam between them. `flex: 1` does both — a single child takes the whole
+     width, two share it. */
+  .photos { position: absolute; inset: 0; z-index: 0; display: flex; }
+  .photo {
+    flex: 1; min-width: 0;
+    background: var(--ink-deep) center/cover no-repeat;
+  }
+  .photos.two .photo + .photo { border-left: 3px solid var(--gold); }
+
+  /* No photo: a plain court-green field rather than a hole, with the ghost
+     crest for company — same fallback the result card uses. */
+  .canvas.no-photo .photo {
+    background: linear-gradient(168deg, #14281c 0%, var(--ink) 55%, var(--ink-deep) 100%);
+  }
+  .canvas.no-photo .ghost { display: block; }
+  .ghost {
+    display: none; position: absolute; z-index: 1;
+    width: 620px; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    color: var(--paper); opacity: 0.05;
+  }
+
+  /* Scrim: dark at both ends so the headline reads over the top and the
+     sub-headline over the bottom, light through the middle where the photo
+     actually is. */
+  .scrim {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background: linear-gradient(180deg,
+      rgba(5,11,7,0.86) 0%, rgba(5,11,7,0.30) 24%,
+      rgba(5,11,7,0.14) 52%, rgba(5,11,7,0.90) 100%);
+  }
+
+  /* ---- Text ---------------------------------------------------------------- */
+  .top {
+    position: absolute; z-index: 3;
+    left: var(--safe); right: var(--safe); top: var(--crop);
+  }
+  .top-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 22px;
+  }
+  .top-row .eyebrow { font-size: 24px; letter-spacing: 0.42em; }
+  .top-row .mark { width: 64px; color: var(--gold); flex: none; }
+
+  /* Big and bold, allowed to wrap to a few lines; `fitHeadline` steps the size
+     down until it fits the height budget so a long headline can't run off the
+     card or over the photo's face. */
+  .headline { font-size: 128px; }
+
+  .bottom {
+    position: absolute; z-index: 3;
+    left: var(--safe); right: var(--safe); bottom: var(--crop);
+  }
+  .rule-gold {
+    height: 2px; margin-bottom: 22px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+  .bottom .sub {
+    font-size: 34px; line-height: 1.28; letter-spacing: 0.02em;
+    text-transform: none; color: var(--paper);
+  }
+</style>
+</head>
+<body>
+<div class="canvas grain" id="canvas">
+  <div class="photos" id="photos"></div>
+  <div class="mark mark--crest ghost"></div>
+  <div class="scrim"></div>
+
+  <div class="top">
+    <div class="top-row">
+      <div class="eyebrow" id="eyebrow"></div>
+      <div class="mark mark--crest"></div>
+    </div>
+    <h1 class="headline" id="headline"></h1>
+  </div>
+
+  <div class="bottom">
+    <div class="rule-gold"></div>
+    <div class="sub" id="sub"></div>
+  </div>
+</div>
+
+<script type="module">
+const DATA = {
+  eyebrow: 'TNT NEWS · Season 5',
+  headline: 'L. Sharrock out tonight!!',
+  sub: 'TNT News understands Sharrock will miss the Semi Final against Navy after an ankle injury sustained playing Beer Pong. C. Simpson steps in as Pink captain.',
+  photos: [],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/**
+ * Set the headline as large as it goes while its wrapped height stays inside a
+ * budget. Unlike the stat-board's one-line fit, a headline here is meant to be
+ * big and wrap to two or three lines — so this keeps `white-space: normal` and
+ * steps the size down until `scrollHeight` fits, rather than forcing one line.
+ */
+function fitHeadline(el, budget, max = 128, min = 60) {
+  el.style.whiteSpace = 'normal';
+  for (let size = max; size >= min; size -= 4) {
+    el.style.fontSize = `${size}px`;
+    if (el.scrollHeight <= budget) return;
+  }
+}
+
+window.__render = function (d) {
+  const canvas = document.getElementById('canvas');
+  const photos = (d.photos ?? []).slice(0, 2);
+
+  const photoBox = document.getElementById('photos');
+  photoBox.classList.toggle('two', photos.length === 2);
+  canvas.classList.toggle('no-photo', photos.length === 0);
+  // Always render the slots so the fallback field shows when there's no photo.
+  photoBox.innerHTML = (photos.length ? photos : [null]).map((p) =>
+    `<div class="photo" style="${p ? `background-image:url(&quot;${esc(p)}&quot;)` : ''}"></div>`
+  ).join('');
+
+  document.getElementById('eyebrow').textContent = d.eyebrow ?? '';
+  document.getElementById('sub').textContent = d.sub ?? '';
+
+  const headline = document.getElementById('headline');
+  headline.textContent = d.headline ?? '';
+  // Budget: keep the headline in the upper band. A long headline steps down in
+  // size (rather than growing downward) so it stays anchored near the top and
+  // off the photo's subject.
+  fitHeadline(headline, 440);
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>
