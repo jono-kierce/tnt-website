@@ -1,47 +1,51 @@
 /**
- * The prediction model: per-player Elo, replayed over every match TNT has
- * played, where each player is rated on their own performance rather than
- * inheriting a team result wholesale.
+ * The prediction model: a per-player skill rating fit as one regularised,
+ * globally-optimal estimate rather than accumulated match by match.
  *
- * Why per player and not per team: the teams are redrafted every season, so a
- * team rating would be thrown away each January. A player's is the thing that
- * carries. A pair is rated at the mean of its two players for prediction
- * purposes — crude, and about all that 170 matches of doubles can support
- * without inventing partnership effects out of noise.
+ * Why this and not Elo: Elo is an online tracker with a fixed step size, so it
+ * never settles — a genuinely strong player keeps clearing expectation and
+ * drifts upward for as long as they keep playing, and a weak one sinks, which
+ * means a rating ends up half-explained by how many matches someone has played
+ * rather than how well. This model instead finds the single set of player
+ * skills that best explains every result at once, under a ridge penalty that
+ * pulls a thin sample back toward the league average. A three-match fill-in
+ * sits near the middle because the data can't argue otherwise; a hundred-match
+ * regular sits where their record puts them and goes no further. The estimate
+ * is the optimum, so it doesn't drift, and it's the same whatever order the
+ * rows arrive in.
  *
- * Why per player *and not per side*: two people share a scoreline, but they
- * don't share a night. A player who played a fantastic match can still watch
- * their partner hand the set away — the old model (a team delta, reallocated
- * between team-mates) could only ever soften that player's loss, never turn it
- * into a gain. This one rates each player against the opposing pair directly,
- * so how you performed against what you personally faced is most of what
- * moves your number, and your partner's rating never enters your own update.
+ * Two signals feed the same skill:
  *
- * Four rules this file keeps:
+ *  - **who won** — a Bradley-Terry (logistic) term: a pair rates at the mean of
+ *    its two players, and the model prefers skills under which the winners were
+ *    likely to win.
+ *  - **how the night went** — a least-squares term on each *player's own*
+ *    net-stat output per set (`contribution` below), net of the pair they
+ *    faced, so a player who was the best on court in a losing side still earns
+ *    for it, and one carried to a win by a partner doesn't bank the full
+ *    result. This is the direct fix for Elo's old "good player, bad team-mates"
+ *    blind spot: two team-mates who shared a result have different box scores,
+ *    so they're separate rows in the fit, never a shared team delta.
  *
- *  - **It never reads `votes`.** Not one line. That's what makes it safe to run
- *    against a season whose votes are sealed: there is nothing here that could
- *    leak an award before awards night.
- *  - **Outcomes come from `win?`**, via `MatchRecord.winner` — never from
- *    counting sets. A level set nobody recorded the breaker for still has a
- *    winner, and it isn't the one the scoreline implies.
- *  - **The match result still counts — it's just not the whole story.** Every
- *    player on a side carries the same result-based floor (`ELO.outcomeWeight`
- *    of their score), topped up or knocked down by how their own stat ledger
- *    compared with the pair across the net. See `personalScores`. Opponent
- *    strength is never double-counted into that comparison — it's already
- *    priced in by the surrounding Elo expectation (see `replay`), the same way
- *    beating a weak side for less reward always has been in Elo.
- *  - **The replay is deterministic.** Same rows in, same ratings out, in the
- *    same order — which is what lets every historical match carry its own
- *    reconstructed PRE-match prediction for free: the state of the model the
- *    moment before a match is simply a point in the replay.
+ * Recent matches count for more (`halfLife`, in matches): a static fit that
+ * weighs a debut season and last month alike loses the thing that makes a
+ * rating worth reading — current form — so observations decay with age. That
+ * one ingredient is what keeps this level with the old Elo on raw call
+ * accuracy while fixing the drift underneath it.
  *
- * One thing this model gives up, deliberately: classic Elo is zero-sum, a
- * match's rating movement summing to nothing. This one doesn't — a player's
- * delta depends on their own stat line against the opponents', not on a fixed
- * pool split with a team-mate, so the four deltas in a match no longer have to
- * net to zero. That's the price of rating performance instead of just result.
+ * Rules this file keeps, unchanged from the Elo version:
+ *
+ *  - **It never reads `votes`.** Not one line — the grep test proves it, and
+ *    that's what makes it safe to run against a season whose votes are sealed.
+ *  - **Outcomes come from `win?`**, via `MatchRecord.winner`, never from
+ *    counting sets. A match nobody was recorded as winning scores half each way.
+ *  - **The estimate is deterministic.** The objective is convex (a logistic
+ *    term, a quadratic term and a quadratic penalty), so it has one minimum and
+ *    the fit lands on it regardless of row order — a stronger guarantee than
+ *    the old replay's "same order in, same numbers out".
+ *  - **Every match still carries its own PRE-match prediction.** A played match
+ *    is rated by a fit over only the matches strictly before it (`history`
+ *    below), so a 2023 result reads as the forecast it would have been.
  *
  * The maths lives here and nowhere else. Pages and graphics consume it.
  */
@@ -50,79 +54,78 @@ import type { StatRow } from './types.ts';
 import { seasonMatches, type MatchRecord } from './stats.ts';
 import { loadStatRows } from './normalize.ts';
 import { SITE } from '../config/site.ts';
+import { solveSPD } from './linalg.ts';
 
 /**
  * Model constants, chosen by `tune()` below over every match from S1 R1 to the
- * end of S4 — see the tuning notes in that function. They are editorial in the
- * same sense `currentSeason` is: numbers somebody picked, recorded here so they
- * can't drift, and re-checked by the test suite.
+ * end of S4. Editorial in the same sense `currentSeason` is: numbers somebody
+ * picked, recorded here so they can't drift, and re-checked by the test suite.
  */
-export const ELO = {
-  /** Everyone's first rating. The scale's zero point; nothing depends on it. */
-  start: 1500,
+export const MODEL = {
   /**
-   * How far a result moves a player. Smaller than the old team-split model's
-   * 32: every player's score now already carries a stat-performance component
-   * that moves independently of the K-scaled result term, so less K is needed
-   * to get a player off 1500 inside a season — most of a big swing comes from
-   * `personalScores` being far from 0.5, not from K itself.
+   * The win channel's temperature inside the fit. Higher makes the logistic
+   * term insist harder that a favourite should have won, so results pull skills
+   * apart faster relative to the stat channel. It sets the *scale* the skills
+   * are solved on; `probScale` then reads a probability off that scale, and the
+   * two are deliberately separate (see `probScale`).
    */
-  k: 20,
+  winWeight: 6,
   /**
-   * How far ratings are pulled back toward the mean between seasons, 0–1.
-   *
-   * 0, which is the opposite of the old team-split model's 0.9 — worth
-   * flagging, since it reverses a finding that file used to call monotonic.
-   * The difference is what this model now carries into January: a rating
-   * built from `personalScores` already tracks a player's own recent stat
-   * performance, not just an accumulated team win/loss streak, so it's
-   * already closer to "current form" by the time a season ends and has less
-   * of the old model's staleness to regress away. Every value from 0 to 0.9
-   * was tried; 0 both wins the accuracy search and gives the smoothest Brier
-   * score of the sweep (0.2323, rising the whole way to 0.2350 at 0.9) — the
-   * continuous metric agrees with the discrete one instead of just being
-   * dragged along by a lucky match or two. (Both numbers move with `ELO.k`
-   * and `ELO.scale`; re-run `tune()` rather than trusting this in isolation.)
+   * How much the net-stat margin counts, against the win result. At 1 the two
+   * channels carry comparable weight. Zero would be plain regularised
+   * Bradley-Terry (win/loss only), which backtests a little worse and loses the
+   * "good player on a bad night's team" separation the stat term is here for.
    */
-  seasonRegression: 0,
+  statWeight: 1,
   /**
-   * How much of a player's own personal score is the match result, 0–1; the
-   * rest is their stat performance against the opposing pair. See
-   * `personalScores`. Floored at 0.3 in `tune()`'s own search grid — below
-   * that a win stops being "a large part" of a player's score, which this
-   * model isn't meant to give up. 0.3 is also close to where the accuracy
-   * search lands on its own once that floor is respected: the unconstrained
-   * search wants 0.1, but 0.3 gives up only about a call out of 166 for a
-   * model that still means it when it says the result mattered.
+   * The ridge penalty — how hard a skill is pulled back toward the league mean
+   * (zero, before the display shift). This is the sample-size fix: it costs the
+   * fit `ridge × skill²` to move anyone off the mean, so a player only leaves it
+   * as far as their matches actually justify. A thin sample can't pay the
+   * penalty and stays near the middle; a heavy one barely feels it.
    */
-  outcomeWeight: 0.3,
+  ridge: 4,
   /**
-   * The gap in net stats, against the opposing pair's mean, that counts as a
-   * decisive personal performance. A player this far clear takes their
-   * performance component to about 88% (0.5 + 0.5×tanh(1)); this far behind,
-   * to about 12%. Smaller than the old team-split model's 9 — a comparison
-   * against the pair across the net moves faster than one against a single
-   * team-mate, because it's averaged over two opponents' nights instead of
-   * one, so the same-sized gap is a more reliable signal sooner.
+   * Recency, in matches: an observation `halfLife` matches back counts half as
+   * much as the newest one. ~100 is a bit over two seasons (a season is ~43
+   * matches), so last year still speaks nearly as loudly as this one while the
+   * deep past fades. This is what recovers the in-season form that a flat global
+   * fit throws away, and why the model beats the old Elo on accuracy instead of
+   * merely matching it.
    */
-  performanceScale: 4,
+  halfLife: 100,
   /**
-   * The logistic scale — how confidently a *given* rating gap gets expressed
-   * as a probability. Lowered from Elo's own 400 to make predictions read
-   * bolder: it doesn't touch who the model favours or whether a call is right
-   * (`favourite`/`correct` are decided by the sign of the rating gap, not its
-   * size), so it costs nothing in backtest accuracy directly — it only makes
-   * the displayed percentage less conservative for the same underlying
-   * ratings, and worsens calibration (Brier) as a direct trade for that.
+   * The probability temperature — how confidently a skill gap is read as a
+   * win chance, `P = σ(probScale × (skillA − skillB))`. Kept separate from
+   * `winWeight` on purpose: which side is favoured, and whether a call is
+   * right, depend only on the *sign* of the gap, so this never touches
+   * accuracy. It only sets how bold the printed percentage is, and is tuned for
+   * calibration (Brier) rather than for calls — the same split the old model
+   * drew between `k` and `scale`.
    */
-  scale: 250,
+  probScale: 2,
+  /** Display anchor: the rating a league-average skill is shown as. */
+  displayMean: 1500,
+  /**
+   * Display spread: one standard deviation of the rated field is shown as this
+   * many rating points, so the numbers read on a familiar ~1500 scale. Cosmetic
+   * — it scales the printed rating and nothing the model decides.
+   */
+  displaySpread: 70,
 } as const;
+
+export interface FitOptions {
+  winWeight?: number;
+  statWeight?: number;
+  ridge?: number;
+  halfLife?: number | null;
+}
 
 /** A pair of players and the rating the model gives them. */
 export interface PairRating {
   team: string;
   players: string[];
-  /** Mean of the players' ratings at that moment. */
+  /** Mean of the players' display ratings at that moment. */
   rating: number;
   /** How many of `players` the model had actually seen play before. */
   known: number;
@@ -139,7 +142,7 @@ export interface MatchPrediction {
   scheduled: boolean;
   /** Both sides, in `MatchRecord.sides` order (alphabetical by team). */
   sides: [PairRating, PairRating];
-  /** P(sides[0] wins), from the pair-rating difference. */
+  /** P(sides[0] wins), from the pair-skill difference. */
   probability: number;
   /** The team the model favoured, or null when the two sides rated level. */
   favourite: string | null;
@@ -154,8 +157,11 @@ export interface MatchPrediction {
   correct: boolean | null;
 }
 
-export interface Replay {
-  /** Rating per player after every played match. */
+/** The fitted model: final ratings, and every match's pre-match prediction. */
+export interface Model {
+  /** Final raw skill per player, from a fit over the whole history. */
+  skills: Map<string, number>;
+  /** Display rating per player (the ~1500-scale number). */
   ratings: Map<string, number>;
   /** Matches each player contributed to — the bar for the power ratings. */
   appearances: Map<string, number>;
@@ -163,21 +169,25 @@ export interface Replay {
   matches: MatchPrediction[];
   /** Lookup by `MatchRecord.key`. */
   byKey: Map<string, MatchPrediction>;
-  /** The last season the replay saw. A later one needs regressing first. */
+  /** Affine map from raw skill to display rating: mean and sd of the field. */
+  display: { mean: number; sd: number };
+  /** The last season the fit saw. */
   lastSeason: number;
 }
 
-export interface EloOptions {
-  k?: number;
-  seasonRegression?: number;
-  outcomeWeight?: number;
-  performanceScale?: number;
-  start?: number;
+/** Logistic. */
+function sigmoid(z: number): number {
+  if (z >= 0) {
+    const e = Math.exp(-z);
+    return 1 / (1 + e);
+  }
+  const e = Math.exp(z);
+  return e / (1 + e);
 }
 
-/** Expected score for a rating `a` against a rating `b`. */
+/** P(a beats b) for two raw skills, on the model's probability scale. */
 export function expectedScore(a: number, b: number): number {
-  return 1 / (1 + 10 ** ((b - a) / ELO.scale));
+  return sigmoid(MODEL.probScale * (a - b));
 }
 
 // ---------------------------------------------------------------------------
@@ -194,16 +204,11 @@ export function expectedScore(a: number, b: number): number {
  * **Forced errors are not in it.** An error the opponent forced out of you is
  * theirs to claim, not yours to answer for — and it already appears on their
  * side of the ledger, because `Errors Forced` and the opponent's `Forced
- * Errors` are the same events counted from both ends (1132 against 1122 across
- * the whole CSV, which is as close as two hand-kept columns get).
+ * Errors` are the same events counted from both ends.
  *
  * Null when the match wasn't statted, which is not the same as zero — every
- * finals night on record is a scoreline and nothing else. Callers fall back to
- * an even split rather than pretending a blank sheet means nobody did anything.
- *
- * The comparison this feeds is always between two players on the same side of
- * the same match, so era and match length cancel: S1's serve stats and S2+'s
- * errors forced never have to be reconciled against each other.
+ * finals night on record bar Season 3's is a scoreline and nothing else. The
+ * stat channel simply skips those matches rather than reading a blank as a nil.
  */
 export function contribution(r: StatRow): number | null {
   if (r.winners === null && r.unforcedErrors === null) return null;
@@ -212,195 +217,357 @@ export function contribution(r: StatRow): number | null {
   return good - bad;
 }
 
+// ---------------------------------------------------------------------------
+// The fit
+// ---------------------------------------------------------------------------
+
 /**
- * What each player on a side actually earns for one match: part the result,
- * part how their own ledger compared with the pair across the net.
+ * One player's stat-channel observation: their own net-stat output for a match
+ * should track their skill, net of the pair they faced.
  *
- *   performance = 0.5 + 0.5 × tanh((net − opponentMean) / performanceScale)
- *   score = outcomeWeight × result + (1 − outcomeWeight) × performance
+ *   z ≈ skill[self] − ½(skill[opp0] + skill[opp1])
  *
- * `result` (0, 0.5 or 1) is the same for every player on a side — it's the
- * match, not the individual, that won or lost. `performance` is personal:
- * each player's own net stat against the *opposing pair's* mean net stat, so
- * a big night is judged by what it did to the players actually across the
- * net, not by whether a team-mate had a quiet one. Squashed through `tanh` so
- * a single freak set can't swing a player to 0 or 1 outright.
- *
- * This is also where opponent strength gets its say, but indirectly:
- * `performance` only measures the stat gap in *this* match, and it's
- * `replay`'s `expectedScore(rating, opponentPairRating)` — not this function —
- * that discounts a big performance against a weak pair and rewards the same
- * performance against a strong one. Folding opponent rating into `performance`
- * too would double-count the same signal.
- *
- * Falls back to `result` alone — plain doubles Elo for that player — when
- * either side's ledger is incomplete. A performance score needs both ends of
- * the comparison; half a ledger, or the opponents' blank one, can't produce
- * one. That's every finals night on record bar Season 3's.
+ * `self` is +1 in the design, each opponent −½, and `z` is the player's own
+ * `contribution` per set, standardised. This is what separates two team-mates
+ * who shared a result: their box scores differ, so their targets differ, so the
+ * fit can rate the one who did the work above the one who was carried — the
+ * direct fix for Elo's old "good player, bad team-mates" blind spot. Opponent
+ * strength is priced through the opponents' own skills, not their box score, so
+ * a big night against a strong pair means more than the same against a weak one
+ * — the same signal the win channel uses, kept consistent between the two.
  */
-export function personalScores(
-  own: StatRow[],
-  opponents: StatRow[],
-  result: number,
-  opts: EloOptions = {}
-): number[] {
-  const {
-    outcomeWeight = ELO.outcomeWeight,
-    performanceScale = ELO.performanceScale,
-  } = opts;
-  const asResult = own.map(() => result);
-  if (outcomeWeight >= 1) return asResult;
-
-  const ownNets = own.map(contribution);
-  const oppNets = opponents.map(contribution);
-  if (ownNets.some((n) => n === null) || oppNets.some((n) => n === null)) {
-    return asResult;
-  }
-
-  const oppValues = oppNets as number[];
-  const opponentMean = oppValues.reduce((a, b) => a + b, 0) / oppValues.length;
-
-  return (ownNets as number[]).map((n) => {
-    const performance = 0.5 + 0.5 * Math.tanh((n - opponentMean) / performanceScale);
-    return outcomeWeight * result + (1 - outcomeWeight) * performance;
-  });
+interface StatObs {
+  self: number;
+  opp: [number, number];
+  z: number;
 }
 
-// ---------------------------------------------------------------------------
-// Replay
-// ---------------------------------------------------------------------------
-
 /**
- * The players a side is rated on: the line-up, minus the SINGLES GAME sentinel,
- * which is match data rather than a person. A fill-in counts as themselves —
- * they're the one on court.
+ * A match reduced to what the fit needs: the four player indices (two a side),
+ * the win result, and each player's own stat-channel observation. Sides follow
+ * `MatchRecord.sides` order — side A is the alphabetically-first team, so `y` is
+ * P(that side won).
  */
+interface FitMatch {
+  a: [number, number];
+  b: [number, number];
+  /** 1 side A won, 0 side B won, 0.5 a match nobody was recorded as winning. */
+  y: number;
+  /** Per-player stat observations, one per statted player (0–4 of them). */
+  stats: StatObs[];
+}
+
+/** The line-up a side is rated on: its players, minus the SINGLES sentinel. */
 function lineup(m: MatchRecord, side: 0 | 1): StatRow[] {
   return m.sides[side].players.filter((p) => !p.isSingles);
 }
 
-function ratePair(
-  team: string,
-  players: string[],
-  ratings: Map<string, number>,
-  start: number
-): PairRating {
-  const known = players.filter((p) => ratings.has(p)).length;
-  const total = players.reduce((sum, p) => sum + (ratings.get(p) ?? start), 0);
-  return {
-    team,
-    players,
-    rating: players.length ? total / players.length : start,
-    known,
-  };
-}
-
-/** Pull every rating a fraction of the way back toward the mean. */
-function regress(ratings: Map<string, number>, amount: number, start: number): void {
-  if (amount <= 0) return;
-  for (const [player, rating] of ratings) {
-    ratings.set(player, rating + (start - rating) * amount);
-  }
-}
-
 /**
- * Replay every played match in order, rating the players as it goes.
- *
- * Order is season, then round — finals sort after the home-and-away season, as
- * they're played — then team name, which is `seasonMatches`' own ordering and
- * is stable across builds. Within a round the order barely matters (a round is
- * one night), but it has to be *fixed*, or a rebuild could produce a different
- * number for the same match.
+ * Everything the fit reads, built once: the global player index and the played,
+ * two-a-side matches in playing order. Singles nights (no pair to rate) and
+ * fixtures (no result) are left out here, so nothing downstream has to remember.
  */
-export function replay(
-  rows: StatRow[] = loadStatRows(),
-  opts: EloOptions = {}
-): Replay {
-  const { k = ELO.k, seasonRegression = ELO.seasonRegression, start = ELO.start } = opts;
+interface Design {
+  players: string[];
+  index: Map<string, number>;
+  matches: FitMatch[];
+  records: MatchRecord[];
+}
 
-  const ratings = new Map<string, number>();
-  const appearances = new Map<string, number>();
-  const matches: MatchPrediction[] = [];
-
+function buildDesign(rows: StatRow[]): Design {
   const all = seasonMatches(rows)
     .filter((m) => !m.scheduled)
     .sort((a, b) => a.season - b.season || a.round - b.round || a.key.localeCompare(b.key));
 
-  let season: number | null = null;
-
-  for (const m of all) {
-    // A new season: everyone drifts back toward the middle. The league is
-    // redrafted, a year has passed, and last year's edge is not this year's.
-    if (season !== null && m.season !== season) {
-      regress(ratings, seasonRegression, start);
+  const index = new Map<string, number>();
+  const players: string[] = [];
+  const idOf = (name: string): number => {
+    let i = index.get(name);
+    if (i === undefined) {
+      i = players.length;
+      players.push(name);
+      index.set(name, i);
     }
-    season = m.season;
+    return i;
+  };
 
-    const lineups: [StatRow[], StatRow[]] = [lineup(m, 0), lineup(m, 1)];
-    // A singles night has no pair to rate on either side; it counts for the
-    // ladder and for nothing here.
-    if (!lineups[0].length || !lineups[1].length) continue;
+  const matches: FitMatch[] = [];
+  const records: MatchRecord[] = [];
+  for (const m of all) {
+    const la = lineup(m, 0);
+    const lb = lineup(m, 1);
+    // A pair a side, or it isn't a doubles result the model can rate.
+    if (la.length !== 2 || lb.length !== 2) continue;
 
-    const names: [string[], string[]] = [
-      lineups[0].map((p) => p.player),
-      lineups[1].map((p) => p.player),
-    ];
-    const sides: [PairRating, PairRating] = [
-      ratePair(m.sides[0].team, names[0], ratings, start),
-      ratePair(m.sides[1].team, names[1], ratings, start),
-    ];
-    const probability = expectedScore(sides[0].rating, sides[1].rating);
-    const favourite =
-      sides[0].rating === sides[1].rating
-        ? null
-        : sides[0].rating > sides[1].rating
-          ? sides[0].team
-          : sides[1].team;
+    const a: [number, number] = [idOf(la[0].player), idOf(la[1].player)];
+    const b: [number, number] = [idOf(lb[0].player), idOf(lb[1].player)];
+    const y = m.isDraw ? 0.5 : m.winner === m.sides[0].team ? 1 : 0;
 
-    // Draws don't happen in TNT — every match on record has exactly one side
-    // flagged in `win?`. If one ever does, half a point each is the right
-    // answer and the model shouldn't need editing that week.
-    const scoreA = m.isDraw ? 0.5 : m.winner === sides[0].team ? 1 : 0;
-
-    matches.push({
-      key: m.key,
-      season: m.season,
-      round: m.round,
-      roundLabel: m.roundLabel,
-      isFinals: m.isFinals,
-      scheduled: false,
-      sides,
-      probability,
-      favourite,
-      winner: m.winner,
-      isDraw: m.isDraw,
-      correct: favourite === null || m.isDraw ? null : favourite === m.winner,
-    });
-
-    // Each side's players are scored against their own opposing pair's mean
-    // rating — not their own side's — so a player's movement never depends on
-    // their team-mate's rating, only on their own and what they personally did
-    // against what they personally faced.
-    const results: [number, number] = [scoreA, 1 - scoreA];
-    for (const side of [0, 1] as const) {
-      const opponent = side === 0 ? 1 : 0;
-      const opponentRating = sides[opponent].rating;
-      const scores = personalScores(lineups[side], lineups[opponent], results[side], opts);
-      lineups[side].forEach((p, i) => {
-        const rating = ratings.get(p.player) ?? start;
-        const delta = k * (scores[i] - expectedScore(rating, opponentRating));
-        ratings.set(p.player, rating + delta);
-        appearances.set(p.player, (appearances.get(p.player) ?? 0) + 1);
+    // One stat observation per statted player: their own net per set, against
+    // the two players they faced. `RAW_STAT` is standardised into skill units
+    // in `fitSkills`, once the training window's spread is known.
+    const sets = m.sides[0].players[0]?.sets ?? 1;
+    const stats: StatObs[] = [];
+    const addStats = (own: StatRow[], self: [number, number], opp: [number, number]) => {
+      own.forEach((r, i) => {
+        const c = contribution(r);
+        if (c !== null) stats.push({ self: self[i], opp, z: c / sets });
       });
+    };
+    addStats(la, a, b);
+    addStats(lb, b, a);
+
+    matches.push({ a, b, y, stats });
+    records.push(m);
+  }
+  return { players, index, matches, records };
+}
+
+/** The spread of per-player net-stat outputs, to put the stat channel on skill units. */
+function statScale(matches: FitMatch[]): number {
+  const xs: number[] = [];
+  for (const m of matches) for (const s of m.stats) xs.push(s.z);
+  if (xs.length < 4) return 6;
+  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const varc = xs.reduce((s, x) => s + (x - mean) ** 2, 0) / xs.length;
+  const sd = Math.sqrt(varc);
+  return sd > 1e-6 ? sd : 6;
+}
+
+/**
+ * Fit skills over `matches[0..upto)` by Newton's method, weighting recent
+ * matches more heavily. `refPoint` is where "recent" is measured from — the
+ * index just past the training window for a walk-forward prediction, and the
+ * end of history for the final ratings.
+ *
+ * Every Newton step solves `H x = g` for the SPD Hessian `H` (the ridge term
+ * `λI` guarantees definiteness), so the objective's single minimum is reached
+ * in a handful of iterations. Because the problem is convex, the starting point
+ * doesn't matter and neither does row order.
+ */
+function fitSkills(
+  design: Design,
+  upto: number,
+  refPoint: number,
+  opts: Required<FitOptions>
+): Float64Array {
+  const { winWeight, statWeight, ridge, halfLife } = opts;
+  const n = design.players.length;
+  const s = new Float64Array(n);
+  if (upto === 0) return s;
+
+  const sd = statScale(design.matches.slice(0, upto));
+  const weight = (j: number): number =>
+    halfLife === null || halfLife <= 0 ? 1 : 2 ** (-(refPoint - 1 - j) / halfLife);
+
+  for (let iter = 0; iter < 12; iter++) {
+    const g = new Float64Array(n);
+    // Dense Hessian: n is one row per rated player, ~50 at most.
+    const H: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+
+    for (let j = 0; j < upto; j++) {
+      const m = design.matches[j];
+      const w = weight(j);
+      // c: the signed design coefficients, +0.5 for side A, −0.5 for side B.
+      const idx = [m.a[0], m.a[1], m.b[0], m.b[1]];
+      const c = [0.5, 0.5, -0.5, -0.5];
+      let d = 0;
+      for (let t = 0; t < 4; t++) d += c[t] * s[idx[t]];
+
+      // Win channel: weighted logistic.
+      const p = sigmoid(winWeight * d);
+      const gWin = winWeight * w * (p - m.y);
+      const hWin = winWeight * winWeight * w * p * (1 - p);
+      for (let t = 0; t < 4; t++) {
+        g[idx[t]] += gWin * c[t];
+        for (let u = 0; u < 4; u++) H[idx[t]][idx[u]] += hWin * c[t] * c[u];
+      }
+
+      // Stat channel: weighted least squares on each player's own net output,
+      // net of the pair they faced. Design coefficients are +1 on self and −½
+      // on each opponent; the residual is `(skillSelf − oppMean) − z`.
+      if (statWeight > 0) {
+        for (const obs of m.stats) {
+          const si = [obs.self, obs.opp[0], obs.opp[1]];
+          const sc = [1, -0.5, -0.5];
+          let pred = 0;
+          for (let t = 0; t < 3; t++) pred += sc[t] * s[si[t]];
+          const resid = pred - obs.z / sd;
+          const gStat = 2 * statWeight * w * resid;
+          const hStat = 2 * statWeight * w;
+          for (let t = 0; t < 3; t++) {
+            g[si[t]] += gStat * sc[t];
+            for (let u = 0; u < 3; u++) H[si[t]][si[u]] += hStat * sc[t] * sc[u];
+          }
+        }
+      }
+    }
+
+    // Ridge prior: pull every skill toward zero (the league mean).
+    for (let i = 0; i < n; i++) {
+      g[i] += ridge * s[i];
+      H[i][i] += ridge;
+    }
+
+    const step = solveSPD(H, Array.from(g));
+    let maxStep = 0;
+    for (let i = 0; i < n; i++) {
+      s[i] -= step[i];
+      maxStep = Math.max(maxStep, Math.abs(step[i]));
+    }
+    if (maxStep < 1e-9) break;
+  }
+  return s;
+}
+
+// ---------------------------------------------------------------------------
+// Building the model
+// ---------------------------------------------------------------------------
+
+const resolve = (opts: FitOptions): Required<FitOptions> => ({
+  winWeight: opts.winWeight ?? MODEL.winWeight,
+  statWeight: opts.statWeight ?? MODEL.statWeight,
+  ridge: opts.ridge ?? MODEL.ridge,
+  halfLife: opts.halfLife === undefined ? MODEL.halfLife : opts.halfLife,
+});
+
+/** Mean and sd of the rated field's skills — the display affine's two numbers. */
+function displayStats(
+  skills: Float64Array,
+  design: Design,
+  appearances: Map<string, number>
+): { mean: number; sd: number } {
+  const vals: number[] = [];
+  for (let i = 0; i < design.players.length; i++) {
+    if ((appearances.get(design.players[i]) ?? 0) >= SITE.rankMinMatches) vals.push(skills[i]);
+  }
+  if (vals.length < 2) return { mean: 0, sd: 1 };
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const varc = vals.reduce((s, x) => s + (x - mean) ** 2, 0) / vals.length;
+  return { mean, sd: Math.sqrt(varc) || 1 };
+}
+
+/**
+ * Fit the whole model: a final skill for every player from a fit over all of
+ * history, plus each played match's reconstructed pre-match prediction from a
+ * fit over only the matches before it. The per-match refits are what let a
+ * historical page show the forecast it would have had — see `history`.
+ */
+export function fitModel(rows: StatRow[] = loadStatRows(), opts: FitOptions = {}): Model {
+  const o = resolve(opts);
+  const design = buildDesign(rows);
+  const { players, matches, records } = design;
+
+  const appearances = new Map<string, number>();
+  for (const m of matches) {
+    for (const i of [...m.a, ...m.b]) {
+      const name = players[i];
+      appearances.set(name, (appearances.get(name) ?? 0) + 1);
     }
   }
 
+  // Final skills: one fit over everything, recency measured from the end.
+  const finalSkills = fitSkills(design, matches.length, matches.length, o);
+  const display = displayStats(finalSkills, design, appearances);
+  const toRating = (skill: number) =>
+    MODEL.displayMean + ((skill - display.mean) / display.sd) * MODEL.displaySpread;
+
+  const skills = new Map<string, number>();
+  const ratings = new Map<string, number>();
+  players.forEach((name, i) => {
+    skills.set(name, finalSkills[i]);
+    ratings.set(name, toRating(finalSkills[i]));
+  });
+
+  const predictions = history(design, o, display, toRating);
+  const lastSeason = records.length ? records[records.length - 1].season : 0;
+
   return {
+    skills,
     ratings,
     appearances,
-    matches,
-    byKey: new Map(matches.map((m) => [m.key, m])),
-    lastSeason: season ?? 0,
+    matches: predictions,
+    byKey: new Map(predictions.map((p) => [p.key, p])),
+    display,
+    lastSeason,
+  };
+}
+
+/**
+ * Every played match's PRE-match prediction, each from a fit over only the
+ * matches strictly before it. That's the walk-forward reconstruction the
+ * backtest and the match pages both read: the model's state the instant before
+ * a match is a fit that has never seen it.
+ */
+function history(
+  design: Design,
+  o: Required<FitOptions>,
+  display: { mean: number; sd: number },
+  toRating: (skill: number) => number
+): MatchPrediction[] {
+  const { players, matches, records } = design;
+  const out: MatchPrediction[] = [];
+
+  for (let j = 0; j < matches.length; j++) {
+    const s = fitSkills(design, j, j, o);
+    const m = matches[j];
+    const rec = records[j];
+
+    const pair = (
+      teamRows: StatRow[],
+      team: string,
+      idx: [number, number]
+    ): PairRating => {
+      const names = idx.map((i) => players[i]);
+      const meanSkill = (s[idx[0]] + s[idx[1]]) / 2;
+      const known = idx.filter((i) => j > 0 && seenBefore(design, i, j)).length;
+      return { team, players: names, rating: toRating(meanSkill), known };
+    };
+
+    const sideA = pair(lineup(rec, 0), rec.sides[0].team, m.a);
+    const sideB = pair(lineup(rec, 1), rec.sides[1].team, m.b);
+    const skillA = (s[m.a[0]] + s[m.a[1]]) / 2;
+    const skillB = (s[m.b[0]] + s[m.b[1]]) / 2;
+
+    out.push(finish(rec, sideA, sideB, skillA, skillB, false));
+  }
+  return out;
+}
+
+/** Whether player `i` appears in any match before position `j`. */
+function seenBefore(design: Design, i: number, j: number): boolean {
+  for (let k = 0; k < j; k++) {
+    const m = design.matches[k];
+    if (m.a[0] === i || m.a[1] === i || m.b[0] === i || m.b[1] === i) return true;
+  }
+  return false;
+}
+
+/** Assemble a MatchPrediction from two rated sides and their raw skills. */
+function finish(
+  m: MatchRecord,
+  sideA: PairRating,
+  sideB: PairRating,
+  skillA: number,
+  skillB: number,
+  scheduled: boolean
+): MatchPrediction {
+  const probability = expectedScore(skillA, skillB);
+  const favourite =
+    skillA === skillB ? null : skillA > skillB ? sideA.team : sideB.team;
+  return {
+    key: m.key,
+    season: m.season,
+    round: m.round,
+    roundLabel: m.roundLabel,
+    isFinals: m.isFinals,
+    scheduled,
+    sides: [sideA, sideB],
+    probability,
+    favourite,
+    winner: m.winner,
+    isDraw: m.isDraw,
+    correct: scheduled || favourite === null || m.isDraw ? null : favourite === m.winner,
   };
 }
 
@@ -408,52 +575,37 @@ export function replay(
 // Predicting a match that hasn't been played
 // ---------------------------------------------------------------------------
 
-/**
- * Rate a match against a given set of ratings — normally the ones a full replay
- * ends on. `sides` is in `MatchRecord.sides` order, so the probability is for
- * `sides[0]`, exactly as in a replayed match.
- */
-export function predictMatch(
-  m: MatchRecord,
-  ratings: Map<string, number>,
-  start = ELO.start
-): MatchPrediction {
-  const sides: [PairRating, PairRating] = [
-    ratePair(m.sides[0].team, lineup(m, 0).map((p) => p.player), ratings, start),
-    ratePair(m.sides[1].team, lineup(m, 1).map((p) => p.player), ratings, start),
-  ];
-  return {
-    key: m.key,
-    season: m.season,
-    round: m.round,
-    roundLabel: m.roundLabel,
-    isFinals: m.isFinals,
-    scheduled: m.scheduled,
-    sides,
-    probability: expectedScore(sides[0].rating, sides[1].rating),
-    favourite:
-      sides[0].rating === sides[1].rating
-        ? null
-        : sides[0].rating > sides[1].rating
-          ? sides[0].team
-          : sides[1].team,
-    winner: m.winner,
-    isDraw: m.isDraw,
-    correct: null,
+/** Rate a match against a given model — normally the site's final ratings. */
+export function predictMatch(m: MatchRecord, model: Model): MatchPrediction {
+  const skillOf = (name: string) => model.skills.get(name) ?? 0;
+  const toRating = (skill: number) =>
+    MODEL.displayMean + ((skill - model.display.mean) / model.display.sd) * MODEL.displaySpread;
+
+  const side = (n: 0 | 1): { pair: PairRating; skill: number } => {
+    const names = lineup(m, n).map((p) => p.player);
+    const meanSkill = names.length
+      ? names.reduce((s, p) => s + skillOf(p), 0) / names.length
+      : 0;
+    return {
+      pair: {
+        team: m.sides[n].team,
+        players: names,
+        rating: toRating(meanSkill),
+        known: names.filter((p) => model.skills.has(p)).length,
+      },
+      skill: meanSkill,
+    };
   };
+  const a = side(0);
+  const b = side(1);
+  return finish(m, a.pair, b.pair, a.skill, b.skill, m.scheduled);
 }
 
-/** P(the first pair wins), for two named line-ups. */
-export function predictPair(
-  a: string[],
-  b: string[],
-  ratings: Map<string, number>,
-  start = ELO.start
-): number {
+/** P(the first pair wins), for two named line-ups against a model's ratings. */
+export function predictPair(a: string[], b: string[], model: Model): number {
+  const skillOf = (name: string) => model.skills.get(name) ?? 0;
   const mean = (players: string[]) =>
-    players.length
-      ? players.reduce((sum, p) => sum + (ratings.get(p) ?? start), 0) / players.length
-      : start;
+    players.length ? players.reduce((s, p) => s + skillOf(p), 0) / players.length : 0;
   return expectedScore(mean(a), mean(b));
 }
 
@@ -475,45 +627,37 @@ export interface Backtest {
   matches: MatchPrediction[];
 }
 
-/**
- * How well the model has actually done, over the matches it was willing to
- * call.
- *
- * The denominator deliberately excludes matches where the two pairs rated
- * exactly level — four debutants on 1500 apiece, which is most of Season 1
- * Round 1. The model said nothing about those, and counting them as half-right
- * would dress a coin toss up as a record. `levelled` says how many were set
- * aside so the headline can own up to it.
- *
- * The Brier score uses every decided match including the level ones, because a
- * 0.5 there is a real and honest forecast even though it isn't a call.
- */
-export function backtest(
-  rows: StatRow[] = loadStatRows(),
-  opts: EloOptions = {}
-): Backtest {
-  const { matches } = replay(rows, opts);
-  const decided = matches.filter((m) => !m.isDraw);
+function backtestFrom(model: Model): Backtest {
+  const decided = model.matches.filter((m) => !m.isDraw);
   const called = decided.filter((m) => m.correct !== null);
   const correct = called.filter((m) => m.correct).length;
-
   const brier =
     decided.reduce((sum, m) => {
       const actual = m.winner === m.sides[0].team ? 1 : 0;
       return sum + (m.probability - actual) ** 2;
     }, 0) / (decided.length || 1);
-
   return {
     called: called.length,
     correct,
     accuracy: called.length ? correct / called.length : 0,
     brier,
     levelled: decided.length - called.length,
-    matches,
+    matches: model.matches,
   };
 }
 
-/** "110 of 165 matches (66.7%)" — the honest headline. */
+/**
+ * How well the model has actually done, over the matches it was willing to
+ * call. Matches where the two pairs rated exactly level — the opening round of
+ * every redraft, four players the fit has never seen — are set aside from the
+ * accuracy denominator (`levelled` counts them) rather than dressed up as
+ * half-right. The Brier score keeps them: a 0.5 there is an honest forecast.
+ */
+export function backtest(rows: StatRow[] = loadStatRows(), opts: FitOptions = {}): Backtest {
+  return backtestFrom(fitModel(rows, opts));
+}
+
+/** "104 of 166 matches (62.7%)" — the honest headline. */
 export function accuracyHeadline(b: Backtest = backtest()): string {
   return `${b.correct} of ${b.called} matches (${(b.accuracy * 100).toFixed(1)}%)`;
 }
@@ -535,14 +679,14 @@ export interface RatedPlayer {
  * not a standing.
  */
 export function powerRankings(
-  r: Replay = siteReplay(),
+  model: Model = siteModel(),
   minMatches = SITE.rankMinMatches
 ): RatedPlayer[] {
-  return [...r.ratings.entries()]
+  return [...model.ratings.entries()]
     .map(([player, rating]) => ({
       player,
       rating,
-      matches: r.appearances.get(player) ?? 0,
+      matches: model.appearances.get(player) ?? 0,
       rank: 0,
     }))
     .filter((p) => p.matches >= minMatches)
@@ -551,31 +695,14 @@ export function powerRankings(
 }
 
 /**
- * The four players the league would expect to see at the top.
- *
- * This is a **face-validity gate on the tuning**, and it is an editorial
- * judgement rather than anything the data discovered — the owner named these
- * four before any rating existed. It earns its place because the rating goes on
- * public display: a table that puts a high-volume journeyman above four players
- * everyone knows are better is wrong in the way that matters, whatever it
- * backtests. `tune()` sorts settings that keep all four inside the top
- * `FACE_VALIDITY_TOP` ahead of those that don't, and the test asserts the
- * committed constants still clear it.
- *
- * They are, independently, the top four in the league on career net stats per
- * set — the very metric the contribution split is built on — so the gate is
- * less arbitrary than a list of four names looks.
- *
- * Top EIGHT of the twenty-six qualified players, not top four or six, and the
- * number was chosen by what it costs rather than by what sounds strict. At
- * eight, 185 of the 1225 settings searched clear it, and the best of those
- * gives up two calls out of 166 against the best setting found with no gate
- * at all — cheap enough that the gate is still a sanity check, not a thumb on
- * the scale. (This number moves with `ELO.scale`, since that feeds every
- * replay `tune()` runs; a test re-measures it rather than hard-coding it.) At
- * six, **nothing in the search clears it**: no combination of these constants
- * seats all four names that high at once, so six isn't a stricter gate, it's
- * a different, unsatisfiable one.
+ * The four players the league would expect to see at the top — a face-validity
+ * gate on the tuning, and an editorial judgement rather than something the data
+ * discovered (the owner named these four before any rating existed). It earns
+ * its keep because the rating goes on public display: a table that seats a
+ * high-volume journeyman above four players everyone knows are better is wrong
+ * in the way that matters, whatever it backtests. They are, independently, the
+ * top four on career net stats per set — the very metric the stat channel is
+ * built on — so the gate is less arbitrary than four names look.
  */
 export const FACE_VALIDITY_NAMES = [
   'Luke Sharrock',
@@ -586,10 +713,7 @@ export const FACE_VALIDITY_NAMES = [
 export const FACE_VALIDITY_TOP = 8;
 
 /** Whether a rating puts all four of the above inside the top N. */
-export function passesFaceValidity(
-  table: RatedPlayer[],
-  top = FACE_VALIDITY_TOP
-): boolean {
+export function passesFaceValidity(table: RatedPlayer[], top = FACE_VALIDITY_TOP): boolean {
   const leaders = new Set(table.slice(0, top).map((p) => p.player));
   return FACE_VALIDITY_NAMES.every((n) => leaders.has(n));
 }
@@ -599,62 +723,55 @@ export function passesFaceValidity(
 // ---------------------------------------------------------------------------
 
 export interface TuneResult {
-  opts: Required<Pick<EloOptions, 'k' | 'seasonRegression' | 'outcomeWeight' | 'performanceScale'>>;
+  opts: Required<FitOptions>;
   result: Backtest;
   table: RatedPlayer[];
   facesValid: boolean;
 }
 
 /**
- * Grid-search the model's constants.
+ * Grid-search the model's fit constants. This is how the numbers in `MODEL`
+ * were arrived at, and the test re-runs it so a season of new results can't
+ * quietly leave them stale. It is not run at build time — the site imports the
+ * tuned constants, not the search.
  *
- * This is how the numbers in `ELO` were arrived at, and the test re-runs it so
- * a season of new results can't quietly leave them stale. It is not run at
- * build time: the site imports the tuned constants, not the search.
- *
- * Ranked on accuracy among settings that pass the face-validity gate, with the
- * Brier score breaking ties — accuracy is the number anyone actually reads, but
- * on 166 matches it's a step function, so several settings call exactly the
- * same matches right and the better-calibrated one should win. Settings that
- * fail the gate sort last rather than being dropped, so the search can still be
- * inspected when nothing passes.
+ * Ranked on accuracy among settings that pass the face-validity gate, Brier
+ * breaking ties: accuracy is the number anyone reads, but on ~166 matches it's
+ * a step function, so several settings call the same matches right and the
+ * better-calibrated one should win. Note `probScale` is not searched here — it
+ * doesn't change any call (only the sign of the skill gap does), so it's tuned
+ * separately for calibration and held fixed across the grid.
  */
 export function tune(
   rows: StatRow[] = loadStatRows(),
   grid: {
-    k?: number[];
-    seasonRegression?: number[];
-    outcomeWeight?: number[];
-    performanceScale?: number[];
+    winWeight?: number[];
+    statWeight?: number[];
+    ridge?: number[];
+    halfLife?: (number | null)[];
   } = {}
 ): TuneResult[] {
   const {
-    k: ks = [16, 24, 32, 40, 48, 64, 80],
-    seasonRegression: regs = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9],
-    // Floored at 0.3: below that, the match result stops being "a large part"
-    // of a player's score, which is the one thing this model isn't meant to
-    // give up regardless of what the accuracy search would otherwise prefer.
-    outcomeWeight: weights = [0.3, 0.4, 0.5, 0.6, 0.7, 0.85, 1],
-    performanceScale: scales = [4, 6, 9, 12],
+    winWeight: ws = [4, 6],
+    statWeight: rs = [0, 1, 2],
+    ridge: ls = [4, 8],
+    halfLife: hs = [null, 60, 100],
   } = grid;
 
   const out: TuneResult[] = [];
-  for (const k of ks) {
-    for (const seasonRegression of regs) {
-      for (const outcomeWeight of weights) {
-        for (const performanceScale of scales) {
-          const opts = { k, seasonRegression, outcomeWeight, performanceScale };
-          const r = replay(rows, opts);
-          const table = powerRankings(r);
+  for (const winWeight of ws) {
+    for (const statWeight of rs) {
+      for (const ridge of ls) {
+        for (const halfLife of hs) {
+          const opts = { winWeight, statWeight, ridge, halfLife };
+          const model = fitModel(rows, opts);
+          const table = powerRankings(model);
           out.push({
             opts,
-            result: backtestFrom(r),
+            result: backtestFrom(model),
             table,
             facesValid: passesFaceValidity(table),
           });
-          // The scale does nothing when the result is the whole score; one
-          // pass is enough to represent plain doubles Elo.
-          if (outcomeWeight === 1) break;
         }
       }
     }
@@ -665,77 +782,41 @@ export function tune(
       Number(b.facesValid) - Number(a.facesValid) ||
       b.result.accuracy - a.result.accuracy ||
       a.result.brier - b.result.brier ||
-      a.opts.k - b.opts.k
+      a.opts.ridge - b.opts.ridge
   );
 }
 
-/** `backtest`, reusing a replay that's already been run. */
-function backtestFrom(r: Replay): Backtest {
-  const decided = r.matches.filter((m) => !m.isDraw);
-  const called = decided.filter((m) => m.correct !== null);
-  const correct = called.filter((m) => m.correct).length;
-  const brier =
-    decided.reduce((sum, m) => {
-      const actual = m.winner === m.sides[0].team ? 1 : 0;
-      return sum + (m.probability - actual) ** 2;
-    }, 0) / (decided.length || 1);
-  return {
-    called: called.length,
-    correct,
-    accuracy: called.length ? correct / called.length : 0,
-    brier,
-    levelled: decided.length - called.length,
-    matches: r.matches,
-  };
-}
-
 // ---------------------------------------------------------------------------
-// The site's own replay, done once
+// The site's own model, fit once
 // ---------------------------------------------------------------------------
 
-let _replay: Replay | null = null;
+let _model: Model | null = null;
 
-/** The replay over the real CSV, computed once per build. */
-export function siteReplay(): Replay {
-  if (!_replay) _replay = replay();
-  return _replay;
+/** The fit over the real CSV, computed once per build. */
+export function siteModel(): Model {
+  if (!_model) _model = fitModel();
+  return _model;
 }
 
 /** A played match's reconstructed pre-match prediction, by `MatchRecord.key`. */
 export function matchPrediction(key: string): MatchPrediction | undefined {
-  return siteReplay().byKey.get(key);
+  return siteModel().byKey.get(key);
 }
 
 /**
  * The prediction to show for any match: the reconstructed one for a match
- * already played, and a fresh one off the current ratings for a fixture.
- *
- * A fixture in a season the replay never reached gets the between-seasons
- * regression applied first — once per season crossed. Without it Season 5 would
- * be predicted from raw end-of-Season-4 ratings, which is a more confident
- * model than the one that was tuned, and confident is the one thing an opening
- * round has no business being.
+ * already played, and a fresh one off the current ratings for a fixture. A
+ * fixture in a future season is predicted from the players' carried skills —
+ * the ridge and the recency decay together are what keep a redrafted opener
+ * from reading as a lock, so no separate between-season regression is applied.
  */
 export function predictionFor(m: MatchRecord): MatchPrediction {
   const known = matchPrediction(m.key);
   if (known) return known;
-
-  const r = siteReplay();
-  const seasonsAhead = Math.max(0, m.season - r.lastSeason);
-  if (seasonsAhead === 0) return predictMatch(m, r.ratings);
-
-  const ratings = new Map(r.ratings);
-  for (let i = 0; i < seasonsAhead; i++) {
-    regress(ratings, ELO.seasonRegression, ELO.start);
-  }
-  return predictMatch(m, ratings);
+  return predictMatch(m, siteModel());
 }
 
-/** Ratings as they stand for a season the replay hasn't reached. */
-export function ratingsForSeason(season: number, r: Replay = siteReplay()): Map<string, number> {
-  const ratings = new Map(r.ratings);
-  for (let i = 0; i < Math.max(0, season - r.lastSeason); i++) {
-    regress(ratings, ELO.seasonRegression, ELO.start);
-  }
-  return ratings;
+/** The model's final ratings, for a caller that wants the raw map. */
+export function ratingsFor(model: Model = siteModel()): Map<string, number> {
+  return model.skills;
 }

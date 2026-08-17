@@ -230,7 +230,8 @@ data/alltimestats.csv          source of truth
 src/config/                     site + season config, name aliases
 src/lib/normalize.ts           the single normalization layer
 src/lib/stats.ts               ladder, aggregates, leaderboards, records, matches
-src/lib/predict.ts             the Elo model — win probabilities, power ratings
+src/lib/predict.ts             the rating model — regularised global skill fit,
+                               win probabilities, power ratings
 src/lib/insights.ts            the "worth knowing" lines on a match page
 src/lib/stats.test.ts          unit tests (name merge, ladder, votes eras, ...)
 src/components/  src/pages/     UI

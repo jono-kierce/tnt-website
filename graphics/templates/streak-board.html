@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Streak board</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  header { flex: none; position: relative; }
+  .eyebrow { margin-top: -64px; }
+  .headline { font-size: 92px; margin-top: 16px; max-width: 780px; }
+  .sub { margin-top: 12px; }
+  header .mark { position: absolute; right: 0; top: -34px; width: 92px; color: var(--gold); }
+  .rule-gold {
+    height: 2px; margin-top: 24px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  .thead {
+    flex: none; display: flex; align-items: flex-end; gap: 24px;
+    padding: 20px 8px 12px;
+    font-size: 19px; font-weight: 600;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: rgba(244, 241, 232, 0.4);
+  }
+  .c-pos { width: 60px; }
+  .c-bar { width: 12px; }
+  .c-name { flex: 1; }
+  .c-value { width: 300px; text-align: right; }
+
+  .rows { flex: 1; display: flex; flex-direction: column; }
+
+  .row {
+    flex: 1;
+    display: flex; align-items: center; gap: 24px;
+    padding: 0 8px;
+    border-top: 1px solid var(--rule);
+  }
+  .row:first-child { border-top: 0; }
+
+  .pos {
+    width: 60px; text-align: center;
+    font-family: var(--display); font-weight: 600; font-size: 42px;
+    color: var(--gold);
+  }
+  /* Only the podium is gilded; below that the rank is furniture. */
+  .row:nth-child(n+4) .pos { color: rgba(244, 241, 232, 0.45); }
+
+  .bar { width: 12px; height: 64px; border-radius: 6px; flex: none;
+         background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  /* A player with no team on record still gets a spine, just a mute one. */
+  .row.no-team .bar { background: rgba(244, 241, 232, 0.18); }
+
+  .who { flex: 1; min-width: 0; }
+  .name { font-size: 48px; font-weight: 500; letter-spacing: 0.015em; line-height: 1.1; }
+  /* When the run spanned — "S1R4 – S1Final", or "… – ongoing" while it's live. */
+  .range {
+    font-size: 21px; font-weight: 500; letter-spacing: 0.14em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.4);
+    margin-top: 3px;
+  }
+  .row.live .range { color: var(--gold-soft); }
+
+  /* The streak count — the big number, right-aligned like a scoreboard. */
+  .value { width: 300px; flex: none; display: flex; align-items: baseline; justify-content: flex-end; gap: 12px; }
+  .count {
+    font-family: var(--display); font-weight: 700; line-height: 0.9;
+    font-size: 86px; color: var(--paper);
+    font-variant-numeric: tabular-nums;
+  }
+  .row:first-child .count { color: var(--gold); font-size: 100px; }
+  .star { font-family: var(--display); font-weight: 700; font-size: 52px; color: var(--gold); line-height: 0.9; }
+  .unit {
+    font-family: var(--display); font-weight: 600; font-size: 22px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: rgba(244, 241, 232, 0.42); padding-bottom: 8px;
+  }
+
+  footer {
+    flex: none; display: flex; justify-content: space-between; align-items: flex-end;
+    gap: 28px; padding-top: 20px; margin-bottom: -74px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+    white-space: nowrap;
+  }
+  footer .footnote { text-align: right; line-height: 1.4; font-size: 19px; }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette" id="canvas">
+  <header>
+    <div class="mark mark--crest"></div>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="thead">
+    <div class="c-pos">#</div>
+    <div class="c-bar"></div>
+    <div class="c-name">Player</div>
+    <div class="c-value" id="metric-label"></div>
+  </div>
+
+  <div class="rows" id="rows"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+    <div class="footnote" id="footnote"></div>
+  </footer>
+</div>
+
+<script type="module">
+const DATA = {
+  eyebrow: 'All time',
+  title: 'Longest Win Streaks',
+  subtitle: 'Most matches won in a row · finals included',
+  metricLabel: 'In a row',
+  footnote: '* Streak still active · Fill-in matches excluded',
+  rows: [
+    { rank: 1, player: 'Angus Hume',      team: 'Pink',       streak: 11, active: true,  range: 'S4R1 – ongoing' },
+    { rank: 2, player: 'Luke Sharrock',   team: 'Pink',       streak: 10, active: true,  range: 'S4R1 – ongoing' },
+    { rank: 3, player: 'Jonathan Kierce', team: 'White',      streak: 9,  active: false, range: 'S1R4 – S1Final' },
+    { rank: 4, player: 'Ethan Seamer',    team: 'Light Blue', streak: 9,  active: false, range: 'S1R4 – S1Final' },
+    { rank: 5, player: 'Damon Maurice',   team: 'Orange',     streak: 7,  active: true,  range: 'S3R6 – ongoing' },
+  ],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/** As large as the headline goes on one line, down to a floor. */
+function fitHeadline(el, max = 92, min = 56) {
+  el.style.whiteSpace = 'nowrap';
+  for (let size = max; size >= min; size -= 2) {
+    el.style.fontSize = `${size}px`;
+    if (el.scrollWidth <= el.clientWidth) return;
+  }
+  el.style.whiteSpace = 'normal';
+}
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+  fitHeadline(document.getElementById('title'));
+  document.getElementById('subtitle').textContent = d.subtitle;
+  document.getElementById('metric-label').textContent = d.metricLabel;
+  document.getElementById('footnote').textContent = d.footnote;
+
+  document.getElementById('rows').innerHTML = d.rows.map((r) => `
+    <div class="row ${r.team ? '' : 'no-team'} ${r.active ? 'live' : ''}" ${r.team ? `data-team="${esc(r.team)}"` : ''}>
+      <div class="pos">${r.rank}</div>
+      <div class="bar"></div>
+      <div class="who">
+        <div class="name">${esc(r.player)}</div>
+        ${r.range ? `<div class="range">${esc(r.range)}</div>` : ''}
+      </div>
+      <div class="value">
+        <span class="count">${r.streak}${r.active ? '<span class="star">*</span>' : ''}</span>
+        <span class="unit">wins</span>
+      </div>
+    </div>`).join('');
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>
