@@ -405,9 +405,51 @@ export function teamRoster(
   };
 }
 
+/**
+ * The pairing label for one fixture's line-up, captain-first.
+ *
+ * Unlike `teamRoster`, whose `pairingName` is the season's regular pairing (and
+ * falls back to the config `pair` for a season not yet played), this reads the
+ * *actual players listed for this fixture* in the CSV — so a night one team-mate
+ * sat out and another took their place prints who really turned up. The sheet is
+ * the source of truth; the config `pair` is only the fallback when a side has no
+ * rows to read (which a drawn fixture never does).
+ *
+ * Ordering is captain-first: the config captain, then the listed order the CSV
+ * gives — which is captain-first anyway — with any config-`pair` order used to
+ * break ties among the rest so a preview reads the way the draft board does.
+ */
+export function lineupPairingName(
+  players: StatRow[],
+  override?: { pair?: string[]; captain?: string }
+): string {
+  // De-duplicate in appearance order; a fixture side is normally two rows.
+  const listed = [...new Set(players.map((p) => p.player))];
+  if (!listed.length) {
+    return (override?.pair ?? []).map(shortName).join(' & ');
+  }
+
+  const captain = override?.captain ?? override?.pair?.[0];
+  const order = override?.pair ?? [];
+  const rank = (p: string) => {
+    const i = order.indexOf(p);
+    return i === -1 ? order.length : i;
+  };
+  const ordered = [...listed].sort((a, b) => {
+    if (a === captain) return -1;
+    if (b === captain) return 1;
+    return rank(a) - rank(b);
+  });
+
+  return ordered.map(shortName).join(' & ');
+}
+
 // ---------------------------------------------------------------------------
 // Ladder
 // ---------------------------------------------------------------------------
+
+/**
+ * Season ladder. Ranked by wins desc, then games ratio (for:against) desc.
 
 /**
  * Season ladder. Ranked by wins desc, then games ratio (for:against) desc.
@@ -1109,32 +1151,86 @@ function bestSingleGame(
     .sort((a, b) => b.value - a.value);
 }
 
+/** One match on a streak's edge, labelled the way it prints: "S2R2", "S2Final". */
+export interface StreakEnd {
+  season: number;
+  round: number;
+  roundLabel: string;
+  isFinals: boolean;
+}
+
+/** "S2R2" for a home-and-away round, "S2Final" / "S2QF" for a final. */
+export function streakEndLabel(e: StreakEnd): string {
+  return e.isFinals ? `S${e.season}${e.roundLabel}` : `S${e.season}R${e.roundLabel}`;
+}
+
+export interface StreakRecord {
+  player: string;
+  slug: string;
+  streak: number;
+  /** The run is still alive: last match a win, and it's (tied for) their peak. */
+  active: boolean;
+  /** First and last match of the best run. Null only for a player who's never won. */
+  from: StreakEnd | null;
+  to: StreakEnd | null;
+}
+
 /**
  * Longest win streak per player in chronological order. Finals count — a run
- * that survives September is the whole point of a streak.
+ * that survives September is the whole point of a streak. `active` marks a
+ * streak that is still alive: the player's most recent played match was a win
+ * and the run to that match is (tied for) their longest, so it can still grow.
+ * `from`/`to` bracket that run, so a streak can be printed as "S2R2 – S2Final".
  */
-export function winStreaks(rows: StatRow[]) {
+export function winStreaks(rows: StatRow[]): StreakRecord[] {
+  type Game = { win: boolean } & StreakEnd;
   // Map each player to their team-side results in order.
-  const byPlayer = new Map<string, { win: boolean; season: number; round: number }[]>();
+  const byPlayer = new Map<string, Game[]>();
   const playerRowsAll = rows.filter((r) => isPlayed(r) && !r.isSingles && !r.isFillIn);
   for (const r of playerRowsAll) {
     const arr = byPlayer.get(r.player) ?? [];
-    arr.push({ win: r.win, season: r.season, round: r.round });
+    arr.push({
+      win: r.win,
+      season: r.season,
+      round: r.round,
+      roundLabel: r.roundLabel,
+      isFinals: r.isFinals,
+    });
     byPlayer.set(r.player, arr);
   }
-  const out: { player: string; slug: string; streak: number }[] = [];
+  const out: StreakRecord[] = [];
   for (const [player, results] of byPlayer) {
     results.sort((a, b) => a.season - b.season || a.round - b.round);
     let best = 0,
-      cur = 0;
-    for (const g of results) {
-      cur = g.win ? cur + 1 : 0;
-      best = Math.max(best, cur);
+      cur = 0,
+      runStart = 0,
+      bestStart = -1,
+      bestEnd = -1;
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].win) {
+        if (cur === 0) runStart = i;
+        cur++;
+        // `>=` so a later run of equal length wins the boundary — which is what
+        // makes the bracket describe the *ongoing* run when a streak is active.
+        if (cur >= best) {
+          best = cur;
+          bestStart = runStart;
+          bestEnd = i;
+        }
+      } else {
+        cur = 0;
+      }
     }
+    const edge = (i: number): StreakEnd | null =>
+      i < 0 ? null : (({ season, round, roundLabel, isFinals }) => ({ season, round, roundLabel, isFinals }))(results[i]);
     out.push({
       player,
       slug: playerRowsAll.find((r) => r.player === player)!.slug,
       streak: best,
+      // The current run reaches the peak, so the peak run is the live one.
+      active: cur > 0 && cur === best,
+      from: edge(bestStart),
+      to: edge(bestEnd),
     });
   }
   return out.sort((a, b) => b.streak - a.streak);

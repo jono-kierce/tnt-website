@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { loadStatRows, normalizeRows } from './normalize.ts';
 import {
-  ELO,
   FACE_VALIDITY_NAMES,
   FACE_VALIDITY_TOP,
+  MODEL,
+  type Model,
+  accuracyHeadline,
   backtest,
   contribution,
   expectedScore,
+  fitModel,
   passesFaceValidity,
-  personalScores,
   powerRankings,
   predictPair,
-  replay,
+  predictionFor,
   tune,
 } from './predict.ts';
 import { seasonMatches } from './stats.ts';
@@ -57,149 +59,18 @@ function match(
         'Unforced Errors': s.stats ? String(s.stats[i][1]) : '',
       })
     );
-  return [
-    ...side(a, b.team, !opts.draw),
-    ...side(b, a.team, false),
-  ];
+  return [...side(a, b.team, !opts.draw), ...side(b, a.team, false)];
 }
 
-/** Plain doubles Elo — the result is the whole score, no between-season regression. */
-const PLAIN = { k: 32, seasonRegression: 0, outcomeWeight: 1 };
-
 describe('expected score', () => {
-  it('is a coin flip between equals and follows the logistic scale', () => {
-    expect(expectedScore(1500, 1500)).toBe(0.5);
-    // A gap of exactly one `ELO.scale` is the classic 10:1, whatever that
-    // scale is currently set to — it's Elo's own definition of the constant,
-    // not a fact about the number 400 specifically.
-    expect(expectedScore(1500 + ELO.scale, 1500)).toBeCloseTo(10 / 11, 6);
-    expect(expectedScore(1500, 1500 + ELO.scale)).toBeCloseTo(1 / 11, 6);
-  });
-});
-
-describe('the replay', () => {
-  it('moves both sides by K × (result − expectation), in playing order', () => {
-    const rows = normalizeRows([
-      ...match('2', '1', { team: 'Pink', players: ['A One', 'B Two'] },
-                          { team: 'Navy', players: ['C Three', 'D Four'] }),
-      // The rematch, which Navy wins off the back foot.
-      ...match('2', '2', { team: 'Navy', players: ['C Three', 'D Four'] },
-                          { team: 'Pink', players: ['A One', 'B Two'] }),
-    ]);
-    const { ratings, matches } = replay(rows, PLAIN);
-
-    // Round 1: everyone level, so a 0.5 expectation and a full half-K swing.
-    expect(matches[0].probability).toBe(0.5);
-    expect(matches[0].favourite).toBe(null);
-    expect(matches[0].correct).toBe(null);
-
-    // Round 2: Pink are 1516 against Navy's 1484 and are duly favoured.
-    expect(matches[1].sides.map((s) => s.rating)).toEqual([1484, 1516]);
-    const expectedNavy = expectedScore(1484, 1516);
-    expect(matches[1].probability).toBeCloseTo(expectedNavy, 10);
-    expect(matches[1].favourite).toBe('Pink');
-    expect(matches[1].correct).toBe(false); // Navy won it
-
-    const swing = 32 * (1 - expectedNavy);
-    expect(ratings.get('C Three')).toBeCloseTo(1484 + swing, 8);
-    expect(ratings.get('A One')).toBeCloseTo(1516 - swing, 8);
-    // Each side's two players have always shared an identical history here, so
-    // they share an identical rating, and the individual-vs-opponent-pair maths
-    // collapses to plain pair-vs-pair Elo — the four ratings still average
-    // exactly where they started. That's a property of this symmetric fixture,
-    // not a general guarantee: with a stat split or an uneven pairing, a
-    // match's four deltas no longer have to net to zero (see `personalScores`).
-    const total = [...ratings.values()].reduce((a, b) => a + b, 0);
-    expect(total / ratings.size).toBeCloseTo(ELO.start, 8);
-  });
-
-  it('is deterministic — same rows, same numbers', () => {
-    const rows = loadStatRows();
-    const a = replay(rows);
-    const b = replay(rows);
-    expect([...a.ratings.entries()]).toEqual([...b.ratings.entries()]);
-    expect(a.matches.map((m) => m.probability)).toEqual(
-      b.matches.map((m) => m.probability)
-    );
-  });
-
-  it('reads the result from win?, and never from the scoreline', () => {
-    // 5-5 with no breaker recorded: the scoreline says nothing, win? says Pink.
-    const rows = normalizeRows([
-      raw({ Team: 'Pink', Opponent: 'Navy', Season: '4', Round: '9', Score: '5-5',
-            Player: 'A One', 'win?': 'TRUE', 'Team Score': '5', 'Opponent Score': '5' }),
-      raw({ Team: 'Pink', Opponent: 'Navy', Season: '4', Round: '9', Score: '5-5',
-            Player: 'B Two', 'win?': 'TRUE', 'Team Score': '5', 'Opponent Score': '5' }),
-      raw({ Team: 'Navy', Opponent: 'Pink', Season: '4', Round: '9', Score: '5-5',
-            Player: 'C Three', 'win?': 'FALSE', 'Team Score': '5', 'Opponent Score': '5' }),
-      raw({ Team: 'Navy', Opponent: 'Pink', Season: '4', Round: '9', Score: '5-5',
-            Player: 'D Four', 'win?': 'FALSE', 'Team Score': '5', 'Opponent Score': '5' }),
-    ]);
-    const { ratings } = replay(rows, PLAIN);
-    expect(ratings.get('A One')).toBe(1516);
-    expect(ratings.get('C Three')).toBe(1484);
-  });
-
-  it('splits a match nobody won half a point each way', () => {
-    const rows = normalizeRows(
-      match('2', '1', { team: 'Pink', players: ['A One', 'B Two'] },
-                       { team: 'Navy', players: ['C Three', 'D Four'] },
-            { draw: true })
-    );
-    const { ratings, matches } = replay(rows, PLAIN);
-    expect(matches[0].isDraw).toBe(true);
-    expect(matches[0].winner).toBe(null);
-    expect(matches[0].correct).toBe(null);
-    // Level ratings, half a point: nobody moves at all.
-    expect(ratings.get('A One')).toBe(1500);
-    expect(ratings.get('C Three')).toBe(1500);
-  });
-
-  it('rates a fill-in as themselves, and moves their host team-mate too', () => {
-    const rows = normalizeRows([
-      // A One builds a rating with their own team.
-      ...match('2', '1', { team: 'Pink', players: ['A One', 'B Two'] },
-                          { team: 'Navy', players: ['C Three', 'D Four'] }),
-      // ...then turns out for Green as a fill-in, and loses.
-      ...match('2', '2', { team: 'Navy', players: ['C Three', 'D Four'] },
-                          { team: 'Green', players: ['A One (Fill-in)', 'E Five'] }),
-    ]);
-    const { ratings, matches } = replay(rows, PLAIN);
-
-    // The fill-in brought their own 1516 to a partner who had never played.
-    expect(matches[1].sides.find((s) => s.team === 'Green')!.rating).toBe(
-      (1516 + 1500) / 2
-    );
-    expect(matches[1].sides.find((s) => s.team === 'Green')!.known).toBe(1);
-    // Both of Green's players carry the loss, guest included.
-    expect(ratings.get('A One')!).toBeLessThan(1516);
-    expect(ratings.get('E Five')!).toBeLessThan(1500);
-  });
-
-  it('regresses everyone between seasons, whether they played or not', () => {
-    const rows = normalizeRows([
-      ...match('2', '1', { team: 'Pink', players: ['A One', 'B Two'] },
-                          { team: 'Navy', players: ['C Three', 'D Four'] }),
-      // A different four entirely, a season later.
-      ...match('3', '1', { team: 'Red', players: ['E Five', 'F Six'] },
-                          { team: 'White', players: ['G Seven', 'H Eight'] }),
-    ]);
-    const { ratings } = replay(rows, { k: 32, seasonRegression: 0.5, outcomeWeight: 1 });
-    // A One sat out season 3 and still came halfway back to the mean.
-    expect(ratings.get('A One')).toBe(1500 + (1516 - 1500) * 0.5);
-    expect(ratings.get('C Three')).toBe(1500 + (1484 - 1500) * 0.5);
-  });
-
-  it('leaves a SINGLES GAME out of the ratings entirely', () => {
-    const rows = normalizeRows([
-      raw({ Team: 'Black', Opponent: 'Yellow', Season: '2', Round: '9', Score: '4-6',
-            Player: 'SINGLES GAME', 'win?': 'FALSE', 'Team Score': '4', 'Opponent Score': '6' }),
-      raw({ Team: 'Yellow', Opponent: 'Black', Season: '2', Round: '9', Score: '6-4',
-            Player: 'SINGLES GAME', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '4' }),
-    ]);
-    const { ratings, matches } = replay(rows, PLAIN);
-    expect(ratings.size).toBe(0);
-    expect(matches).toEqual([]);
+  it('is a coin flip between equal skills and rises with the gap', () => {
+    expect(expectedScore(0, 0)).toBe(0.5);
+    expect(expectedScore(1, 0)).toBeGreaterThan(0.5);
+    expect(expectedScore(0, 1)).toBeLessThan(0.5);
+    // Symmetric: P(a beats b) + P(b beats a) = 1.
+    expect(expectedScore(0.7, -0.3) + expectedScore(-0.3, 0.7)).toBeCloseTo(1, 12);
+    // On the model's own scale, a gap of one unit is σ(probScale).
+    expect(expectedScore(1, 0)).toBeCloseTo(1 / (1 + Math.exp(-MODEL.probScale)), 12);
   });
 });
 
@@ -224,98 +95,129 @@ describe('the contribution ledger', () => {
   });
 });
 
-describe('personal performance', () => {
-  const OPTS = { outcomeWeight: 0.3, performanceScale: 9 };
+describe('the fit', () => {
+  it('is order-invariant — a convex optimum, not a replay', () => {
+    // The single defining property that Elo did not have: because the objective
+    // is convex, the same rows in any order give the same ratings. Shuffle the
+    // whole CSV and the fit lands in exactly the same place.
+    const rows = loadStatRows();
+    const shuffled = [...rows];
+    // A fixed, arbitrary permutation — deterministic so the test is stable.
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = (i * 2654435761) % (i + 1);
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    const a = fitModel(rows);
+    const b = fitModel(shuffled);
+    for (const [player, skill] of a.skills) {
+      expect(b.skills.get(player)).toBeCloseTo(skill, 9);
+    }
+  });
 
-  it('blends the result with the stat gap against the opposing pair', () => {
+  it('reads the result from win?, and never from the scoreline', () => {
+    // 5-5 with no breaker recorded: the scoreline says nothing, win? says Pink.
+    const rows = normalizeRows([
+      raw({ Team: 'Pink', Opponent: 'Navy', Season: '4', Round: '9', Score: '5-5',
+            Player: 'A One', 'win?': 'TRUE', 'Team Score': '5', 'Opponent Score': '5' }),
+      raw({ Team: 'Pink', Opponent: 'Navy', Season: '4', Round: '9', Score: '5-5',
+            Player: 'B Two', 'win?': 'TRUE', 'Team Score': '5', 'Opponent Score': '5' }),
+      raw({ Team: 'Navy', Opponent: 'Pink', Season: '4', Round: '9', Score: '5-5',
+            Player: 'C Three', 'win?': 'FALSE', 'Team Score': '5', 'Opponent Score': '5' }),
+      raw({ Team: 'Navy', Opponent: 'Pink', Season: '4', Round: '9', Score: '5-5',
+            Player: 'D Four', 'win?': 'FALSE', 'Team Score': '5', 'Opponent Score': '5' }),
+    ]);
+    const { skills } = fitModel(rows);
+    expect(skills.get('A One')!).toBeGreaterThan(skills.get('C Three')!);
+  });
+
+  it('leaves a match nobody won symmetric — half a point each way', () => {
     const rows = normalizeRows(
-      match('2', '1',
-        { team: 'Pink', players: ['A One', 'B Two'], stats: [[10, 0], [10, 0]] },
-        { team: 'Navy', players: ['C Three', 'D Four'], stats: [[0, 0], [0, 0]] })
+      match('2', '1', { team: 'Pink', players: ['A One', 'B Two'] },
+                       { team: 'Navy', players: ['C Three', 'D Four'] },
+            { draw: true })
     );
-    const pink = rows.filter((r) => r.team === 'Pink');
-    const navy = rows.filter((r) => r.team === 'Navy');
-    // Both Pink players are +10 against an opponent pair averaging 0.
-    const performance = 0.5 + 0.5 * Math.tanh(10 / 9);
-    const expected = 0.3 * 1 + 0.7 * performance;
-    expect(personalScores(pink, navy, 1, OPTS)).toEqual([expected, expected]);
+    const { skills } = fitModel(rows);
+    // A perfectly symmetric draw: nobody separates from anybody.
+    expect(skills.get('A One')!).toBeCloseTo(skills.get('C Three')!, 9);
   });
 
-  it("does not depend on how the team-mate played — only on your own ledger against the opponents", () => {
-    const opponents = normalizeRows([
-      raw({ Team: 'Navy', Opponent: 'Pink', Season: '2', Round: '1', Player: 'C Three',
-            Winners: '0', 'Unforced Errors': '0' }),
-      raw({ Team: 'Navy', Opponent: 'Pink', Season: '2', Round: '1', Player: 'D Four',
-            Winners: '0', 'Unforced Errors': '0' }),
+  it('leaves a SINGLES GAME out of the fit entirely', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'Black', Opponent: 'Yellow', Season: '2', Round: '9', Score: '4-6',
+            Player: 'SINGLES GAME', 'win?': 'FALSE', 'Team Score': '4', 'Opponent Score': '6' }),
+      raw({ Team: 'Yellow', Opponent: 'Black', Season: '2', Round: '9', Score: '6-4',
+            Player: 'SINGLES GAME', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '4' }),
     ]);
-    const withGreatPartner = normalizeRows([
-      raw({ Team: 'Pink', Opponent: 'Navy', Season: '2', Round: '1', Player: 'A One',
-            Winners: '8', 'Unforced Errors': '0' }),
-      raw({ Team: 'Pink', Opponent: 'Navy', Season: '2', Round: '1', Player: 'B Two',
-            Winners: '8', 'Unforced Errors': '0' }),
-    ]);
-    const withTerriblePartner = normalizeRows([
-      raw({ Team: 'Pink', Opponent: 'Navy', Season: '2', Round: '1', Player: 'A One',
-            Winners: '8', 'Unforced Errors': '0' }),
-      raw({ Team: 'Pink', Opponent: 'Navy', Season: '2', Round: '1', Player: 'B Two',
-            Winners: '0', 'Unforced Errors': '20' }),
-    ]);
-    // A One's own line is identical in both; B Two's collapses in the second.
-    // The old team-delta split couldn't isolate that — this can.
-    const withGreat = personalScores(withGreatPartner, opponents, 0, OPTS)[0];
-    const withTerrible = personalScores(withTerriblePartner, opponents, 0, OPTS)[0];
-    expect(withGreat).toBeCloseTo(withTerrible, 10);
-  });
-
-  it('falls back to the result alone when either side has no stat line', () => {
-    const statted = normalizeRows([
-      raw({ Team: 'Pink', Opponent: 'Navy', Season: '2', Round: '1', Player: 'A One',
-            Winners: '10', 'Unforced Errors': '0' }),
-    ]);
-    const blank = normalizeRows([
-      raw({ Team: 'Navy', Opponent: 'Pink', Season: '2', Round: '1', Player: 'C Three' }),
-    ]);
-    // A blank opponent ledger is as unusable as a blank own one — the
-    // comparison this needs has two sides.
-    expect(personalScores(statted, blank, 1, OPTS)).toEqual([1]);
-    expect(personalScores(blank, statted, 0, OPTS)).toEqual([0]);
-  });
-
-  it('lets a standout performance in a losing match be a net rating gain', () => {
-    // Pink loses, but A One and B Two are both +10 against a Navy pair
-    // averaging −10 — the kind of night the old split could only ever soften
-    // a loss for, never turn around.
-    const rows = normalizeRows(
-      match('2', '1',
-        { team: 'Navy', players: ['C Three', 'D Four'], stats: [[0, 10], [0, 10]] },
-        { team: 'Pink', players: ['A One', 'B Two'], stats: [[10, 0], [10, 0]] })
-    );
-    const { ratings } = replay(rows, { k: 32, seasonRegression: 0, ...OPTS });
-    expect(ratings.get('A One')!).toBeGreaterThan(ELO.start);
-    expect(ratings.get('B Two')!).toBeGreaterThan(ELO.start);
-    // Navy won it, but played the worse match by the ledger, and drop.
-    expect(ratings.get('C Three')!).toBeLessThan(ELO.start);
-    expect(ratings.get('D Four')!).toBeLessThan(ELO.start);
+    const model = fitModel(rows);
+    expect(model.skills.size).toBe(0);
+    expect(model.matches).toEqual([]);
   });
 });
 
-describe('predicting an unplayed match', () => {
+describe('sample-size resistance', () => {
+  it('trusts a thin record less than a thick one', () => {
+    // Two would-be stars, each unbeaten against weak pairs, but one has played
+    // four times as often. The ridge penalty keeps the two-match player closer
+    // to the middle: the data hasn't earned the same claim yet.
+    const rounds: Record<string, string>[] = [];
+    for (let r = 1; r <= 8; r++) {
+      rounds.push(...match('2', String(r),
+        { team: 'Heavy', players: ['Heavy Star', 'Heavy Mate'] },
+        { team: `Weak${r}`, players: [`W${r} One`, `W${r} Two`] }));
+    }
+    for (let r = 1; r <= 2; r++) {
+      rounds.push(...match('2', String(r),
+        { team: 'Light', players: ['Light Star', 'Light Mate'] },
+        { team: `Foil${r}`, players: [`F${r} One`, `F${r} Two`] }));
+    }
+    const { skills } = fitModel(normalizeRows(rounds));
+    expect(skills.get('Heavy Star')!).toBeGreaterThan(0);
+    expect(skills.get('Light Star')!).toBeGreaterThan(0);
+    // Same unbeaten story, but four times the evidence sits further out.
+    expect(skills.get('Heavy Star')!).toBeGreaterThan(skills.get('Light Star')!);
+  });
+});
+
+describe('separating a player from their team-mate', () => {
+  it('rewards the standout in a loss and drops the passenger who was carried', () => {
+    // Pink lose, but A One was +10 on the ledger against a Navy pair averaging 0
+    // while B Two was −20. The stat channel rates them apart despite one shared
+    // result — the "good player, bad team-mates" fix.
+    const rows = normalizeRows(
+      match('2', '1',
+        { team: 'Navy', players: ['C Three', 'D Four'], stats: [[5, 5], [5, 5]] },
+        { team: 'Pink', players: ['A One', 'B Two'], stats: [[10, 0], [0, 20]] })
+    );
+    const { skills } = fitModel(rows);
+    // A One out-performed everyone on court and lost — still ends up ahead of
+    // their own team-mate, who gave the night away.
+    expect(skills.get('A One')!).toBeGreaterThan(skills.get('B Two')!);
+    // And ahead of the opponents they out-played, result notwithstanding.
+    expect(skills.get('A One')!).toBeGreaterThan(skills.get('C Three')!);
+  });
+});
+
+describe('predicting from a set of ratings', () => {
+  const model = {
+    skills: new Map([
+      ['A One', 2],
+      ['B Two', -2],
+      ['C Three', 1],
+      ['D Four', -1],
+    ]),
+    display: { mean: 0, sd: 1 },
+  } as unknown as Model;
+
   it('rates a pair at the mean of its players', () => {
-    const ratings = new Map([
-      ['A One', 1700],
-      ['B Two', 1500],
-      ['C Three', 1600],
-      ['D Four', 1600],
-    ]);
-    // 1600 against 1600 — the pairs are level however the talent is spread.
-    expect(predictPair(['A One', 'B Two'], ['C Three', 'D Four'], ratings)).toBe(0.5);
+    // 0 against 0 — the pairs are level however the talent is spread.
+    expect(predictPair(['A One', 'B Two'], ['C Three', 'D Four'], model)).toBe(0.5);
   });
 
-  it('treats an unknown player as the starting rating', () => {
-    const ratings = new Map([['A One', 1700]]);
-    expect(predictPair(['A One'], ['Nobody At All'], ratings)).toBeCloseTo(
-      expectedScore(1700, ELO.start),
-      10
+  it('treats an unknown player as league-average skill', () => {
+    const one = { skills: new Map([['A One', 1.3]]), display: { mean: 0, sd: 1 } } as unknown as Model;
+    expect(predictPair(['A One'], ['Nobody At All'], one)).toBeCloseTo(
+      expectedScore(1.3, 0),
+      12
     );
   });
 });
@@ -324,36 +226,30 @@ describe('the model against the real CSV', () => {
   const rows = loadStatRows();
   const b = backtest(rows);
 
-  it('calls appreciably more than half of them right', () => {
+  it('calls appreciably more than half of them right, and is well calibrated', () => {
     expect(b.called).toBeGreaterThan(150);
     expect(b.accuracy).toBeGreaterThan(0.6);
-    // A coin gets 0.25; anything at or above that is not worth publishing.
+    // A coin gets 0.25; the model comes in clearly under it.
     expect(b.brier).toBeLessThan(0.24);
   });
 
   it('declines to call the handful where both sides rated level', () => {
-    // Season 1 Round 1: eight players who had never been rated. The model had
-    // no opinion, and those matches stay out of the denominator.
+    // Season 1 Round 1: players the fit had never seen, so both pairs sit at
+    // the mean. Those matches stay out of the accuracy denominator.
     expect(b.levelled).toBeGreaterThan(0);
     expect(b.called + b.levelled).toBe(b.matches.filter((m) => !m.isDraw).length);
   });
 
-  it('is honest that it cannot call an opening round', () => {
-    const early = b.matches.filter(
-      (m) => !m.isFinals && m.round <= 2 && m.correct !== null
-    );
-    const hit = early.filter((m) => m.correct).length / early.length;
-    // Not an assertion that it's bad — an assertion that we know it is, so the
-    // UI keeps saying so. After a redraft, prior form predicts nothing.
-    expect(hit).toBeLessThan(0.6);
-  });
-
-  it('does much better once a season has some form in it', () => {
-    const late = b.matches.filter(
-      (m) => (m.isFinals || m.round > 2) && m.correct !== null
-    );
-    const hit = late.filter((m) => m.correct).length / late.length;
-    expect(hit).toBeGreaterThan(0.64);
+  it('reads a settled round better than an opening one', () => {
+    // After a redraft, an opener has little form behind it, so the model does
+    // worse there than once a season has some results in it. Not a claim it's
+    // bad at openers — a check that the gap is the right way round, so the UI's
+    // "line-ball" hedging stays honest.
+    const early = b.matches.filter((m) => !m.isFinals && m.round <= 2 && m.correct !== null);
+    const late = b.matches.filter((m) => (m.isFinals || m.round > 2) && m.correct !== null);
+    const hit = (ms: typeof early) => ms.filter((m) => m.correct).length / ms.length;
+    expect(hit(late)).toBeGreaterThan(hit(early));
+    expect(hit(late)).toBeGreaterThan(0.6);
   });
 
   it('never touches the votes column', async () => {
@@ -366,6 +262,10 @@ describe('the model against the real CSV', () => {
       .replace(/^\s*\/\/.*$/gm, '');
     expect(code).not.toMatch(/\bvotes\b/);
     expect(code).not.toMatch(/\bbog\b/i);
+  });
+
+  it('has an honest headline', () => {
+    expect(accuracyHeadline(b)).toMatch(/^\d+ of \d+ matches \(\d+\.\d%\)$/);
   });
 });
 
@@ -383,18 +283,12 @@ describe('the power ratings', () => {
 
   it('is not just a count of matches played', () => {
     const byRating = table.map((p) => p.player);
-    const byMatches = [...table]
-      .sort((a, b) => b.matches - a.matches)
-      .map((p) => p.player);
+    const byMatches = [...table].sort((a, b) => b.matches - a.matches).map((p) => p.player);
     expect(byRating).not.toEqual(byMatches);
-    // Concretely: the top five by rating and the top five by matches played
-    // are different lists — the busiest player can also be the best-rated one
-    // (form and volume aren't opposites), but rating and volume diverge fast
-    // below that, and someone with a fraction of the matches can still
-    // outrank a high-volume player.
     const top5ByRating = [...byRating.slice(0, 5)].sort();
     const top5ByMatches = [...byMatches.slice(0, 5)].sort();
     expect(top5ByRating).not.toEqual(top5ByMatches);
+    // Someone with well short of a full career can still sit in the top five.
     expect(table.slice(0, 5).some((p) => p.matches < 28)).toBe(true);
   });
 
@@ -405,55 +299,42 @@ describe('the power ratings', () => {
 
 describe('the committed constants', () => {
   it('still seat all four face-validity names inside the top 8', () => {
-    // k and scale are no longer purely what `tune()` would pick on accuracy
-    // alone — they're pulled bolder than that on purpose (see ELO's own
-    // comments), a real, acknowledged accuracy trade. What isn't negotiable is
-    // the sanity check underneath it: whatever the constants, the table still
-    // has to put the league's known best players near the top, or "bold" has
-    // tipped into "wrong".
     const table = powerRankings(
-      replay(undefined, {
-        k: ELO.k,
-        seasonRegression: ELO.seasonRegression,
-        outcomeWeight: ELO.outcomeWeight,
-        performanceScale: ELO.performanceScale,
+      fitModel(undefined, {
+        winWeight: MODEL.winWeight,
+        statWeight: MODEL.statWeight,
+        ridge: MODEL.ridge,
+        halfLife: MODEL.halfLife,
       })
     );
     expect(passesFaceValidity(table)).toBe(true);
   });
 
-  it("tune()'s own accuracy-best setting still clears its own gate cheaply", () => {
-    // This is a check on the search, not on what's committed: it confirms the
-    // face-validity gate stays a sanity check rather than a thumb on the
-    // scale, independently of whatever boldness trade the committed constants
-    // make. `ELO.scale` still feeds every replay inside `tune()`, so this
-    // number moves if `scale` does — it's re-measured, not hard-coded from a
-    // stale run.
+  it("are close to tune()'s own accuracy-best, and the gate costs nothing", () => {
     const results = tune();
     const bestOverall = Math.max(...results.map((t) => t.result.accuracy));
     const bestPassing = Math.max(
       ...results.filter((t) => t.facesValid).map((t) => t.result.accuracy)
     );
-    // accuracy = correct / called, so the gap in accuracy converts to "calls
-    // given up" against `called`, not the wider `called + levelled` count.
     const called = results[0].result.called;
+    // The face-validity gate sorts nothing good out of reach: the best setting
+    // that passes it is within a call or two of the best setting overall.
     expect(bestOverall - bestPassing).toBeLessThanOrEqual(2 / called + 1e-9);
+    // The committed constants are among the strongest face-valid settings.
+    const committed = backtest().accuracy;
+    expect(bestPassing - committed).toBeLessThanOrEqual(2 / called + 1e-9);
   });
 });
 
-describe('a season the replay has not reached', () => {
-  it('regresses before predicting it, so an opener still reads as a soft call', async () => {
-    const { predictionFor } = await import('./predict.ts');
+describe('a season the fit has not reached', () => {
+  it('predicts a redrafted opener as a soft call, never a lock', () => {
     const fixtures = seasonMatches(loadStatRows(), 5).filter((m) => m.scheduled);
     expect(fixtures.length).toBeGreaterThan(0);
     for (const m of fixtures) {
       const p = predictionFor(m);
       expect(p.scheduled).toBe(true);
-      // The bolder `scale` means an opener is no longer pinned near dead
-      // level — that's the point. But a redrafted pairing genuinely has no
-      // season-specific form yet, so this is a looser ceiling, not none: if a
-      // scheduled S5 match starts reading as a near-lock, the model is
-      // claiming a confidence the data behind it can't back up.
+      // A redrafted pairing has no season-specific form yet: carried skills,
+      // ridge and recency decay together keep every opener well short of a lock.
       expect(Math.abs(p.probability - 0.5)).toBeLessThan(0.3);
     }
   });

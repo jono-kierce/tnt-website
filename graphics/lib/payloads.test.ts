@@ -11,8 +11,9 @@ import {
   rows,
   seasonRounds,
   statBoardPayload,
+  streakBoardPayload,
 } from './payloads.ts';
-import { ladderWithPairings } from '../../src/lib/stats.ts';
+import { ladderWithPairings, winStreaks } from '../../src/lib/stats.ts';
 import { SITE, TEAMS } from '../../src/config/site.ts';
 import { getSeasonConfig } from './season-configs.ts';
 
@@ -167,19 +168,24 @@ describe('preview board', () => {
     expect(p.matches).toHaveLength(4);
     expect(p.matches.map((m) => [m.teamA, m.teamB])).toEqual([
       ['Green', 'Orange'],
-      ['Black', 'Pink'],
       ['Light Blue', 'White'],
+      ['Black', 'Pink'],
       ['Red', 'Yellow'],
     ]);
     expect(p.matches.every((m) => m.time)).toBe(true);
     expect(p.byes).toEqual(['Brown', 'Navy'].sort());
   });
 
-  it('takes pairings from the season config, same as the ladder and result cards', async () => {
+  it('takes pairings from the fixture line-up, captain-first, not the season default', async () => {
     const p = await previewPayload(5, resolveRound('1'));
     const orange = p.matches.find((m) => m.teamA === 'Orange' || m.teamB === 'Orange')!;
-    const pairing = orange.teamA === 'Orange' ? orange.pairingA : orange.pairingB;
-    expect(pairing).toBe('J. Gorton & L. Godden');
+    const orangePair = orange.teamA === 'Orange' ? orange.pairingA : orange.pairingB;
+    expect(orangePair).toBe('J. Gorton & L. Godden');
+    // White's config draftee is Jackson Virgona, but the R1 sheet lists Conor
+    // Paraskevas — the preview must print who's actually playing.
+    const white = p.matches.find((m) => m.teamA === 'White' || m.teamB === 'White')!;
+    const whitePair = white.teamA === 'White' ? white.pairingA : white.pairingB;
+    expect(whitePair).toBe('J. Kierce & C. Paraskevas');
   });
 
   it('never carries a win probability — insights only, or nothing', async () => {
@@ -354,5 +360,25 @@ describe('stat boards', () => {
     expect(() =>
       statBoardPayload({ id: 'mvp', title: 'x', metricLabel: 'Votes', stat: 'votes', season: 4 })
     ).not.toThrow();
+  });
+});
+
+describe('streak board', () => {
+  it('mirrors the site’s winStreaks: same order and counts', () => {
+    const p = streakBoardPayload();
+    const src = winStreaks(rows).slice(0, 5);
+    expect(p.rows).toHaveLength(5);
+    expect(p.rows.map((r) => [r.player, r.streak, r.active])).toEqual(
+      src.map((s) => [s.player, s.streak, s.active])
+    );
+    // Ranks are 1..5 in the payload's own order.
+    expect(p.rows.map((r) => r.rank)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('footnotes the asterisk only when a shown streak is still active', () => {
+    const p = streakBoardPayload();
+    const hasActive = p.rows.some((r) => r.active);
+    expect(p.footnote.includes('* Streak still active')).toBe(hasActive);
+    expect(p.footnote).toContain('Fill-in matches excluded');
   });
 });

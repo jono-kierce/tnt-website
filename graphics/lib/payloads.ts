@@ -16,7 +16,10 @@ import {
   matchSides,
   playerAgg,
   teamRoster,
+  lineupPairingName,
   seasonRounds as matchRoundsFor,
+  winStreaks,
+  streakEndLabel,
   type LeaderStat,
   type PlayerAgg,
   type StatScope,
@@ -397,20 +400,23 @@ export async function previewPayload(
   }
 
   const teamConfig = await seasonTeamConfigs(season);
-  const pairing = (team: string) =>
-    teamRoster(team, season, rows, teamConfig(team)).pairingName;
 
   const matches: PreviewMatchPayload[] = sr.matches
     .filter((m) => m.scheduled)
     .map((m) => {
       const [a, b] = m.sides;
+      // The line-up as the sheet lists it for this fixture — so a stand-in
+      // prints who's actually playing, not the season's default pairing. Falls
+      // back to the config pair only when a side has no rows to read.
+      const pairing = (side: typeof a) =>
+        lineupPairingName(side.players, teamConfig(side.team));
       // Top-weighted only — a preview card has room for one line, not three.
       const [top] = insightsFor(m, rows, field, 1);
       return {
         teamA: a.team,
-        pairingA: pairing(a.team),
+        pairingA: pairing(a),
         teamB: b.team,
-        pairingB: pairing(b.team),
+        pairingB: pairing(b),
         time: formatTime(m.start),
         insight: top ? { label: top.label, detail: top.detail } : null,
       };
@@ -707,5 +713,72 @@ export function statBoardPayload(spec: StatBoardSpec): StatBoardPayload {
             cutout: spec.cutout ?? false,
           }
         : null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Streak board — the record books, not a per-set leaderboard
+// ---------------------------------------------------------------------------
+
+export interface StreakBoardRowPayload {
+  rank: number;
+  player: string;
+  slug: string;
+  /** For the colour spine. The player's most recent team — a colour, not a stat. */
+  team: string | null;
+  /** Matches won in a row. */
+  streak: number;
+  /** The run is still alive: their last match was a win and it's their peak. */
+  active: boolean;
+  /** When the run spanned: "S1R4 – S1Final", or "S4R1 – ongoing" if still live. */
+  range: string;
+}
+
+export interface StreakBoardPayload {
+  kind: 'streak-board';
+  id: string;
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  metricLabel: string;
+  footnote: string;
+  rows: StreakBoardRowPayload[];
+}
+
+/**
+ * The longest win streaks on record — a record book, so it reads career-wide
+ * and finals count. Presentation only: `winStreaks` in `stats.ts` does the
+ * counting and decides what "still active" means; the asterisk is just how we
+ * print that flag. The colour spine is a lookup, not a statistic.
+ */
+export function streakBoardPayload(count = 5): StreakBoardPayload {
+  const board = winStreaks(rows).slice(0, count);
+  const payloadRows: StreakBoardRowPayload[] = board.map((s, i) => ({
+    rank: i + 1,
+    player: s.player,
+    slug: s.slug,
+    team: teamForChip(s.player),
+    streak: s.streak,
+    active: s.active,
+    // Bracket the run. An active streak has no closing round yet, so it reads
+    // as ongoing rather than pretending the last win was the end of it.
+    range:
+      s.from && s.to
+        ? `${streakEndLabel(s.from)} – ${s.active ? 'ongoing' : streakEndLabel(s.to)}`
+        : '',
+  }));
+
+  const notes = ['Fill-in matches excluded'];
+  if (payloadRows.some((r) => r.active)) notes.unshift('* Streak still active');
+
+  return {
+    kind: 'streak-board',
+    id: 'longest-win-streaks',
+    eyebrow: 'All time',
+    title: 'Longest Win Streaks',
+    subtitle: 'Most matches won in a row',
+    metricLabel: 'In a row',
+    footnote: notes.join(' · '),
+    rows: payloadRows,
   };
 }

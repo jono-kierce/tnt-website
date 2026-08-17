@@ -32,6 +32,7 @@ import {
   resultCardPayloads,
   rows as allRows,
   statBoardPayload,
+  streakBoardPayload,
 } from './lib/payloads.ts';
 import { SITE } from '../src/config/site.ts';
 
@@ -64,9 +65,11 @@ TNT graphics renderer
   --season <n>     Season to render. Default: SITE.currentSeason (${SITE.currentSeason}).
   --round <r>      Round number, or QF / SF / F. Default: the season's latest
                    round in the CSV.
-  --only <list>    Comma-separated: ladder, results, boards, draft, preview.
-                   Default: ladder,results,boards — draft and preview are
-                   once-off posts, so they only render when you ask for them.
+  --only <list>    Comma-separated: ladder, results, boards, draft, preview,
+                   streaks. Default: ladder,results,boards — draft, preview and
+                   streaks are once-off posts, so they only render when asked.
+                   streaks is the all-time record book (longest win streaks);
+                   it needs no --season or --round.
                    preview needs no --round: it defaults to the next round
                    with an unplayed fixture, which is the point of it — run it
                    the day before with no flags and get next Tuesday's card.
@@ -91,7 +94,7 @@ if (!Number.isFinite(season)) {
 // `draft` and `preview` are deliberately not in the default set — a draft is a
 // once-a-season post, and a preview is a once-a-week one you ask for the day
 // before, not something every CI push should render.
-const KINDS = ['ladder', 'results', 'boards', 'draft', 'preview'];
+const KINDS = ['ladder', 'results', 'boards', 'draft', 'preview', 'streaks'];
 const only = new Set(
   (argv.only ?? 'ladder,results,boards').split(',').map((s) => s.trim()).filter(Boolean)
 );
@@ -239,6 +242,12 @@ if (only.has('preview')) {
       await shoot('preview.html', payload, `s${season}-${previewRound.fileTag}-preview.png`);
     }
   }
+}
+
+if (only.has('streaks')) {
+  // All-time record book — no season, no round. A once-off post, so it's out
+  // of the default set like draft and preview.
+  await shoot('streak-board.html', streakBoardPayload(), 'longest-win-streaks.png');
 }
 
 if (only.has('ladder')) {

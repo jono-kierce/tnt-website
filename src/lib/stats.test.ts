@@ -17,6 +17,7 @@ import {
   seasonMatches,
   seasonRounds,
   teamRoster,
+  lineupPairingName,
   winStreaks,
 } from './stats.ts';
 import { canonicalName, shortName, stripFillIn } from '../config/aliases.ts';
@@ -340,6 +341,34 @@ describe('roster derivation', () => {
     });
     expect(r.pairingName).toBe('L. Jenkin & J. Virgona');
     expect(r.captain).toBe('Lachlan Jenkin');
+  });
+});
+
+describe('lineupPairingName (fixture line-up, sheet-first)', () => {
+  const override = {
+    pair: ['Jonathan Kierce', 'Jackson Virgona'],
+    captain: 'Jonathan Kierce',
+  };
+
+  it('prefers who the sheet lists over the config pairing', () => {
+    // Jackson Virgona is the config draftee, but this fixture lists Conor.
+    const players = normalizeRows([
+      raw({ Team: 'White', Season: '5', Round: '1', Player: 'Jonathan Kierce' }),
+      raw({ Team: 'White', Season: '5', Round: '1', Player: 'Conor Paraskevas' }),
+    ]);
+    expect(lineupPairingName(players, override)).toBe('J. Kierce & C. Paraskevas');
+  });
+
+  it('puts the captain first regardless of CSV row order', () => {
+    const players = normalizeRows([
+      raw({ Team: 'White', Season: '5', Round: '1', Player: 'Conor Paraskevas' }),
+      raw({ Team: 'White', Season: '5', Round: '1', Player: 'Jonathan Kierce' }),
+    ]);
+    expect(lineupPairingName(players, override)).toBe('J. Kierce & C. Paraskevas');
+  });
+
+  it('falls back to the config pair when a side has no rows', () => {
+    expect(lineupPairingName([], override)).toBe('J. Kierce & J. Virgona');
   });
 });
 
@@ -691,6 +720,23 @@ describe('finals rows', () => {
       finalRow({ Player: 'Hero' }),
     ]);
     expect(winStreaks(rows)[0]).toMatchObject({ player: 'Hero', streak: 4 });
+  });
+
+  it('marks a streak active while the last match is a win at the peak', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '1', Player: 'Live', 'win?': 'TRUE' }),
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '2', Player: 'Live', 'win?': 'TRUE' }),
+    ]);
+    expect(winStreaks(rows)[0]).toMatchObject({ player: 'Live', streak: 2, active: true });
+  });
+
+  it('marks a streak inactive once a loss breaks it', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '1', Player: 'Done', 'win?': 'TRUE' }),
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '2', Player: 'Done', 'win?': 'TRUE' }),
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '3', Player: 'Done', 'win?': 'FALSE' }),
+    ]);
+    expect(winStreaks(rows)[0]).toMatchObject({ player: 'Done', streak: 2, active: false });
   });
 });
 

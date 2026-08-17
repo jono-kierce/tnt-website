@@ -54,7 +54,9 @@ src/lib/normalize.ts     THE normalization layer: CSV -> StatRow[], all quirks h
                           derivation, Round->stage, Score->sets, played-vs-fixture)
 src/lib/stats.ts         ladder, rosters/pairings, player aggregates, leaderboards,
                          records, and MatchRecord/seasonRounds (whole matches + byes)
-src/lib/predict.ts       the Elo model: win probabilities, power ratings, backtest
+src/lib/predict.ts       the rating model: regularised global skill fit, win
+                         probabilities, power ratings, backtest, tuning
+src/lib/linalg.ts        dependency-free Cholesky SPD solve, for the fit's Newton steps
 src/lib/insights.ts      rule-based "worth knowing" lines for a match page
 src/lib/ranks.ts         where a player sits in the field — the stat-panel badges
 src/lib/site-data.ts     page-facing helpers (season ladder, MVP tally, fun stats)
@@ -224,73 +226,72 @@ before — no prediction, at most one `insights.ts` line per fixture). **Read
 
 ## The prediction model (`src/lib/predict.ts`)
 
-Per-player Elo, replayed chronologically over every played match from S1 R1. A
-pair rates at the mean of its two players for prediction purposes, but each
-player is *updated* individually against the opposing pair's mean rating —
-not as a share of a team result. Rules that matter:
+A per-player skill rating fit as **one regularised, globally-optimal estimate**,
+not accumulated match by match. This replaced a per-player Elo replay: Elo is an
+online tracker with a fixed step, so it never settles — a strong player keeps
+clearing expectation and drifts up for as long as they keep playing, and a
+rating ends up ~half-explained by how *many* matches someone has played (the
+old ratings correlated 0.48 with match count). This model instead finds the
+single set of skills that best explains every result at once, under a ridge
+penalty that pulls thin samples back to the mean. It doesn't drift (it's an
+optimum), it's resistant to volume (the penalty is the shrinkage), and it's the
+same whatever order the rows arrive in. The linear algebra it needs — an SPD
+solve per Newton step — lives in `src/lib/linalg.ts` (Cholesky, dependency-free).
+
+Two signals feed the same skill, in one convex objective:
+
+- **who won** — a Bradley-Terry (logistic) term; a pair rates at the mean of its
+  two players.
+- **how the night went** — a least-squares term on each *player's own*
+  `contribution` per set (`winners + aces + errorsForced − unforcedErrors −
+  doubleFaults`), net of the pair they faced: `z ≈ skill[self] − ½(skill[opp0] +
+  skill[opp1])`. Two team-mates who shared a result have different box scores,
+  so different targets — which is what lets the fit rate the one who did the work
+  above the one who was carried (Elo's old "good player, bad team-mates" blind
+  spot). Opponent strength is priced through the opponents' own *skills*, not
+  their box score, so the same signal drives both channels and isn't double-counted.
+
+Rules that matter:
 
 - **It never reads `votes`** — a test greps the file to prove it. That's what
   makes it safe against a sealed season.
 - **Outcomes come from `win?`**, via `MatchRecord.winner`, never from counting
   sets. A match with both sides flagged alike scores 0.5 (no such match exists;
   the S4 R9 `5-5` has a winner — it's the *set* that has no breaker recorded).
-- **A player's own score blends the result with personal performance against
-  the pair across the net**, not a share of a team-wide delta. `outcomeWeight`
-  (0.3) of the score is the match result — the same for both team-mates, a win
-  or a loss; the rest is `0.5 + 0.5 × tanh((own net stat − opponent pair's mean
-  net stat) / performanceScale)`, where net stat is `(winners + aces + errors
-  forced) − (unforced errors + double faults)`. Forced errors stay out of the
-  ledger — they're the opponent's credit, already counted on their side. This
-  is the direct fix for the old model's blind spot: a player who performed well
-  personally could previously only ever lose *less* on a losing side, never
-  gain — because the team's delta was fixed by the result and only reallocated.
-  Now each player is rated against the opponent pair's rating directly, so a
-  standout night against a strong pair can be a net gain even in a loss, and a
-  passenger's rating no longer rides on a team-mate's night. **Opponent
-  strength is priced in only once**, through the surrounding Elo expectation
-  (`expectedScore(playerRating, opponentPairRating)`) — the stat comparison
-  itself doesn't also weight by opponent rating, which would double-count the
-  same signal. Falls back to the result alone when either side has no stat
-  line, which is every finals night on record bar Season 3's.
-- **The model gives up classic Elo's zero-sum property, on purpose.** A
-  player's delta no longer depends on a team-mate's, so a match's four deltas
-  don't have to net to zero. That's the price of rating performance instead of
-  just result.
-- **Most constants are tuned, not guessed; `k` and `scale` are the exception.**
-  `tune()` grid-searches `k`, `seasonRegression`, `outcomeWeight` and
-  `performanceScale` and a test re-runs it, so new results can't leave the
-  search itself stale. Ranked on accuracy among settings passing a
-  face-validity gate (four named players inside the top eight of twenty-six
-  qualified players) — an editorial judgement, documented as one. At eight,
-  185 of 1225 settings searched clear it, for a cost of two calls out of 166
-  against the best setting with no gate at all; at six, **nothing in the
-  search clears it** — not a stricter gate, an unsatisfiable one.
-  `outcomeWeight` is floored at 0.3 in the search grid itself: the
-  unconstrained accuracy-best wants 0.1, but a win needs to stay "a large
-  part" of a player's score on principle, not just whatever the backtest
-  prefers. `k` (20) and `ELO.scale` (250, down from Elo's own 400) are then
-  hand-pushed bolder than the pure accuracy-best pick, on purpose — the
-  committed constants no longer equal `tune()`'s own top result, only a test
-  that they still clear the face-validity gate. `scale` in particular costs
-  nothing in raw call-correctness (`favourite`/`correct` come from the *sign*
-  of a rating gap, which `scale` never touches) — it only makes a given gap
-  read as a bolder percentage, at a real cost to calibration (Brier). `k`
-  genuinely does trade accuracy for reactivity: the tuned k=16 called 66.9% of
-  166; the committed k=20 with scale=250 calls 62.7%.
-- **Between-season regression dropped to zero** — the opposite of the old
-  team-split model's 0.9, and worth flagging because that file used to call
-  the relationship monotonic in the other direction. The difference: a rating
-  built from personal stat performance already tracks current form more
-  closely than one built purely from accumulated team win/loss, so there's
-  less staleness left to regress away in January.
-- **It still cannot genuinely call an opening round — it just no longer looks
-  that humble about it.** Backtest accuracy on rounds 1–2 sits at 50%, no
-  better than a coin, same as ever: after a redraft, prior form says nothing,
-  and no amount of `scale` changes that. What `scale=250` changes is the
-  *display* — an S5 opener can now read as 65% instead of pinned near even,
-  which is a deliberate boldness trade, not a claim that the model learned
-  something new about redrafted pairings. `PredictionBar` still prints
-  "line-ball" inside 4% of even.
+- **The estimate is deterministic and order-free** — the objective is convex (a
+  logistic term, a quadratic term, a quadratic penalty), so it has one minimum
+  and the fit lands on it regardless of row order. A test shuffles the whole CSV
+  and asserts identical ratings — a stronger guarantee than the old replay's
+  "same order in, same numbers out".
+- **Every played match still carries its own PRE-match prediction.** `history()`
+  refits over only the matches strictly before each one (~169 small convex fits
+  at build, cached in `siteModel()`), so a 2023 result reads as the forecast it
+  would have been. The final full-history fit powers `powerRankings()` and any
+  future-season (S5) fixture, whose players simply carry their skills — the ridge
+  and recency decay together keep a redrafted opener soft, so **no separate
+  between-season regression is applied** (the old model's `seasonRegression` is gone).
+- **Recent matches count for more** (`MODEL.halfLife`, in matches): an
+  observation `halfLife` back counts half as much. This is what recovers the
+  in-season form a flat global fit throws away — without it the model backtests
+  ~58%; with it, it beats the old Elo. `halfLife = 100` (~2.3 seasons).
+- **Display vs probability are decoupled, on purpose.** `MODEL.probScale` sets
+  how bold a skill gap reads as a percentage; it never touches which side is
+  favoured or whether a call is right (those are the *sign* of the gap), so it's
+  tuned for calibration (Brier) alone — the same split the old model drew between
+  `k` and `scale`. Ratings are shown on a ~1500 scale via an affine map
+  (`MODEL.displayMean`/`displaySpread`) computed from the rated field's spread.
+- **`tune()` grid-searches `winWeight`, `statWeight`, `ridge` and `halfLife`**
+  and a test re-runs it, so new results can't leave the search stale. Ranked on
+  accuracy among settings passing the same **face-validity gate** (four named
+  players inside the top eight of the qualified field), Brier breaking ties. The
+  committed constants are `tune()`'s own top face-valid setting; the gate
+  currently costs nothing (best-passing == best-overall). `probScale` is not in
+  the grid — it changes no call, so it's fixed and tuned separately.
+- **Current standing:** ~68% of ~165 called matches, Brier ~0.22 — ahead of the
+  old Elo (62.7% / 0.2323) on both, while cutting the rating↔volume correlation
+  from 0.48 to ~0.41. Openers are still the weak spot (rounds 1–2 barely above a
+  coin) — a test asserts settled rounds beat openers, keeping the UI's
+  "line-ball" hedging (inside 4% of even, in `PredictionBar`) honest.
 
 ## Match insights (`src/lib/insights.ts`)
 
