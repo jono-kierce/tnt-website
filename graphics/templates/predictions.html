@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Predictions (Broadsheet)</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  /* One pundit's card: their name up top, six award calls down the left. The
+     right-hand column is left empty on purpose — a photo cut-out of the analyst
+     is dropped into the bottom-right quarter in Canva after the render. */
+  header { flex: none; }
+  /* No eyebrow now — the analyst's name is the top line, anchored at the safe
+     margin (out of the crop band, since a title is load-bearing text). */
+  .headline { font-size: 60px; }
+  .rule-gold {
+    height: 2px; margin-top: 24px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  /* The picks live in a left column ~58% of the safe width, so the whole right
+     side — and the bottom-right quarter in particular — stays clear for the
+     cut-out. Six rows share the height evenly, the same rhythm as the preview. */
+  .picks {
+    flex: 1; width: 588px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 34px 0 26px;
+  }
+
+  .cat {
+    font-family: var(--display); font-weight: 600; font-size: 16px;
+    letter-spacing: 0.24em; text-transform: uppercase; color: var(--gold);
+    margin-bottom: 9px;
+  }
+  .line { display: flex; align-items: center; gap: 18px; }
+  .bar {
+    width: 8px; height: 58px; border-radius: 4px; flex: none;
+    background: linear-gradient(180deg, var(--team), var(--team-2));
+  }
+  .who { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .primary {
+    font-size: 40px; font-weight: 600; letter-spacing: 0.01em; line-height: 1.02;
+  }
+  .secondary {
+    font-size: 22px; color: rgba(244, 241, 232, 0.58);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  footer {
+    flex: none; display: flex; justify-content: space-between; align-items: flex-end;
+    padding-top: 20px; margin-bottom: -74px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+  }
+
+  /* The reserved cut-out zone — the bottom-right quarter of the full frame.
+     Only ever drawn under ?guides, so it never bakes into the PNG. */
+  .reserved { display: none; }
+  body.guides .reserved {
+    display: block; position: absolute; right: 0; bottom: 0;
+    width: 540px; height: 675px; z-index: 98;
+    outline: 1px dashed rgba(255, 200, 0, 0.75);
+  }
+  body.guides .reserved::after {
+    content: 'cut-out'; position: absolute; top: 8px; right: 12px;
+    font-family: var(--display); font-size: 14px; letter-spacing: 0.2em;
+    text-transform: uppercase; color: rgba(255, 200, 0, 0.85);
+  }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette">
+  <div class="mark mark--crest watermark"></div>
+
+  <header>
+    <h1 class="headline" id="analyst"></h1>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="picks" id="picks"></div>
+  <div class="reserved"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+  </footer>
+</div>
+
+<script type="module">
+/* Sample data, so this file opens straight in a browser and looks like the real
+   thing. `render.mjs` calls __render() again with the resolved picks. */
+const DATA = {
+  analyst: 'The Commissioner',
+  picks: [
+    { category: 'Champions', team: 'Yellow', primary: 'Yellow', secondary: 'L. Sharrock & J. Raines' },
+    { category: 'Minor Premiers', team: 'Navy', primary: 'Navy', secondary: 'W. Mumme & E. Simpson' },
+    { category: 'MVP', team: 'Pink', primary: 'Charlie Simpson', secondary: 'Pink' },
+    { category: 'Finals MVP', team: 'Yellow', primary: 'Luke Sharrock', secondary: 'Yellow' },
+    { category: 'Wooden Spoon', team: 'Black', primary: 'Black', secondary: 'A. Littlejohn & A. Hume' },
+    { category: 'Most Improved', team: 'Orange', primary: 'Lachy Godden', secondary: 'Orange' },
+  ],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+window.__render = function (d) {
+  document.getElementById('analyst').textContent = d.analyst ?? '';
+
+  document.getElementById('picks').innerHTML = (d.picks ?? []).map((p) => `
+    <div class="pick" data-team="${esc(p.team)}">
+      <div class="cat">${esc(p.category)}</div>
+      <div class="line">
+        <div class="bar"></div>
+        <div class="who">
+          <div class="primary">${esc(p.primary)}</div>
+          ${p.secondary ? `<div class="secondary">${esc(p.secondary)}</div>` : ''}
+        </div>
+      </div>
+    </div>`).join('');
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

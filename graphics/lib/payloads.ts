@@ -30,6 +30,8 @@ import type { MatchSide, SetScore, StatRow } from '../../src/lib/types.ts';
 import { SITE, isVotesSealed } from '../../src/config/site.ts';
 import { PHOTOS_DIR, avatarPhoto } from '../../src/lib/photos.ts';
 import { getSeasonConfig, seasonTeamConfigs, declaredTeams } from './season-configs.ts';
+import { shortName, slugify } from '../../src/config/aliases.ts';
+import { ANALYSTS, type AnalystPredictions } from './predictions.ts';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -623,6 +625,23 @@ function teamForChip(player: string, season?: number): string | null {
   ).team;
 }
 
+/**
+ * The colour a player wears *now* — their team in the current season, drawn
+ * from the fixtures even before a ball is hit (so it works while S5 is still
+ * an unplayed draw). Falls back to their most recent played team for anyone
+ * not in the current season. A colour lookup, not a statistic.
+ */
+function currentTeamForChip(player: string): string | null {
+  const drawn = rows.find(
+    (r) =>
+      r.season === SITE.currentSeason &&
+      r.player === player &&
+      !r.isSingles &&
+      !r.isFillIn
+  );
+  return drawn ? drawn.team : teamForChip(player);
+}
+
 /** "32 of 41 matches" when a stat is missing from some of them. */
 function coverageNote(agg: PlayerAgg, stat: LeaderStat): string | null {
   if (stat === 'winPct' || stat === 'winnerToUe' || stat === 'bog') return null;
@@ -757,7 +776,7 @@ export function streakBoardPayload(count = 5): StreakBoardPayload {
     rank: i + 1,
     player: s.player,
     slug: s.slug,
-    team: teamForChip(s.player),
+    team: currentTeamForChip(s.player),
     streak: s.streak,
     active: s.active,
     // Bracket the run. An active streak has no closing round yet, so it reads
@@ -776,9 +795,110 @@ export function streakBoardPayload(count = 5): StreakBoardPayload {
     id: 'longest-win-streaks',
     eyebrow: 'All time',
     title: 'Longest Win Streaks',
-    subtitle: 'Most matches won in a row',
-    metricLabel: 'In a row',
+    // The title carries the whole meaning; a subtitle and a value-column header
+    // would only say "win streak" twice more.
+    subtitle: '',
+    metricLabel: '',
     footnote: notes.join(' · '),
     rows: payloadRows,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Predictions — the analysts' pre-season picks
+// ---------------------------------------------------------------------------
+
+export interface PredictionPickPayload {
+  /** Award name, e.g. "Champions", "Finals MVP". */
+  category: string;
+  /** Colour key for the row's `data-team` spine. */
+  team: string;
+  /** The pick's headline: a team name, or a player's name. */
+  primary: string;
+  /** The supporting line: a team award's pairing, or an individual's team. */
+  secondary: string | null;
+}
+
+export interface PredictionsPayload {
+  kind: 'predictions';
+  eyebrow: string;
+  /** The pundit, shown as the card headline. */
+  analyst: string;
+  /** For the filename, e.g. "the-commissioner". */
+  slug: string;
+  /** Six picks, always in award order. */
+  picks: PredictionPickPayload[];
+}
+
+/**
+ * The six awards, in the order every card lists them. `team` awards resolve a
+ * colour to its pairing; `player` awards resolve a name to its colour.
+ */
+const PREDICTION_CATEGORIES = [
+  { label: 'Champions', field: 'champions', kind: 'team' },
+  { label: 'Minor Premiers', field: 'minorPremiers', kind: 'team' },
+  { label: 'MVP', field: 'mvp', kind: 'player' },
+  { label: 'Finals MVP', field: 'finalsMvp', kind: 'player' },
+  { label: 'Wooden Spoon', field: 'woodenSpoon', kind: 'team' },
+  { label: 'Most Improved', field: 'mostImproved', kind: 'player' },
+] as const;
+
+/**
+ * One card per analyst — their six picks, resolved against the season's draft.
+ *
+ * Presentation only, like every builder here: the pairing behind a colour and
+ * the colour a player wears both come from the season config, so a bare "Yellow"
+ * still prints its two players and a bare name still wears its team. A pick that
+ * resolves to no team or no player throws rather than posting a blank — this card
+ * gets published, so a silent miss is worse than a loud one.
+ */
+export async function predictionsPayloads(
+  season: number
+): Promise<PredictionsPayload[]> {
+  const cfg = await getSeasonConfig(season);
+  const teams = cfg?.teams;
+  if (!cfg || !teams) {
+    throw new Error(
+      `Season ${season} has no teams in src/config/seasons/season-${season}.ts, ` +
+        `so the analysts' picks can't be resolved to colours and pairings.`
+    );
+  }
+
+  /** A colour's pairing, captain-first as the config lists it: "L. Sharrock & J. Raines". */
+  const pairingOf = (team: string): string => {
+    const pair = teams[team]?.pair;
+    if (!pair?.length) {
+      throw new Error(
+        `Prediction names team "${team}", which has no pairing in season ${season}.`
+      );
+    }
+    return pair.map(shortName).join(' & ');
+  };
+
+  /** The colour a named player wears this season — found by searching the pairings. */
+  const teamOf = (player: string): string => {
+    const hit = Object.entries(teams).find(([, t]) => t.pair?.includes(player));
+    if (!hit) {
+      throw new Error(
+        `Prediction names "${player}", who isn't in any season ${season} pairing. ` +
+          `Check the spelling against season-${season}.ts.`
+      );
+    }
+    return hit[0];
+  };
+
+  return ANALYSTS.map((a: AnalystPredictions) => ({
+    kind: 'predictions',
+    eyebrow: `The Analysts · ${eyebrowLabel(season)}`,
+    analyst: a.analyst,
+    slug: slugify(a.analyst),
+    picks: PREDICTION_CATEGORIES.map((c) => {
+      const value = a[c.field];
+      if (c.kind === 'team') {
+        return { category: c.label, team: value, primary: value, secondary: pairingOf(value) };
+      }
+      const team = teamOf(value);
+      return { category: c.label, team, primary: value, secondary: team };
+    }),
+  }));
 }

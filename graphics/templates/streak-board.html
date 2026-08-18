@@ -19,19 +19,7 @@
     background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
   }
 
-  .thead {
-    flex: none; display: flex; align-items: flex-end; gap: 24px;
-    padding: 20px 8px 12px;
-    font-size: 19px; font-weight: 600;
-    letter-spacing: 0.18em; text-transform: uppercase;
-    color: rgba(244, 241, 232, 0.4);
-  }
-  .c-pos { width: 60px; }
-  .c-bar { width: 12px; }
-  .c-name { flex: 1; }
-  .c-value { width: 300px; text-align: right; }
-
-  .rows { flex: 1; display: flex; flex-direction: column; }
+  .rows { flex: 1; display: flex; flex-direction: column; margin-top: 8px; }
 
   .row {
     flex: 1;
@@ -101,13 +89,6 @@
     <div class="rule-gold"></div>
   </header>
 
-  <div class="thead">
-    <div class="c-pos">#</div>
-    <div class="c-bar"></div>
-    <div class="c-name">Player</div>
-    <div class="c-value" id="metric-label"></div>
-  </div>
-
   <div class="rows" id="rows"></div>
 
   <footer>
@@ -120,15 +101,14 @@
 const DATA = {
   eyebrow: 'All time',
   title: 'Longest Win Streaks',
-  subtitle: 'Most matches won in a row · finals included',
-  metricLabel: 'In a row',
+  subtitle: '',
   footnote: '* Streak still active · Fill-in matches excluded',
   rows: [
-    { rank: 1, player: 'Angus Hume',      team: 'Pink',       streak: 11, active: true,  range: 'S4R1 – ongoing' },
-    { rank: 2, player: 'Luke Sharrock',   team: 'Pink',       streak: 10, active: true,  range: 'S4R1 – ongoing' },
+    { rank: 1, player: 'Angus Hume',      team: 'Black',      streak: 11, active: true,  range: 'S4R1 – ongoing' },
+    { rank: 2, player: 'Luke Sharrock',   team: 'Yellow',     streak: 10, active: true,  range: 'S4R1 – ongoing' },
     { rank: 3, player: 'Jonathan Kierce', team: 'White',      streak: 9,  active: false, range: 'S1R4 – S1Final' },
     { rank: 4, player: 'Ethan Seamer',    team: 'Light Blue', streak: 9,  active: false, range: 'S1R4 – S1Final' },
-    { rank: 5, player: 'Damon Maurice',   team: 'Orange',     streak: 7,  active: true,  range: 'S3R6 – ongoing' },
+    { rank: 5, player: 'Damon Maurice',   team: 'Pink',       streak: 7,  active: true,  range: 'S3R6 – ongoing' },
   ],
 };
 
@@ -148,8 +128,7 @@ window.__render = function (d) {
   document.getElementById('eyebrow').textContent = d.eyebrow;
   document.getElementById('title').textContent = d.title;
   fitHeadline(document.getElementById('title'));
-  document.getElementById('subtitle').textContent = d.subtitle;
-  document.getElementById('metric-label').textContent = d.metricLabel;
+  document.getElementById('subtitle').textContent = d.subtitle ?? '';
   document.getElementById('footnote').textContent = d.footnote;
 
   document.getElementById('rows').innerHTML = d.rows.map((r) => `

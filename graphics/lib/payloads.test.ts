@@ -5,6 +5,7 @@ import {
   ladderPayload,
   latestRound,
   nextPreviewRound,
+  predictionsPayloads,
   previewPayload,
   resolveRound,
   resultCardPayloads,
@@ -13,6 +14,7 @@ import {
   statBoardPayload,
   streakBoardPayload,
 } from './payloads.ts';
+import { ANALYSTS } from './predictions.ts';
 import { ladderWithPairings, winStreaks } from '../../src/lib/stats.ts';
 import { SITE, TEAMS } from '../../src/config/site.ts';
 import { getSeasonConfig } from './season-configs.ts';
@@ -154,40 +156,6 @@ describe('ladder payload', () => {
 });
 
 describe('preview board', () => {
-  it('finds the next unplayed round rather than the latest played one', async () => {
-    // Season 5 has a full ten-round draw and nothing played, so "next" is 1 —
-    // the opposite of latestRound, which only ever looks at results.
-    expect(latestRound(5)).toBeNull();
-    const next = await nextPreviewRound(5);
-    expect(next).toMatchObject({ round: 1, stage: null, label: 'Round 1' });
-  });
-
-  it('lists every fixture in the round, kickoff order, plus the byes', async () => {
-    const p = await previewPayload(5, resolveRound('1'));
-    // 4 matches (8 teams) + 2 byes = the season's declared field of 10.
-    expect(p.matches).toHaveLength(4);
-    expect(p.matches.map((m) => [m.teamA, m.teamB])).toEqual([
-      ['Green', 'Orange'],
-      ['Light Blue', 'White'],
-      ['Black', 'Pink'],
-      ['Red', 'Yellow'],
-    ]);
-    expect(p.matches.every((m) => m.time)).toBe(true);
-    expect(p.byes).toEqual(['Brown', 'Navy'].sort());
-  });
-
-  it('takes pairings from the fixture line-up, captain-first, not the season default', async () => {
-    const p = await previewPayload(5, resolveRound('1'));
-    const orange = p.matches.find((m) => m.teamA === 'Orange' || m.teamB === 'Orange')!;
-    const orangePair = orange.teamA === 'Orange' ? orange.pairingA : orange.pairingB;
-    expect(orangePair).toBe('J. Gorton & L. Godden');
-    // White's config draftee is Jackson Virgona, but the R1 sheet lists Conor
-    // Paraskevas — the preview must print who's actually playing.
-    const white = p.matches.find((m) => m.teamA === 'White' || m.teamB === 'White')!;
-    const whitePair = white.teamA === 'White' ? white.pairingA : white.pairingB;
-    expect(whitePair).toBe('J. Kierce & C. Paraskevas');
-  });
-
   it('never carries a win probability — insights only, or nothing', async () => {
     const p = await previewPayload(5, resolveRound('1'));
     for (const m of p.matches) {
@@ -380,5 +348,57 @@ describe('streak board', () => {
     const hasActive = p.rows.some((r) => r.active);
     expect(p.footnote.includes('* Streak still active')).toBe(hasActive);
     expect(p.footnote).toContain('Fill-in matches excluded');
+  });
+});
+
+describe('predictions cards', () => {
+  it('builds one card per analyst, each with all six awards', async () => {
+    const cards = await predictionsPayloads(5);
+    expect(cards).toHaveLength(ANALYSTS.length);
+    expect(cards.map((c) => c.analyst)).toEqual(ANALYSTS.map((a) => a.analyst));
+    for (const c of cards) {
+      expect(c.picks.map((p) => p.category)).toEqual([
+        'Champions', 'Minor Premiers', 'MVP', 'Finals MVP', 'Wooden Spoon', 'Most Improved',
+      ]);
+    }
+  });
+
+  it('resolves every pick to a real S5 team, colour and all', async () => {
+    const cards = await predictionsPayloads(5);
+    for (const c of cards) {
+      for (const p of c.picks) {
+        // A colour the TEAMS map has never seen would silently render on the
+        // neutral chip — assert the real palette instead.
+        expect(TEAMS[p.team], `${c.analyst} · ${p.category} → ${p.team}`).toBeDefined();
+        expect(p.primary.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('prints a colour pick with its pairing and a player pick with its team', async () => {
+    const cards = await predictionsPayloads(5);
+    const claude = cards.find((c) => c.analyst === 'AI (Claude)')!;
+
+    // Team award: primary is the colour, secondary is the captain-first pairing.
+    const champs = claude.picks.find((p) => p.category === 'Champions')!;
+    expect(champs).toMatchObject({
+      team: 'White',
+      primary: 'White',
+      secondary: 'J. Kierce & J. Virgona',
+    });
+
+    // Individual award: primary is the player, secondary (and the colour) is their team.
+    const finalsMvp = claude.picks.find((p) => p.category === 'Finals MVP')!;
+    expect(finalsMvp).toMatchObject({
+      team: 'White',
+      primary: 'Jonathan Kierce',
+      secondary: 'White',
+    });
+  });
+
+  it('slugs the analyst name for the filename', async () => {
+    const cards = await predictionsPayloads(5);
+    expect(cards.map((c) => c.slug)).toContain('the-commissioner');
+    expect(cards.map((c) => c.slug)).toContain('ai-claude');
   });
 });

@@ -28,6 +28,7 @@ import {
   ladderPayload,
   latestRound,
   nextPreviewRound,
+  predictionsPayloads,
   previewPayload,
   resolveRound,
   resultCardPayloads,
@@ -70,9 +71,11 @@ TNT graphics renderer
   --round <r>      Round number, or QF / SF / F. Default: the season's latest
                    round in the CSV.
   --only <list>    Comma-separated: ladder, results, boards, draft, preview,
-                   streaks, headline. Default: ladder,results,boards — draft,
-                   preview, streaks and headline are once-off posts, so they
-                   only render when asked.
+                   streaks, headline, predictions. Default: ladder,results,boards
+                   — draft, preview, streaks, headline and predictions are
+                   once-off posts, so they only render when asked.
+                   predictions renders one card per analyst (the pundits'
+                   pre-season picks); it needs no --round.
                    streaks is the all-time record book (longest win streaks);
                    it needs no --season or --round.
                    preview needs no --round: it defaults to the next round
@@ -108,7 +111,7 @@ if (!Number.isFinite(season)) {
 // `draft` and `preview` are deliberately not in the default set — a draft is a
 // once-a-season post, and a preview is a once-a-week one you ask for the day
 // before, not something every CI push should render.
-const KINDS = ['ladder', 'results', 'boards', 'draft', 'preview', 'streaks', 'headline'];
+const KINDS = ['ladder', 'results', 'boards', 'draft', 'preview', 'streaks', 'headline', 'predictions'];
 const only = new Set(
   (argv.only ?? 'ladder,results,boards').split(',').map((s) => s.trim()).filter(Boolean)
 );
@@ -321,6 +324,17 @@ if (only.has('headline')) {
       },
       `s${season}-headline.png`
     );
+  }
+}
+
+if (only.has('predictions')) {
+  // The analysts' pre-season picks — one card per pundit. Pure human input like
+  // the headline card, so no round and no stats; a once-off post out of the
+  // default set. The card leaves its bottom-right quarter clear for a cut-out
+  // added in Canva after the render.
+  const cards = await predictionsPayloads(season);
+  for (const card of cards) {
+    await shoot('predictions.html', card, `s${season}-predictions-${card.slug}.png`);
   }
 }
 
