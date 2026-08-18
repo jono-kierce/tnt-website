@@ -275,12 +275,12 @@
   season: 4
   caption:
 
-- file: season-4/lewis.png
+- file: season-4/lewis.jpg
   players: [lewis-mossman]
   season: 4
   caption:
 
-- file: season-4/luke.png
+- file: season-4/luke.jpg
   players: [luke-sharrock]
   season: 4
   caption:
@@ -293,4 +293,53 @@
 - file: season-4/burge.JPG
   players: [will-burgess]
   season: 4
+  caption:
+- file: season-5/angus-forehand.JPG
+  players: [angus-hume]
+  season: 5
+  caption:
+
+- file: season-5/charlie-forehand.JPG
+  players: [charlie-simpson]
+  season: 5
+  caption:
+
+- file: season-5/conor-ready.JPG
+  players: [conor-paraskevas]
+  season: 5
+  caption:
+
+- file: season-5/crowd.JPG
+  players: []
+  season: 5
+  caption:
+
+- file: season-5/green-highfive.JPG
+  players: [quinn-feikema, lewis-mossman]
+  season: 5
+  caption:
+
+- file: season-5/jenk-forehand.JPG
+  players: [lachlan-jenkin]
+  season: 5
+  caption:
+
+- file: season-5/jimmy-serve.JPG
+  players: [jimmy-gorton]
+  season: 5
+  caption:
+
+- file: season-5/quinn-forehand.JPG
+  players: [quinn-feikema]
+  season: 5
+  caption:
+
+- file: season-5/raines-followthrough.JPG
+  players: [jack-raines]
+  season: 5
+  caption:
+
+- file: season-5/yellow-celebrate.JPG
+  players: [luke-sharrock, jack-raines]
+  season: 5
   caption:
