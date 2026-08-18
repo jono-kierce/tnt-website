@@ -15,7 +15,6 @@ import {
   leaderboard,
   matchSides,
   playerAgg,
-  teamRoster,
   lineupPairingName,
   seasonRounds as matchRoundsFor,
   winStreaks,
@@ -278,8 +277,19 @@ export async function resultCardPayloads(
   const seed = new Map(ladderRows.map((r) => [r.team, r.rank]));
 
   const teamConfig = await seasonTeamConfigs(season);
-  const pairing = (team: string) =>
-    teamRoster(team, season, rows, teamConfig(team)).pairingName;
+
+  // The player rows for a fixture side — matchSides collapses to the team
+  // result and drops them, so read them straight off the CSV, keyed the same
+  // way. This is what lets a stand-in print as who actually played.
+  const lineupOf = (m: MatchSide): StatRow[] =>
+    rows.filter(
+      (r) =>
+        !r.scheduled &&
+        r.season === m.season &&
+        r.round === m.round &&
+        r.team === m.team &&
+        r.opponent === m.opponent
+    );
 
   const out: ResultCardPayload[] = [];
   const done = new Set<string>();
@@ -292,9 +302,12 @@ export async function resultCardPayloads(
     done.add(pairKey);
 
     const [win, lose] = s.win ? [s, other] : [other, s];
+    // Who actually turned out for this fixture, sheet-first — so a stand-in
+    // prints as the player who played, not the season's default pairing.
+    // Falls back to the config pair when a side has no rows (matches preview).
     const side = (m: MatchSide): SidePayload => ({
       team: m.team,
-      pairing: pairing(m.team),
+      pairing: lineupPairingName(lineupOf(m), teamConfig(m.team)),
       seed: seed.get(m.team) ?? null,
       sets: setsFor(m),
       won: m.win,

@@ -74,11 +74,6 @@
     position: relative;
   }
   .side > * { position: relative; z-index: 1; }
-  .seed {
-    width: 52px; flex: none; text-align: center;
-    font-family: var(--display); font-weight: 600; font-size: 32px;
-    color: rgba(244, 241, 232, 0.5);
-  }
   .side .bar { width: 11px; height: 64px; flex: none; border-radius: 6px;
                background: linear-gradient(180deg, var(--team), var(--team-2)); }
   .names { flex: 1; font-size: 50px; font-weight: 500; letter-spacing: 0.01em; }
@@ -110,7 +105,6 @@
     background: var(--gold);
   }
   .side.won .names { font-weight: 600; }
-  .side.won .seed { color: var(--gold); }
   .side.won .set { color: var(--gold-soft); }
   .side.won .set.lost { color: rgba(239, 217, 163, 0.45); }
   .side.won { border-top-color: var(--gold); }
@@ -171,7 +165,6 @@ window.__render = function (d) {
 
   document.getElementById('sides').innerHTML = d.sides.map((s) => `
     <div class="side ${s.won ? 'won' : 'lost'}" data-team="${esc(s.team)}">
-      <div class="seed">${s.seed ?? ''}</div>
       <div class="bar"></div>
       <div class="names">${esc(s.pairing)}</div>
       <div class="sets">${s.sets.map(setHtml).join('')}</div>
