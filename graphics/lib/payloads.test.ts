@@ -10,6 +10,7 @@ import {
   resolveRound,
   resultCardPayloads,
   rows,
+  scoreboardPayload,
   seasonRounds,
   statBoardPayload,
   streakBoardPayload,
@@ -171,6 +172,72 @@ describe('preview board', () => {
 
   it('throws rather than silently rendering an empty round', async () => {
     await expect(previewPayload(5, resolveRound('99'))).rejects.toThrow(/no round/);
+  });
+});
+
+describe('scoreboard', () => {
+  it('reads Season 5 round 2 in kickoff order, winner first', async () => {
+    const b = await scoreboardPayload(5, resolveRound('2'));
+    expect(b.title).toBe('Round 2');
+    expect(b.matches.map((m) => m.time)).toEqual([
+      '6:30pm', '7:00pm', '7:30pm', '8:00pm', '8:30pm',
+    ]);
+    // Winner on top of each pair — MatchRecord.sides is alphabetical, so this
+    // is the reordering doing its job (Orange before White, Navy before Black).
+    expect(b.matches.map((m) => m.sides[0].team)).toEqual([
+      'Orange', 'Navy', 'Red', 'Pink', 'Yellow',
+    ]);
+    for (const m of b.matches) {
+      expect(m.sides[0].won).toBe(true);
+      expect(m.sides[1].won).toBe(false);
+    }
+    expect(line(b.matches[0].sides[0].sets)).toBe('6');
+    expect(line(b.matches[0].sides[1].sets)).toBe('1');
+    // Ten teams, five matches: nobody sits out.
+    expect(b.byes).toEqual([]);
+  });
+
+  it('prints the line-up that played, not the season pairing', async () => {
+    const b = await scoreboardPayload(5, resolveRound('2'));
+    const white = b.matches[0].sides[1];
+    expect(white.pairing).toBe('J. Kierce & C. Paraskevas');
+  });
+
+  it('takes the winner from `win?`, not from counting sets', async () => {
+    // Season 4 round 9 has a 5-5 nobody recorded a breaker for: neither side
+    // won that set, and a board that counted bright numbers would call it a
+    // draw. `win?` says otherwise, and `win?` is what the board reads.
+    const b = await scoreboardPayload(4, resolveRound('9'));
+    const levelled = b.matches.find((m) =>
+      m.sides.some((s) => s.sets.some((set) => set.level))
+    )!;
+    expect(levelled).toBeDefined();
+    expect(levelled.draw).toBe(false);
+    expect(levelled.sides[0].won).toBe(true);
+  });
+
+  it('shows only played fixtures — a drawn round is the preview\'s job', async () => {
+    const b = await scoreboardPayload(5, resolveRound('3'));
+    expect(b.matches).toEqual([]);
+  });
+
+  it('agrees with the result cards about every scoreline', async () => {
+    const round = resolveRound('F');
+    const [board, cards] = await Promise.all([
+      scoreboardPayload(4, round),
+      resultCardPayloads(4, round),
+    ]);
+    expect(board.matches).toHaveLength(cards.length);
+    for (const [i, m] of board.matches.entries()) {
+      expect(m.sides.map((s) => s.team)).toEqual(cards[i].sides.map((s) => s.team));
+      expect(m.sides.map((s) => line(s.sets))).toEqual(
+        cards[i].sides.map((s) => line(s.sets))
+      );
+    }
+  });
+
+  it('throws rather than silently rendering an empty round', async () => {
+    await expect(scoreboardPayload(5, resolveRound('99'))).rejects.toThrow(/no round/);
   });
 });
 

@@ -33,6 +33,7 @@ import {
   resolveRound,
   resultCardPayloads,
   rows as allRows,
+  scoreboardPayload,
   statBoardPayload,
   streakBoardPayload,
 } from './lib/payloads.ts';
@@ -70,10 +71,13 @@ TNT graphics renderer
   --season <n>     Season to render. Default: SITE.currentSeason (${SITE.currentSeason}).
   --round <r>      Round number, or QF / SF / F. Default: the season's latest
                    round in the CSV.
-  --only <list>    Comma-separated: ladder, results, boards, draft, preview,
-                   streaks, headline, predictions. Default: ladder,results,boards
+  --only <list>    Comma-separated: ladder, results, scoreboard, boards, draft,
+                   preview, streaks, headline, predictions.
+                   Default: ladder,results,scoreboard,boards
                    — draft, preview, streaks, headline and predictions are
                    once-off posts, so they only render when asked.
+                   scoreboard is the whole round's results on one slide — the
+                   post for a night nobody photographed.
                    predictions renders one card per analyst (the pundits'
                    pre-season picks); it needs no --round.
                    streaks is the all-time record book (longest win streaks);
@@ -111,9 +115,9 @@ if (!Number.isFinite(season)) {
 // `draft` and `preview` are deliberately not in the default set — a draft is a
 // once-a-season post, and a preview is a once-a-week one you ask for the day
 // before, not something every CI push should render.
-const KINDS = ['ladder', 'results', 'boards', 'draft', 'preview', 'streaks', 'headline', 'predictions'];
+const KINDS = ['ladder', 'results', 'scoreboard', 'boards', 'draft', 'preview', 'streaks', 'headline', 'predictions'];
 const only = new Set(
-  (argv.only ?? 'ladder,results,boards').split(',').map((s) => s.trim()).filter(Boolean)
+  (argv.only ?? 'ladder,results,scoreboard,boards').split(',').map((s) => s.trim()).filter(Boolean)
 );
 const unknown = [...only].filter((k) => !KINDS.includes(k));
 if (unknown.length) {
@@ -123,7 +127,7 @@ if (unknown.length) {
 
 // A draft happens before a ball is hit, so it needs no round — and a season
 // that has only been drafted has no rows to infer one from.
-const needsRound = ['ladder', 'results', 'boards'].some((k) => only.has(k));
+const needsRound = ['ladder', 'results', 'scoreboard', 'boards'].some((k) => only.has(k));
 const latest = latestRound(season);
 if (needsRound && !latest && argv.round === undefined) {
   // A season whose draw is in the CSV but whose first night hasn't happened is
@@ -367,6 +371,18 @@ if (only.has('results')) {
       );
     }
     await shoot('result-card.html', card, `${stem}-match${i + 1}-${card.slug}.png`);
+  }
+}
+
+if (only.has('scoreboard')) {
+  // The same round the result cards just drew, on one slide. No photo, no
+  // human input — which is the point of it: a Tuesday nobody photographed
+  // still gets a post.
+  const payload = await scoreboardPayload(season, round);
+  if (!payload.matches.length) {
+    warnings.push(`No played fixtures found for season ${season}, ${round.label}.`);
+  } else {
+    await shoot('scoreboard.html', payload, `${stem}-scoreboard.png`);
   }
 }
 

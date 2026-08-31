@@ -1,4 +1,4 @@
-import type { SeasonConfig } from './schema.ts';
+import { finalsBerths, type SeasonConfig } from './schema.ts';
 
 /**
  * Auto-discovers every `season-N.ts` in this folder via Vite's glob import.
@@ -25,4 +25,9 @@ export function seasonTeamConfig(season: number, team: string) {
 
 export function allSeasonConfigs(): SeasonConfig[] {
   return [...BY_SEASON.values()].sort((a, b) => a.season - b.season);
+}
+
+/** How many teams this season's bracket takes — see `finalsBerths`. */
+export function seasonFinalsBerths(season: number): number | undefined {
+  return finalsBerths(getSeasonConfig(season));
 }

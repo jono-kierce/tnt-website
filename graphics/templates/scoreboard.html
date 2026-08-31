@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Scoreboard (A / Broadsheet)</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  header { flex: none; }
+  .eyebrow { margin-top: -64px; }
+  .headline { font-size: 88px; margin-top: 16px; }
+  .sub { margin-top: 14px; }
+  .rule-gold {
+    height: 2px; margin-top: 26px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  /* space-between, not space-evenly: five matches should reach the footer
+     rather than leave a hand's width of court empty under the last one. */
+  .rows { flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 30px 0 10px; }
+
+  /* The kickoff time lives in its own gutter, set once against the pair of
+     rows it covers — a match is one time, not two. */
+  .match {
+    display: grid;
+    grid-template-columns: 104px 1fr;
+    align-items: center;
+    gap: 0 12px;
+    padding: 16px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .match:first-child { border-top: 0; }
+  .time {
+    font-family: var(--display); font-weight: 600; font-size: 19px;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold-soft);
+  }
+
+  .side {
+    display: grid;
+    grid-template-columns: 8px 178px 1fr auto;
+    align-items: center;
+    gap: 18px;
+    padding: 9px 0;
+    position: relative;
+  }
+  .side > * { position: relative; z-index: 1; }
+  .bar { width: 8px; height: 46px; border-radius: 4px;
+         background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  .team-name { font-size: 32px; font-weight: 600; letter-spacing: 0.01em;
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pair { font-size: 21px; color: rgba(244, 241, 232, 0.58);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .sets { display: flex; gap: 18px; }
+  .set { width: 48px; text-align: center; font-size: 44px; font-weight: 700; line-height: 1; }
+  /* A set won is set solid; a set dropped is set back. A set left level —
+     5-5, 6-6, the breaker never recorded — was won by nobody, so it stays
+     solid on both sides rather than printing as a loss twice. */
+  .set.lost { color: rgba(244, 241, 232, 0.45); }
+
+  /* Who won the MATCH is the CSV's `win?`, not a count of bright numbers, so
+     the winner's mark owes nothing to the scoreline: the ladder leader's gold
+     spine and wash, same as a result card. */
+  .side.won::before {
+    content: '';
+    position: absolute; inset: 0 calc(var(--safe) * -1) 0 -26px;
+    background: linear-gradient(90deg, rgba(217,185,106,0.15), rgba(217,185,106,0.02) 62%, transparent);
+    pointer-events: none;
+  }
+  .side.won::after {
+    content: '';
+    position: absolute; left: -26px; top: 0; bottom: 0; width: 5px;
+    background: var(--gold);
+  }
+  .side.won .set { color: var(--gold-soft); }
+  .side.won .set.lost { color: rgba(239, 217, 163, 0.45); }
+  .side.lost .team-name { color: rgba(244, 241, 232, 0.74); font-weight: 500; }
+
+  .byes {
+    flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px;
+    padding: 20px 4px 0; margin-top: 4px; border-top: 1px solid var(--rule);
+  }
+  .byes-label {
+    font-family: var(--display); font-weight: 600; font-size: 17px;
+    letter-spacing: 0.24em; text-transform: uppercase; color: var(--gold);
+  }
+  .bye-team { display: inline-flex; align-items: center; gap: 10px;
+              font-size: 22px; font-weight: 500; color: rgba(244, 241, 232, 0.75); }
+  .bye-dot { width: 14px; height: 14px; border-radius: 50%; flex: none;
+             background: linear-gradient(180deg, var(--team), var(--team-2)); }
+
+  footer {
+    flex: none; display: flex; justify-content: space-between; align-items: flex-end;
+    padding-top: 22px; margin-bottom: -74px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+  }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette">
+  <div class="mark mark--crest watermark"></div>
+
+  <header>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="rows" id="rows"></div>
+
+  <div class="byes" id="byes"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+    <div class="footnote" id="footnote"></div>
+  </footer>
+</div>
+
+<script type="module">
+/* Sample data, so this file opens straight in a browser and looks like the
+   real thing. `render.mjs` calls __render() again with the CSV's numbers. */
+const set = (games, won, tiebreak = null) => ({ games, won, tiebreak, level: false });
+const DATA = {
+  eyebrow: 'Season 5 · 2026',
+  title: 'Round 2',
+  subtitle: 'Tuesday 25 August 2026',
+  footnote: '',
+  matches: [
+    { time: '6:30pm', draw: false, sides: [
+      { team: 'Orange', pairing: 'J. Gorton & L. Godden', won: true, sets: [set('6', true)] },
+      { team: 'White', pairing: 'J. Kierce & C. Paraskevas', won: false, sets: [set('1', false)] }] },
+    { time: '7:00pm', draw: false, sides: [
+      { team: 'Navy', pairing: 'W. Mumme & E. Simpson', won: true, sets: [set('6', true)] },
+      { team: 'Black', pairing: 'A. Littlejohn & A. Hume', won: false, sets: [set('0', false)] }] },
+    { time: '7:30pm', draw: false, sides: [
+      { team: 'Red', pairing: 'L. Jenkin & J. Harris', won: true, sets: [set('6', true)] },
+      { team: 'Brown', pairing: 'A. Dickson & T. Angel', won: false, sets: [set('4', false)] }] },
+    { time: '8:00pm', draw: false, sides: [
+      { team: 'Pink', pairing: 'C. Simpson & D. Maurice', won: true, sets: [set('7', true), set('6', true)] },
+      { team: 'Light Blue', pairing: 'S. Inlander & E. Seamer', won: false, sets: [set('5', false), set('6', false, '4')] }] },
+    { time: '8:30pm', draw: false, sides: [
+      { team: 'Yellow', pairing: 'L. Sharrock & J. Raines', won: true, sets: [set('6', true)] },
+      { team: 'Green', pairing: 'Q. Feikema & C. Paraskevas', won: false, sets: [set('1', false)] }] },
+  ],
+  byes: [],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const setHtml = (s) =>
+  `<div class="set ${s.won ? 'won' : s.level ? 'level' : 'lost'}">${esc(s.games)}${
+    s.tiebreak ? `<span class="tb">${esc(s.tiebreak)}</span>` : ''
+  }</div>`;
+
+const sideHtml = (s, draw) => `
+  <div class="side ${draw ? 'drawn' : s.won ? 'won' : 'lost'}" data-team="${esc(s.team)}">
+    <div class="bar"></div>
+    <div class="team-name">${esc(s.team)}</div>
+    <div class="pair">${esc(s.pairing)}</div>
+    <div class="sets">${s.sets.map(setHtml).join('')}</div>
+  </div>`;
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+  document.getElementById('subtitle').textContent = d.subtitle;
+  document.getElementById('footnote').textContent = d.footnote;
+
+  document.getElementById('rows').innerHTML = d.matches.map((m) => `
+    <div class="match">
+      <time class="time">${m.time ? esc(m.time) : ''}</time>
+      <div class="sides">
+        ${sideHtml(m.sides[0], m.draw)}
+        ${sideHtml(m.sides[1], m.draw)}
+      </div>
+    </div>`).join('');
+
+  const byesEl = document.getElementById('byes');
+  if (d.byes.length) {
+    byesEl.style.display = 'flex';
+    byesEl.innerHTML = `<span class="byes-label">Bye</span>` +
+      d.byes.map((t) => `<span class="bye-team" data-team="${esc(t)}"><span class="bye-dot"></span>${esc(t)}</span>`).join('');
+  } else {
+    byesEl.style.display = 'none';
+  }
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

@@ -17,7 +17,11 @@ import {
   type TeamRoster,
 } from './stats.ts';
 import type { LadderRow, StatRow } from './types.ts';
-import { getSeasonConfig, seasonTeamConfig } from '../config/seasons/index.ts';
+import {
+  getSeasonConfig,
+  seasonFinalsBerths,
+  seasonTeamConfig,
+} from '../config/seasons/index.ts';
 import { seasonLabel } from '../config/site.ts';
 
 /**
@@ -46,6 +50,15 @@ export const fixtures: StatRow[] = scheduledRows(allRows);
 export function declaredTeams(season: number): string[] {
   const declared = Object.keys(getSeasonConfig(season)?.teams ?? {});
   return declared.length ? declared : seasonTeams(season);
+}
+
+/**
+ * How many teams this season's finals bracket takes, straight off the bracket.
+ * `insights.ts` needs it and can't read a config itself — see
+ * `InsightContext.finalsCutoff`.
+ */
+export function finalsCutoff(season: number): number | undefined {
+  return seasonFinalsBerths(season);
 }
 
 /**

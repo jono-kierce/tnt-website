@@ -27,6 +27,7 @@ node graphics/render.mjs --season 4 --round 9
 node graphics/render.mjs --season 4 --round 9 --only ladder
 node graphics/render.mjs --season 4 --round F --photos ./photos/2025-11-04/
 node graphics/render.mjs --only preview               # next Tuesday's fixtures
+node graphics/render.mjs --only scoreboard           # the round's results, one slide
 node graphics/render.mjs --help
 ```
 
@@ -38,14 +39,15 @@ CSV — which is exactly the round you just added. PNGs land in `graphics/out/`
 |---|---|
 | `--season <n>` | Default `SITE.currentSeason`. |
 | `--round <r>` | A round number, or `QF` / `SF` / `F`. Default: the season's latest — except for `preview`, see below. |
-| `--only <list>` | `ladder`, `results`, `boards`, `draft`, `preview` — comma-separated. Default `ladder,results,boards`; `draft` and `preview` are once-off posts, so they only render on request. |
+| `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `draft`, `preview` — comma-separated. Default `ladder,results,scoreboard,boards`; `draft` and `preview` are once-off posts, so they only render on request. |
 | `--photos <dir>` | Photos for the result cards. |
 | `--career` | Also render the all-time boards. |
 | `--out <dir>` | Default `graphics/out`. |
 
 Filenames are `s4-r09-ladder.png`, `s4-r09-match1-pink-v-white.png`,
-`s4-r09-stat-mvp-race.png`, `s5-r01-preview.png`. Rounds are zero-padded and
-finals sort last, so a folder listing is in playing order.
+`s4-r09-stat-mvp-race.png`, `s5-r02-scoreboard.png`, `s5-r01-preview.png`.
+Rounds are zero-padded and finals sort last, so a folder listing is in playing
+order.
 
 ### Photos — the one human input
 
@@ -115,6 +117,7 @@ graphics/
     result-card.html
     stat-board.html
     preview.html
+    scoreboard.html
     fonts/             vendored .woff2 (committed)
   out/                 rendered PNGs — gitignored
 ```
@@ -182,7 +185,7 @@ through to a neutral default instead of to `var(--team-undefined)`.
 
 ---
 
-## The four families
+## The five families
 
 ### Ladder — `ladder.html`
 
@@ -227,6 +230,25 @@ label, row count, season or career, per-set or total, and `polarity`.
   make room. Set `cutout: true` for a transparent PNG and it sits unframed;
   an ordinary photo gets a frame rather than pretending to be a cut-out.
   The photo is whatever `avatarPhoto()` picks, so it's as good as the manifest.
+
+### Scoreboard — `scoreboard.html`
+
+The whole round's results on one slide — the preview's twin, run the morning
+after instead of the day before. Kickoff order down the page, winner's row on
+top of each pair with the ladder leader's gold spine, set scores at the right,
+byes at the foot. It needs no photos and no human input at all, which is the
+point of it: a Tuesday nobody photographed still gets a post.
+
+- **Winner first, and the winner comes from `win?`** — same rule as the result
+  card, for the same reason. `MatchRecord.sides` is alphabetical by team, so
+  the board reorders; a match with no winner recorded keeps that order and
+  takes no gold.
+- **Only played fixtures.** A drawn-but-unplayed round belongs to `preview`,
+  and the board renders empty rather than printing a fixture as a result.
+- It carries **no insight lines** — the scoreline is the story, and five
+  matches of it fill the page. The banter goes on the preview.
+- Renders alongside the result cards by default, so posting a round is still
+  one command. Fits five matches comfortably; four sits looser.
 
 ### Preview — `preview.html`
 

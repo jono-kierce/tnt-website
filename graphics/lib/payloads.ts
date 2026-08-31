@@ -28,7 +28,12 @@ import { formatDateLong, formatTime } from '../../src/lib/datetime.ts';
 import type { MatchSide, SetScore, StatRow } from '../../src/lib/types.ts';
 import { SITE, isVotesSealed } from '../../src/config/site.ts';
 import { PHOTOS_DIR, avatarPhoto } from '../../src/lib/photos.ts';
-import { getSeasonConfig, seasonTeamConfigs, declaredTeams } from './season-configs.ts';
+import {
+  getSeasonConfig,
+  seasonTeamConfigs,
+  declaredTeams,
+  seasonFinalsBerths,
+} from './season-configs.ts';
 import { shortName, slugify } from '../../src/config/aliases.ts';
 import { ANALYSTS, type AnalystPredictions } from './predictions.ts';
 import { resolve } from 'node:path';
@@ -114,12 +119,16 @@ export function latestRound(season: number): RoundRef | null {
   return all.length ? all[all.length - 1] : null;
 }
 
-/** The last home-and-away round of a season — the one that seeds the finals. */
-function lastHomeAndAwayRound(season: number): number {
-  const nums = rows
-    .filter((r) => r.season === season && !r.isFinals && !r.scheduled)
-    .map((r) => r.round);
-  return nums.length ? Math.max(...nums) : 0;
+/**
+ * Is a season's home-and-away part finished as of `round`? True only when no
+ * further regular-season match exists in the CSV — played *or still scheduled*.
+ * A drawn-but-unplayed round beyond this one means the season is still running,
+ * so the ladder reads "Standings · After Round N", not "Final Ladder".
+ */
+function homeAndAwayComplete(season: number, round: number): boolean {
+  return !rows.some(
+    (r) => r.season === season && !r.isFinals && r.round > round
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -172,8 +181,8 @@ export async function ladderPayload(
   const table = ladderWithPairings(season, upToRound, teamConfig);
 
   const cutoff = opts.finalsCutoff ?? DEFAULT_FINALS_CUTOFF;
-  const lastHA = lastHomeAndAwayRound(season);
-  const complete = round.stage !== null || round.round >= lastHA;
+  const complete =
+    round.stage !== null || homeAndAwayComplete(season, round.round);
 
   return {
     kind: 'ladder',
@@ -244,8 +253,11 @@ export interface ResultCardPayload {
   slug: string;
 }
 
-/** One side's sets, from that side's own point of view. */
-const setsFor = (s: MatchSide): SetPayload[] =>
+/**
+ * One side's sets, from that side's own point of view. Takes anything carrying
+ * a scoreline — `matchSides`' team-side and `seasonRounds`' line-up both do.
+ */
+const setsFor = (s: { setScores: MatchSide['setScores'] }): SetPayload[] =>
   s.setScores.map((set: SetScore) => ({
     games: String(set.for),
     tiebreak: set.tiebreakFor === null ? null : String(set.tiebreakFor),
@@ -345,8 +357,12 @@ export const seasonYear = (season: number): number | undefined =>
 // Preview — the round not yet played
 // ---------------------------------------------------------------------------
 
-/** "Qualifying Finals" — a whole round's worth of matches, unlike a single card's "Qualifying Final". */
-const ROUND_PREVIEW_TITLE = {
+/**
+ * "Qualifying Finals" — a whole round's worth of matches, unlike a single
+ * card's "Qualifying Final". Shared by the preview and the scoreboard, which
+ * are the same round seen from either side of Tuesday night.
+ */
+const ROUND_TITLE = {
   QF: 'Qualifying Finals',
   SF: 'Semi Finals',
   F: 'The Final',
@@ -415,6 +431,7 @@ export async function previewPayload(
   }
 
   const teamConfig = await seasonTeamConfigs(season);
+  const finalsCutoff = await seasonFinalsBerths(season);
 
   const matches: PreviewMatchPayload[] = sr.matches
     .filter((m) => m.scheduled)
@@ -426,7 +443,7 @@ export async function previewPayload(
       const pairing = (side: typeof a) =>
         lineupPairingName(side.players, teamConfig(side.team));
       // Top-weighted only — a preview card has room for one line, not three.
-      const [top] = insightsFor(m, rows, field, 1);
+      const [top] = insightsFor(m, rows, { declaredTeams: field, finalsCutoff }, 1);
       return {
         teamA: a.team,
         pairingA: pairing(a),
@@ -440,8 +457,96 @@ export async function previewPayload(
   return {
     kind: 'preview',
     eyebrow: eyebrowLabel(season),
-    title: round.stage ? ROUND_PREVIEW_TITLE[round.stage] : `Round ${round.round}`,
+    title: round.stage ? ROUND_TITLE[round.stage] : `Round ${round.round}`,
     subtitle: sr.date ? formatDateLong(sr.date)! : 'This week’s fixtures',
+    footnote: '',
+    matches,
+    byes: sr.byes,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Scoreboard — the round just played, on one slide
+// ---------------------------------------------------------------------------
+
+export interface ScoreboardSidePayload {
+  team: string;
+  /** The line-up as the sheet lists it, captain-first — stand-ins included. */
+  pairing: string;
+  sets: SetPayload[];
+  /** From the CSV's `win?`, never from counting sets. */
+  won: boolean;
+}
+
+export interface ScoreboardMatchPayload {
+  /** "6:30pm", or null when the CSV has no Start for this match. */
+  time: string | null;
+  /** Winner first, as on a result card. Record order for a match nobody won. */
+  sides: [ScoreboardSidePayload, ScoreboardSidePayload];
+  /** Played, but no side flagged as the winner — shown level, never guessed. */
+  draw: boolean;
+}
+
+export interface ScoreboardPayload {
+  kind: 'scoreboard';
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  footnote: string;
+  matches: ScoreboardMatchPayload[];
+  /** Declared teams with no fixture this round. */
+  byes: string[];
+}
+
+/**
+ * Every played fixture in a round on one board — the preview's twin, run the
+ * morning after instead of the day before, for a night nobody photographed.
+ *
+ * Same shape and the same ordering rules: kickoff order (`byPlayingOrder`), so
+ * it reads top to bottom the way the night ran, and the same derived byes. The
+ * per-fixture result cards stay the richer post; this is the one that needs no
+ * human input at all.
+ */
+export async function scoreboardPayload(
+  season: number,
+  round: RoundRef
+): Promise<ScoreboardPayload> {
+  const field = await previewField(season);
+  const sr = matchRoundsFor(rows, season, field).find((r) => r.round === round.round);
+  if (!sr) {
+    throw new Error(
+      `Season ${season} has no round matching "${round.input}" to report.`
+    );
+  }
+
+  const teamConfig = await seasonTeamConfigs(season);
+
+  const matches: ScoreboardMatchPayload[] = sr.matches
+    .filter((m) => !m.scheduled)
+    .map((m) => {
+      const side = (l: (typeof m.sides)[number]): ScoreboardSidePayload => ({
+        team: l.team,
+        pairing: lineupPairingName(l.players, teamConfig(l.team)),
+        sets: setsFor(l),
+        won: l.win,
+      });
+      // Winner first — `MatchRecord.sides` is alphabetical by team, and a
+      // scoreboard that put the loser on top would read as one. A match with no
+      // winner recorded keeps that order rather than inventing one.
+      const [a, b] = m.sides;
+      const ordered = b.win ? [b, a] : [a, b];
+      return {
+        time: formatTime(m.start),
+        sides: [side(ordered[0]), side(ordered[1])],
+        draw: m.isDraw,
+      };
+    });
+
+  return {
+    kind: 'scoreboard',
+    eyebrow: eyebrowLabel(season),
+    title: round.stage ? ROUND_TITLE[round.stage] : `Round ${round.round}`,
+    subtitle: sr.date ? formatDateLong(sr.date)! : 'Results',
     footnote: '',
     matches,
     byes: sr.byes,

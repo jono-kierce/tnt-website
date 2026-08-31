@@ -1,25 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { loadStatRows, normalizeRows } from './normalize.ts';
-import { seasonMatches } from './stats.ts';
+import { seasonMatches, type MatchRecord } from './stats.ts';
+import type { StatRow } from './types.ts';
 import {
   basementInsight,
+  dominanceInsight,
   droughtInsight,
   errorFormInsight,
   errorLeaderInsight,
-  firstMeetingInsight,
   formInsight,
   hoodooInsight,
   insightContext,
   insightsFor,
+  lastMeetingInsight,
   lossStreakInsight,
   matchInsights,
   milestoneInsight,
   mockMilestoneInsight,
   pairH2HInsight,
-  revengeInsight,
+  partnershipInsight,
   stakesInsight,
   waywardInsight,
   winStreakInsight,
+  type InsightContext,
   type InsightKind,
 } from './insights.ts';
 
@@ -126,18 +129,33 @@ describe('win streak', () => {
   });
 });
 
-describe('revenge and first meetings', () => {
-  const twice = normalizeRows([
+describe('last meeting', () => {
+  /** A home-and-away meeting, then the same two teams in the final. */
+  const thenAFinal = normalizeRows([
     ...played('3', '1', { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Navy', players: ['C Three', 'D Four'] }),
-    ...played('3', '5', { team: 'Navy', players: ['C Three', 'D Four'] }, { team: 'Pink', players: ['A One', 'B Two'] }),
+    ...played('3', 'F', { team: 'Navy', players: ['C Three', 'D Four'] }, { team: 'Pink', players: ['A One', 'B Two'] }),
   ]);
 
   it('names the side that lost last time, with the scoreline', () => {
-    const insight = revengeInsight(contextForLast(twice))!;
+    const insight = lastMeetingInsight(contextForLast(thenAFinal))!;
+    expect(insight.kind).toBe('h2h');
+    expect(insight.label).toBe('Last meeting');
     expect(insight.team).toBe('Navy');
     // The scoreline lives on each side of a match, written from that side's
     // point of view — there is no match-level one to read.
     expect(insight.detail).toBe('Navy lost the last meeting in round 1, 6-4 to Pink.');
+  });
+
+  it('says nothing outside the finals', () => {
+    // Every season on record is a single round-robin, so before the bracket
+    // two teams have met exactly once — never twice. This used to be
+    // "Revenge match" and fired on 0 of 179 home-and-away matches while
+    // reading a healthy 13% against the whole fixture list.
+    const homeAndAway = normalizeRows([
+      ...played('3', '1', { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Navy', players: ['C Three', 'D Four'] }),
+      ...played('3', '5', { team: 'Navy', players: ['C Three', 'D Four'] }, { team: 'Pink', players: ['A One', 'B Two'] }),
+    ]);
+    expect(lastMeetingInsight(contextForLast(homeAndAway))).toBe(null);
   });
 
   it('does not look back past the redraft', () => {
@@ -145,60 +163,17 @@ describe('revenge and first meetings', () => {
     // apiece. Wearing the colour of a grudge is not having one.
     const acrossSeasons = normalizeRows([
       ...played('3', '1', { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Navy', players: ['C Three', 'D Four'] }),
-      ...played('4', '1', { team: 'Navy', players: ['E Five', 'F Six'] }, { team: 'Pink', players: ['G 7', 'H 8'] }),
+      ...played('4', 'F', { team: 'Navy', players: ['E Five', 'F Six'] }, { team: 'Pink', players: ['G 7', 'H 8'] }),
     ]);
-    expect(revengeInsight(contextForLast(acrossSeasons))).toBe(null);
+    expect(lastMeetingInsight(contextForLast(acrossSeasons))).toBe(null);
   });
 
   it('says nothing when the teams have never met', () => {
     const rows = normalizeRows([
       ...played('3', '1', { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Navy', players: ['C Three', 'D Four'] }),
-      ...played('3', '2', { team: 'Red', players: ['E Five', 'F Six'] }, { team: 'White', players: ['G 7', 'H 8'] }),
+      ...played('3', 'F', { team: 'Red', players: ['E Five', 'F Six'] }, { team: 'White', players: ['G 7', 'H 8'] }),
     ]);
-    expect(revengeInsight(contextForLast(rows))).toBe(null);
-  });
-
-  it('calls a first meeting only once the league has some history', () => {
-    // Two matches in: everything is a first meeting and none of it is news.
-    const early = normalizeRows([
-      ...played('3', '1', { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Navy', players: ['C Three', 'D Four'] }),
-      ...played('3', '2', { team: 'Red', players: ['E Five', 'F Six'] }, { team: 'White', players: ['G 7', 'H 8'] }),
-    ]);
-    expect(firstMeetingInsight(contextForLast(early))).toBe(null);
-
-    // With a real history behind it, a first meeting between two teams that
-    // have each played before — but never each other — is worth a line.
-    const rows = [];
-    for (let r = 1; r <= 11; r++) {
-      rows.push(
-        ...played('3', String(r), { team: 'Pink', players: ['A One', 'B Two'] },
-                                   { team: 'Navy', players: ['C Three', 'D Four'] }),
-        ...played('3', String(r), { team: 'Red', players: ['E Five', 'F Six'] },
-                                   { team: 'White', players: ['G 7', 'H 8'] })
-      );
-    }
-    rows.push(
-      ...played('3', '12', { team: 'Pink', players: ['A One', 'B Two'] },
-                            { team: 'Red', players: ['E Five', 'F Six'] })
-    );
-    const insight = firstMeetingInsight(contextForLast(normalizeRows(rows)))!;
-    expect(insight.detail).toMatch(/have never played each other/);
-  });
-
-  it('stays silent when one side is a debut team that has played nobody', () => {
-    // Brown-style newcomer: every fixture is trivially a first meeting.
-    const rows = [];
-    for (let r = 1; r <= 11; r++) {
-      rows.push(
-        ...played('3', String(r), { team: 'Pink', players: ['A One', 'B Two'] },
-                                   { team: 'Navy', players: ['C Three', 'D Four'] })
-      );
-    }
-    rows.push(
-      ...played('3', '12', { team: 'Pink', players: ['A One', 'B Two'] },
-                            { team: 'Brown', players: ['E Five', 'F Six'] })
-    );
-    expect(firstMeetingInsight(contextForLast(normalizeRows(rows)))).toBe(null);
+    expect(lastMeetingInsight(contextForLast(rows))).toBe(null);
   });
 });
 
@@ -291,16 +266,34 @@ describe('form', () => {
 });
 
 describe('ladder stakes', () => {
-  it('spots a winner-goes-top match', () => {
+  /** Three rounds where Pink and Navy each beat a different team. */
+  const threeRoundsClear = () => {
     const rows = [];
-    // Pink win three; Navy win three against other teams. Round 4 they meet.
     for (let r = 1; r <= 3; r++) {
       rows.push(...played('3', String(r), { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Red', players: ['E Five', 'F Six'] }));
       rows.push(...played('3', String(r), { team: 'Navy', players: ['C Three', 'D Four'] }, { team: 'White', players: ['G 7', 'H 8'] }));
     }
+    return rows;
+  };
+
+  it('leads with two unbeaten sides', () => {
+    const rows = threeRoundsClear();
     rows.push(...played('3', '4', { team: 'Navy', players: ['C Three', 'D Four'] }, { team: 'Pink', players: ['A One', 'B Two'] }));
     const insight = stakesInsight(contextForLast(normalizeRows(rows)))!;
-    expect(insight).not.toBe(null);
+    expect(insight.label).toBe('Unbeaten clash');
+    expect(insight.detail).toMatch(/both arrive with a perfect record/);
+    // Above the winner-goes-top line it replaces: it is the same match with
+    // more at stake, and reading rank alone can't see it.
+    expect(insight.weight).toBeGreaterThan(75);
+  });
+
+  it('spots a winner-goes-top match when one side has dropped one', () => {
+    const rows = threeRoundsClear();
+    // Navy lose their fourth; the two meet in round five, Pink 3–0, Navy 3–1.
+    rows.push(...played('3', '4', { team: 'White', players: ['G 7', 'H 8'] }, { team: 'Navy', players: ['C Three', 'D Four'] }));
+    rows.push(...played('3', '5', { team: 'Navy', players: ['C Three', 'D Four'] }, { team: 'Pink', players: ['A One', 'B Two'] }));
+    const insight = stakesInsight(contextForLast(normalizeRows(rows)))!;
+    expect(insight.label).toBe('Top spot');
     expect(insight.detail).toMatch(/go top of the ladder with a win/);
   });
 
@@ -310,6 +303,180 @@ describe('ladder stakes', () => {
       ...played('3', '2', { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Navy', players: ['C Three', 'D Four'] }),
     ]);
     expect(stakesInsight(contextForLast(rows))).toBe(null);
+  });
+
+  it('only claims a finals cutoff when the season declares a bracket', () => {
+    // Six teams over four rounds, arranged to finish Pink 4–0, Navy 3–1,
+    // Red 2–2, White 2–2, Black 1–3, Green 0–4 — so 4th plays 6th in round
+    // five, either side of a top-four bracket.
+    const field = ['Pink', 'Navy', 'Red', 'White', 'Green', 'Black'];
+    const P = { team: 'Pink', players: ['A One', 'B Two'] };
+    const N = { team: 'Navy', players: ['C Three', 'D Four'] };
+    const R = { team: 'Red', players: ['E Five', 'F Six'] };
+    const W = { team: 'White', players: ['G 7', 'H 8'] };
+    const G = { team: 'Green', players: ['I 9', 'J 10'] };
+    const B = { team: 'Black', players: ['K 11', 'L 12'] };
+    const rows = [
+      ...played('3', '1', P, B), ...played('3', '1', N, G), ...played('3', '1', R, W),
+      ...played('3', '2', P, G), ...played('3', '2', N, B), ...played('3', '2', W, R),
+      ...played('3', '3', P, W), ...played('3', '3', R, G), ...played('3', '3', N, B),
+      ...played('3', '4', P, R), ...played('3', '4', W, G), ...played('3', '4', B, N),
+      ...played('3', '5', W, G),
+    ];
+    const norm = normalizeRows(rows);
+    const last = seasonMatches(norm).at(-1)!;
+
+    const withBracket = stakesInsight(
+      insightContext(last, norm, { declaredTeams: field, finalsCutoff: 4 })
+    )!;
+    expect(withBracket.label).toBe('Finals race');
+    // The number comes from the bracket, and so does the word in the sentence.
+    expect(withBracket.detail).toBe(
+      'Green (6th) are chasing White (4th) for a place in the top 4.'
+    );
+
+    // No bracket declared, no claim made — the old code assumed 8, which was
+    // right every season so far by luck rather than by wiring.
+    expect(stakesInsight(insightContext(last, norm, { declaredTeams: field }))).toBe(null);
+  });
+});
+
+describe('the next-round gate', () => {
+  /**
+   * Every unplayed fixture in a drawn season shares one window, because
+   * nothing between them has been played. Left ungated, a round 10 page in
+   * August reported a round 2 ladder.
+   */
+  const drawnSeason = () => {
+    const rows = [];
+    // Rounds 1 and 2 played: Pink win both, Navy lose both.
+    for (let r = 1; r <= 2; r++) {
+      rows.push(...played('5', String(r), { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Navy', players: ['C Three', 'D Four'] }));
+      rows.push(...played('5', String(r), { team: 'Red', players: ['E Five', 'F Six'] }, { team: 'White', players: ['G 7', 'H 8'] }));
+    }
+    // Rounds 3 and 9 drawn but unplayed — every RESULT column blank.
+    for (const r of ['3', '9']) {
+      for (const [team, opp, players] of [
+        ['Navy', 'Red', ['C Three', 'D Four']],
+        ['Red', 'Navy', ['E Five', 'F Six']],
+      ] as const) {
+        for (const player of players) {
+          rows.push(raw({
+            Team: team, Opponent: opp, Season: '5', Round: r, Player: player,
+            Score: '', 'Team Score': '', 'Opponent Score': '', 'win?': '',
+          }));
+        }
+      }
+    }
+    return normalizeRows(rows);
+  };
+
+  it('speaks about the season for the next round up, and not beyond it', () => {
+    const rows = drawnSeason();
+    const fixtures = seasonMatches(rows).filter((m) => m.scheduled);
+    const next = fixtures.find((m) => m.round === 3)!;
+    const distant = fixtures.find((m) => m.round === 9)!;
+
+    const nextUp = droughtInsight(insightContext(next, rows));
+    expect(nextUp?.detail).toBe('Navy are 0–2 for the season and still chasing a first win.');
+
+    // Same window, seven rounds later. "0–2 for the season" is not a thing to
+    // print on a fixture in October.
+    expect(droughtInsight(insightContext(distant, rows))).toBe(null);
+  });
+
+  it('leaves career-window lines alone at any distance', () => {
+    // A win streak is as true in October as it is next Tuesday, so the gate
+    // deliberately doesn't touch it.
+    const rows = drawnSeason();
+    const distant = seasonMatches(rows).find((m) => m.scheduled && m.round === 9)!;
+    const ctx = insightContext(distant, rows);
+    expect(ctx.history.length).toBeGreaterThan(0);
+    expect(() => winStreakInsight(ctx)).not.toThrow();
+  });
+
+  it('never gags a played match', () => {
+    // A played match's own round is always the latest in its own window, so
+    // no historical page changes.
+    const rows = loadStatRows();
+    for (const m of seasonMatches(rows).filter((x) => !x.scheduled)) {
+      const ctx = insightContext(m, rows);
+      expect(() => droughtInsight(ctx)).not.toThrow();
+    }
+    // Concretely: the drought lines that exist on played matches still exist.
+    const played = seasonMatches(rows).filter((m) => !m.scheduled);
+    const droughts = played.filter((m) => droughtInsight(insightContext(m, rows)));
+    expect(droughts.length).toBeGreaterThan(0);
+  });
+});
+
+describe('partnership', () => {
+  it('reports a pair with a real record together', () => {
+    const rows = normalizeRows(run('3', 1, 6, { pinkWins: true }));
+    const insight = partnershipInsight(contextForLast(rows))!;
+    expect(insight.label).toBe('Proven pair');
+    expect(insight.detail).toBe('A. One & B. Two have won 5 of their 5 matches together.');
+    expect(insight.team).toBe('Pink');
+  });
+
+  it('says nothing about a brand-new pairing', () => {
+    // The trap that killed `firstMeetingInsight`: the draft remakes ten
+    // pairings at a stroke, so "first time together" is true of nearly
+    // everyone in round one and says nothing.
+    const rows = normalizeRows([
+      ...run('3', 1, 5, { pinkWins: true }),
+      // Both pairs remade — nobody in this match has a history with the man
+      // beside him, which is what round one of every season looks like.
+      ...played('4', '1', { team: 'Pink', players: ['A One', 'C Three'] },
+                            { team: 'Navy', players: ['B Two', 'D Four'] }),
+    ]);
+    expect(partnershipInsight(contextForLast(rows))).toBe(null);
+  });
+
+  it('says nothing about a pair with a coin-flip record', () => {
+    const rows = normalizeRows([
+      ...run('3', 1, 3, { pinkWins: true }),
+      ...run('3', 4, 6, { pinkWins: false }),
+      ...run('3', 7, 7, { pinkWins: true }),
+    ]);
+    expect(partnershipInsight(contextForLast(rows))).toBe(null);
+  });
+});
+
+describe('dominance', () => {
+  const field = ['Pink', 'Navy', 'Red', 'White', 'Green', 'Black'];
+
+  it('names a team miles clear on games', () => {
+    const rows = [];
+    // Pink win 6-0 every week; everybody else trades 6-4.
+    for (let r = 1; r <= 3; r++) {
+      rows.push(...played('3', String(r), { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Green', players: ['I 9', 'J 10'] })
+        .map((row) => ({ ...row, Score: row.Team === 'Pink' ? '6-0' : '0-6',
+                         'Team Score': row.Team === 'Pink' ? '6' : '0',
+                         'Opponent Score': row.Team === 'Pink' ? '0' : '6' })));
+      rows.push(...played('3', String(r), { team: 'Navy', players: ['C Three', 'D Four'] }, { team: 'Black', players: ['K 11', 'L 12'] }));
+      rows.push(...played('3', String(r), { team: 'Red', players: ['E Five', 'F Six'] }, { team: 'White', players: ['G 7', 'H 8'] }));
+    }
+    rows.push(...played('3', '4', { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Navy', players: ['C Three', 'D Four'] }));
+    const norm = normalizeRows(rows);
+    const ctx = insightContext(seasonMatches(norm).at(-1)!, norm, { declaredTeams: field });
+    const insight = dominanceInsight(ctx)!;
+    expect(insight.label).toBe('Steamrolling');
+    expect(insight.detail).toBe('Pink have won 18 games to 0 this season — comfortably the best return in the league.');
+    expect(insight.team).toBe('Pink');
+  });
+
+  it('says nothing when the league is close', () => {
+    const rows = [];
+    for (let r = 1; r <= 3; r++) {
+      rows.push(...played('3', String(r), { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Green', players: ['I 9', 'J 10'] }));
+      rows.push(...played('3', String(r), { team: 'Navy', players: ['C Three', 'D Four'] }, { team: 'Black', players: ['K 11', 'L 12'] }));
+      rows.push(...played('3', String(r), { team: 'Red', players: ['E Five', 'F Six'] }, { team: 'White', players: ['G 7', 'H 8'] }));
+    }
+    rows.push(...played('3', '4', { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Navy', players: ['C Three', 'D Four'] }));
+    const norm = normalizeRows(rows);
+    const ctx = insightContext(seasonMatches(norm).at(-1)!, norm, { declaredTeams: field });
+    expect(dominanceInsight(ctx)).toBe(null);
   });
 });
 
@@ -348,9 +515,9 @@ describe('loss streak', () => {
   });
 
   it('does not carry a losing run across the redraft', () => {
-    // Four losses to end one season, then a new one. Those four were with ten
-    // different team-mates; hanging them on a player in January is the same
-    // mistake "revenge match" made across seasons.
+    // Four losses to end one season, then a new one. The season bound is
+    // tuning, not principle — see the note on `lossStreakInsight` — but it is
+    // the behaviour, so it is tested.
     const rows = normalizeRows([
       ...run('3', 1, 4, { pinkWins: false }),
       ...played('4', '1', { team: 'Pink', players: ['A One', 'B Two'] },
@@ -407,7 +574,9 @@ describe('basement battle', () => {
       rows.push(...played('3', String(r), { team: 'Green', players: ['I 9', 'J 10'] }, { team: 'Black', players: ['K 11', 'L 12'] }));
     }
     rows.push(...played('3', '4', { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Navy', players: ['C Three', 'D Four'] }));
-    const ctx = insightContext(seasonMatches(normalizeRows(rows)).at(-1)!, normalizeRows(rows), field);
+    const ctx = insightContext(seasonMatches(normalizeRows(rows)).at(-1)!, normalizeRows(rows), {
+      declaredTeams: field,
+    });
     const insight = basementInsight(ctx)!;
     expect(insight.detail).toMatch(/meet at the bottom of the ladder/);
   });
@@ -422,7 +591,7 @@ describe('basement battle', () => {
     }
     rows.push(...played('3', '4', { team: 'Pink', players: ['A One', 'B Two'] }, { team: 'Navy', players: ['C Three', 'D Four'] }));
     const norm = normalizeRows(rows);
-    const ctx = insightContext(seasonMatches(norm).at(-1)!, norm, field);
+    const ctx = insightContext(seasonMatches(norm).at(-1)!, norm, { declaredTeams: field });
     expect(basementInsight(ctx)).toBe(null);
   });
 });
@@ -550,40 +719,127 @@ describe('the engine', () => {
     expect(withInsights).toBeLessThan(matches.length * 0.95);
   });
 
-  it('keeps every detector under a third of all matches', () => {
-    // The rule that actually matters, and the one "revenge match" broke when
-    // it fired on 78% of the list: a label that is nearly always true says
-    // nothing. Thresholds get set against this number, not by eye.
+  it('keeps every detector under a third of the matches it can reach', () => {
+    // The rule that actually matters, and the one "revenge match" broke twice.
+    //
+    // First it fired on 78% of the fixture list by looking back across
+    // seasons, which is what a label that is nearly always true looks like.
+    // Then the fix — a season-scoped window — made it fire on 28 of 28 finals
+    // and 0 of 179 home-and-away matches, and THIS TEST DID NOT NOTICE,
+    // because dividing 28 by all 215 matches reads a comfortable 13%.
+    //
+    // So a detector is measured against the matches it can actually reach.
+    // A finals-only detector is judged on finals; one that needs four rounds
+    // of ladder is judged on the matches that have them. Thresholds get set
+    // against these numbers, not by eye.
     const rows = loadStatRows();
     const matches = seasonMatches(rows);
     const CAP = 0.3;
-    const detectors: [string, (ctx: ReturnType<typeof insightContext>) => unknown][] = [
-      ['stakes', stakesInsight],
-      ['milestone', milestoneInsight],
-      ['revenge', revengeInsight],
-      ['pairH2H', pairH2HInsight],
-      ['firstMeeting', firstMeetingInsight],
-      ['basement', basementInsight],
-      ['drought', droughtInsight],
-      ['lossStreak', lossStreakInsight],
-      ['hoodoo', hoodooInsight],
-      ['errorLeader', errorLeaderInsight],
-      ['errorForm', errorFormInsight],
-      ['wayward', waywardInsight],
-      ['mockMilestone', mockMilestoneInsight],
-    ];
-    const rate = (detect: (ctx: ReturnType<typeof insightContext>) => unknown) =>
-      matches.filter((m) => detect(insightContext(m, rows))).length / matches.length;
 
-    for (const [name, detect] of detectors) {
-      expect(rate(detect), `${name} fires too often`).toBeLessThanOrEqual(CAP);
+    const anyMatch = () => true;
+    const homeAndAway = (m: MatchRecord) => !m.isFinals;
+    const finals = (m: MatchRecord) => m.isFinals;
+    /** Home-and-away matches late enough to have a ladder worth reading. */
+    const withLadder = (m: MatchRecord) => !m.isFinals && m.round >= 4;
+
+    const detectors: [string, (ctx: InsightContext) => unknown, (m: MatchRecord) => boolean][] = [
+      ['stakes', stakesInsight, withLadder],
+      ['milestone', milestoneInsight, anyMatch],
+      ['form', formInsight, anyMatch],
+      ['partnership', partnershipInsight, anyMatch],
+      ['pairH2H', pairH2HInsight, anyMatch],
+      ['dominance', dominanceInsight, withLadder],
+      ['basement', basementInsight, withLadder],
+      ['drought', droughtInsight, homeAndAway],
+      ['lossStreak', lossStreakInsight, homeAndAway],
+      ['hoodoo', hoodooInsight, anyMatch],
+      ['errorLeader', errorLeaderInsight, withLadder],
+      ['errorForm', errorFormInsight, anyMatch],
+      ['wayward', waywardInsight, anyMatch],
+      ['mockMilestone', mockMilestoneInsight, anyMatch],
+    ];
+
+    for (const [name, detect, reachable] of detectors) {
+      const pool = matches.filter(reachable);
+      const fired = pool.filter((m) => detect(insightContext(m, rows))).length;
+      expect(fired / pool.length, `${name} fires too often`).toBeLessThanOrEqual(CAP);
     }
 
-    // `formInsight` (45%) and `winStreakInsight` (40%) predate the cap and sit
-    // above it. They are left alone rather than quietly retuned as part of a
-    // change about banter — but they get a ceiling of their own so they can't
-    // drift further.
-    expect(rate(formInsight)).toBeLessThan(0.5);
-    expect(rate(winStreakInsight)).toBeLessThan(0.5);
+    // `winStreakInsight` (34%) is the last detector predating the cap and is
+    // left over it deliberately. `formInsight` used to be the other, at 40%,
+    // and was retuned rather than kept: it had drifted to two thirds of S5's
+    // played matches and was the only line on half the fixture list, which
+    // makes a detector the noise floor rather than an exception. This one has
+    // not drifted, and "on a run" is the positive counterpart to `lossStreak`,
+    // so it keeps its exemption — and a ceiling of its own, so it can't move.
+    const streakRate =
+      matches.filter((m) => winStreakInsight(insightContext(m, rows))).length / matches.length;
+    expect(streakRate).toBeGreaterThan(CAP);
+    expect(streakRate).toBeLessThan(0.4);
+  });
+
+  it('lets the one fact-shaped line fire as often as the fact is true', () => {
+    // `lastMeetingInsight` fires on every final, and that is the point: two
+    // teams always meet before the bracket in a single round-robin, and how
+    // that meeting went is the thing everyone wants to know before a final.
+    // It is exempt from the cap above because it claims a fact rather than a
+    // story — the same way a scoreline does — and its weight (50) keeps it out
+    // of the lead. The exemption is written down here rather than assumed.
+    const rows = loadStatRows();
+    const finals = seasonMatches(rows).filter((m) => m.isFinals);
+    const fired = finals.filter((m) => lastMeetingInsight(insightContext(m, rows)));
+    expect(fired.length).toBe(finals.length);
+
+    // And it stays out of the home-and-away, where it would be a grudge story
+    // about two sets of players who have never met.
+    const homeAndAway = seasonMatches(rows).filter((m) => !m.isFinals);
+    expect(homeAndAway.filter((m) => lastMeetingInsight(insightContext(m, rows)))).toEqual([]);
+  });
+
+  it('never names the same player twice in one panel', () => {
+    // 26% of multi-line panels used to. One of them had a man arriving on
+    // nine straight wins and spraying errors in the same breath.
+    const rows = loadStatRows();
+    const everyone = new Set(rows.map((r) => r.player));
+    for (const m of seasonMatches(rows)) {
+      const found = insightsFor(m, rows);
+      const subjects = found.map((i) => i.subject).filter((p): p is string => !!p);
+      expect(new Set(subjects).size, `${m.season} ${m.roundLabel} ${m.key}`).toBe(subjects.length);
+
+      // `subject` has to be the name the sentence actually uses, or the cap is
+      // policing the wrong thing.
+      for (const i of found) {
+        if (i.subject) {
+          expect(everyone.has(i.subject)).toBe(true);
+          expect(i.detail).toContain(i.subject);
+        }
+      }
+    }
+  });
+
+  it('says nothing about the season on a fixture that is rounds away', () => {
+    // The whole unplayed draw shares one window, so without `isNextUp` a
+    // round 10 page reports the round 2 ladder.
+    const rows = loadStatRows();
+    const fixtures = seasonMatches(rows).filter((m) => m.scheduled);
+    if (!fixtures.length) return;
+
+    const seasons = new Set(fixtures.map((m) => m.season));
+    for (const season of seasons) {
+      const played = seasonMatches(rows).filter((m) => m.season === season && !m.scheduled && !m.isFinals);
+      const latest = played.reduce((n, m) => Math.max(n, m.round), 0);
+      const distant = fixtures.filter((m) => m.season === season && m.round > latest + 1);
+      for (const m of distant) {
+        const ctx = insightContext(m, rows, { declaredTeams: declaredTeamsOf(rows, season) });
+        for (const detect of [stakesInsight, droughtInsight, basementInsight, dominanceInsight, errorLeaderInsight]) {
+          expect(detect(ctx), `${season} R${m.roundLabel} ${m.key}`).toBe(null);
+        }
+      }
+    }
   });
 });
+
+/** The teams a season's rows know about — the test's stand-in for the config. */
+function declaredTeamsOf(rows: StatRow[], season: number): string[] {
+  return [...new Set(rows.filter((r) => r.season === season).map((r) => r.team))];
+}

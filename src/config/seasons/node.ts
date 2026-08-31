@@ -15,7 +15,7 @@
 import { readdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import type { SeasonConfig, TeamConfig } from './schema.ts';
+import { finalsBerths, type SeasonConfig, type TeamConfig } from './schema.ts';
 
 const SEASON_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -70,4 +70,11 @@ export async function seasonTeamConfigs(
 export async function declaredTeams(season: number): Promise<string[]> {
   const cfg = await getSeasonConfig(season);
   return Object.keys(cfg?.teams ?? {});
+}
+
+/** How many teams this season's bracket takes — see `finalsBerths`. */
+export async function seasonFinalsBerths(
+  season: number
+): Promise<number | undefined> {
+  return finalsBerths(await getSeasonConfig(season));
 }

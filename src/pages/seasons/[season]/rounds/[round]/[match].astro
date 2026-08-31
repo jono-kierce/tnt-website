@@ -16,7 +16,14 @@ import Avatar from '../../../../../components/Avatar.astro';
 import { SITE, seasonLabel, teamMeta, isVotesSealed } from '../../../../../config/site.ts';
 import { matchHref, playerHref, roundSlug, matchSlug, seasonHref } from '../../../../../lib/url.ts';
 import { allPlayers, playerAgg, perSet, type MatchRecord } from '../../../../../lib/stats.ts';
-import { allRows, declaredTeams, rows, seasonSchedule, siteSeasons } from '../../../../../lib/site-data.ts';
+import {
+  allRows,
+  declaredTeams,
+  finalsCutoff,
+  rows,
+  seasonSchedule,
+  siteSeasons,
+} from '../../../../../lib/site-data.ts';
 import { predictionFor } from '../../../../../lib/predict.ts';
 import { insightsFor } from '../../../../../lib/insights.ts';
 import { datetimeAttr, formatDateLong, formatTime } from '../../../../../lib/datetime.ts';
@@ -38,7 +45,10 @@ const { match } = Astro.props as { match: MatchRecord };
 const season = match.season;
 const sealed = isVotesSealed(season);
 const prediction = predictionFor(match);
-const insights = insightsFor(match, allRows, declaredTeams(season));
+const insights = insightsFor(match, allRows, {
+  declaredTeams: declaredTeams(season),
+  finalsCutoff: finalsCutoff(season),
+});
 
 const heading = match.isFinals
   ? match.roundLabel === 'Final'

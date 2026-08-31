@@ -81,9 +81,11 @@ graphics/                Instagram PNGs, rendered from the same CSV — see grap
 ## Instagram graphics (`graphics/`)
 
 1080×1350 PNGs rendered by headless Chromium from the same CSV, so posting a
-round is "append rows, push, collect PNGs". Four template families — ladder,
+round is "append rows, push, collect PNGs". Five template families — ladder,
 result card, stat board, preview (the round's unplayed fixtures, for the day
-before — no prediction, at most one `insights.ts` line per fixture). **Read
+before — no prediction, at most one `insights.ts` line per fixture) and
+scoreboard (the same round's results on one slide, for a night nobody
+photographed — played fixtures only, winner's row first off `win?`). **Read
 `graphics/README.md` before touching it**; the rules that matter here:
 
 - **No graphic computes a statistic.** `graphics/lib/payloads.ts` calls
@@ -302,40 +304,77 @@ would have been. Keep them stingy: "revenge match" once fired on 78% of the
 fixture list (it looked back across seasons, where a redraft means the two teams
 share only a colour), and a label that's nearly always true says nothing.
 
-- **The stinginess rule is now per detector: a test fails if any one of them
-  fires on more than 30% of matches.** That's the guard that matters, and
-  thresholds get set against it rather than by eye. The old
-  share-of-matches-with-any-insight band survives as a loose sanity check
-  (40–95%) — with fifteen detectors it can't do the same job, and a drawn but
-  unplayed round is saturated anyway: every S5 fixture sees each player's whole
-  career, so the career-window detectors all fire. `formInsight` (45%) and
-  `winStreakInsight` (40%) predate the cap and are explicitly grandfathered,
-  with a 50% ceiling of their own.
+- **The stinginess rule is per detector, measured against the matches that
+  detector can actually reach.** A test fails if any one of them fires on more
+  than 30% of its own population — finals-only detectors are judged on finals,
+  ladder detectors on rounds four and later. Measuring everything against all
+  215 matches is what let "revenge match" hide: season-scoped, it fired on **28
+  of 28 finals and 0 of 179 home-and-away matches**, which divides out to a
+  comfortable-looking 13%. Thresholds get set against these numbers, not by eye.
+  `winStreakInsight` (34%) is the last detector grandfathered over the cap and
+  has a 40% ceiling of its own. `formInsight` was the other, at 40%, and was
+  retuned instead (`MIN_LIFT` 3 → 4, now 22%): it had drifted to two thirds of
+  S5's played matches and was the only line on half the fixture list, which
+  makes a detector the noise floor rather than an exception.
+- **Every season on record is a single round-robin**, so two teams meet exactly
+  once before the bracket. That kills any "they met earlier" detector outside
+  the finals, which is why `lastMeetingInsight` (once `revengeInsight`) is
+  `isFinals`-only. It fires on every final, and that's allowed because it now
+  claims a *fact* — how the round-N meeting went — rather than a story; it's
+  exempt from the cap, weighted 50 so it never leads, and a test pins both
+  halves. Drop the guard if TNT ever runs a double round-robin.
+- **One line per player (`MAX_PER_PLAYER`), one unflattering line per match
+  (`MAX_NEGATIVE`).** Fourteen detectors read the same career, so a single good
+  or bad month lights several of them up about one man: 26% of multi-line
+  panels used to name the same player twice, and one had him arriving on nine
+  straight wins and spraying errors in the same breath. `Insight.subject` is
+  what the cap reads — never displayed, and left unset by team-level lines.
+  Weight order decides which of his lines survives; both budgets are spent only
+  by a line that actually makes the panel. A hoodoo line naming the *tormentor*
+  alongside his own streak line is fine and stays — that reinforces.
+- **Anything present-tense about the season is gated on `isNextUp`.** Every
+  unplayed fixture in a drawn season shares one window, because nothing between
+  them has been played, so a round 10 page in August was reporting a round 2
+  ladder ("White are 0–2 for the season", seven weeks early). `stakes`,
+  `drought`, `basement`, `dominance` and `errorLeader` speak only while the
+  match is the round about to be played. A played match always passes, so no
+  historical page changed. Career-window lines are deliberately not gated — "on
+  11 straight wins" is as true in October.
+- **The finals cutoff comes from the season's own bracket**, via
+  `finalsBerths()` in the season config schema and passed in as
+  `InsightContext.finalsCutoff` — this file can't import the configs
+  (`import.meta.glob` doesn't exist in the graphics renderer's Node process),
+  the same reason `declaredTeams` is passed in. It was hardcoded to 8, which
+  has been right every season so far (S1–S4 took 8 of 9, S5 takes 8 of 10) by
+  luck rather than by wiring. No bracket declared, no claim made.
 - **Half of them say something unflattering** — this is a social league and the
   losing streaks get more airtime than the winning ones. `cold-streak`,
   `drought`, `basement`, `hoodoo`, `errors` and `mock-milestone` are the
-  negative kinds: a losing run *within the season* (a run carried across a
-  redraft is the "revenge match" trap again), a winless or sliding team, a
-  bottom-three fixture, a player who has never beaten somebody across the net,
-  three different readings of unforced errors, and a round number of career UEs
-  or double faults. They're deadpan on purpose — the number does the work.
-- **One negative line per match, and it isn't a public flag.** `NEGATIVE_KINDS`
-  is private to the file and exists only for `MAX_NEGATIVE`; the panel gives no
-  visual sign of which lines are the mean ones, because a chip announcing
-  itself as the roast kills the joke. Seven detectors can fire on one bad
-  month, three of them about the same player's errors.
+  negative kinds: a losing run *within the season*, a winless or sliding team,
+  a bottom-three fixture, a player who has never beaten somebody across the
+  net, three different readings of unforced errors, and a round number of
+  career UEs or double faults. They're deadpan on purpose — the number does the
+  work. `lossStreakInsight`'s season bound is **tuning, not principle**: the
+  comment used to borrow the redraft argument from revenge, which is wrong here
+  — a redraft scatters a player's team-mates, not his own record, and win
+  streaks span seasons happily (Angus Hume's eleven cross three).
+- **`NEGATIVE_KINDS` isn't a public flag.** It's private to the file and exists
+  only for `MAX_NEGATIVE`; the panel gives no visual sign of which lines are
+  the mean ones, because a chip announcing itself as the roast kills the joke.
+  It's also why `partnershipInsight` is positive-only: a "won one of six"
+  variant would either slip past the cap under a non-negative kind, or take a
+  seventh place in the queue for the single negative slot and crowd out
+  `drought` and `basement`, which say more.
 - **Errors over double faults.** UE is the stat people actually argue about, so
   the two stats that carry both — `waywardInsight` and `mockMilestoneInsight` —
   lead on unforced errors and reach for double faults only when no UE line
   qualifies.
-- **Nothing negative reads `votes` or BOG.** These lines go onto an Instagram
-  preview card, and S5's votes are sealed.
-- Negatives are weighted below `stakes`, `milestone`, `streak` and `form`, so a
-  real ladder story still leads the panel — and the preview graphic, which
-  takes only the top-weighted line, currently never leads with banter on the
-  unplayed S5 draw (every fixture there trips "On a run", "In form" or
-  "Milestone" off the career window). Once results land, `drought` (64) and
-  `basement` (66) outrank both.
+- **Nothing reads `votes` or BOG at all.** These lines go onto an Instagram
+  preview card and S5's votes are sealed, so the file needs no sealed-season
+  guard — keep it that way.
+- Negatives are weighted below `stakes`, `milestone`, `streak`, `dominance`,
+  `partnership` and `form`, so a real ladder story still leads the panel — and
+  the preview graphic, which takes only the top-weighted line.
 
 ## Current state / open TODOs (owner to fill)
 

@@ -29,8 +29,8 @@ export type InsightKind =
   | 'streak'
   | 'form'
   | 'h2h'
-  | 'revenge'
-  | 'first-meeting'
+  | 'partnership'
+  | 'dominance'
   | 'milestone'
   | 'stakes'
   // The other side of the ledger. This is a social league and the losing
@@ -46,12 +46,20 @@ export type InsightKind =
 
 export interface Insight {
   kind: InsightKind;
-  /** Two or three words, for a chip: "Revenge match". */
+  /** Two or three words, for a chip: "Basement battle". */
   label: string;
   /** One sentence. The whole insight. */
   detail: string;
   /** The team it's about, when it's about one — for colour. */
   team?: string;
+  /**
+   * The player it's about, when it's about one. Not for display — every
+   * detector already puts the name in `detail`. It exists so `matchInsights`
+   * can enforce `MAX_PER_PLAYER`: a panel of three lines should be three
+   * stories about three people, not one man's evening reported three ways.
+   * Left undefined by the detectors that talk about teams.
+   */
+  subject?: string;
   /**
    * Ordering only. Higher goes first, on the rough principle that a fact about
    * this match beats a fact about a player's career.
@@ -69,6 +77,15 @@ export interface InsightContext {
   /** All rows, for a detector that needs the season's declared field. */
   allRows: StatRow[];
   declaredTeams?: string[];
+  /**
+   * How many teams the season's finals bracket takes, from the season config
+   * (`finalsBerths`). Passed in for the same reason `declaredTeams` is: this
+   * file can't import the configs — they're auto-discovered with
+   * `import.meta.glob`, which doesn't exist in the Node process that renders
+   * the Instagram graphics. Undefined means no bracket is declared, and
+   * `stakesInsight` then says nothing about a cutoff rather than guessing one.
+   */
+  finalsCutoff?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,6 +102,14 @@ const isBefore = (a: MatchRecord, b: MatchRecord): boolean => {
   return as !== bs ? as < bs : ar !== br ? ar < br : ak < bk;
 };
 
+/** What a caller knows about the season that the CSV can't tell this file. */
+export interface InsightOptions {
+  /** The season's declared field — see `InsightContext.declaredTeams`. */
+  declaredTeams?: string[];
+  /** How many teams the bracket takes — see `InsightContext.finalsCutoff`. */
+  finalsCutoff?: number;
+}
+
 /**
  * Build the context for one match: everything played before it, and nothing
  * else. A scheduled fixture sees the whole history; a match from 2022 sees
@@ -93,13 +118,20 @@ const isBefore = (a: MatchRecord, b: MatchRecord): boolean => {
 export function insightContext(
   match: MatchRecord,
   allRows: StatRow[],
-  declaredTeams?: string[]
+  opts: InsightOptions = {}
 ): InsightContext {
   const history = seasonMatches(allRows)
     .filter((m) => !m.scheduled && isBefore(m, match))
     .sort((a, b) => a.season - b.season || a.round - b.round || a.key.localeCompare(b.key));
   const historyRows = history.flatMap((m) => m.sides.flatMap((s) => s.players));
-  return { match, history, historyRows, allRows, declaredTeams };
+  return {
+    match,
+    history,
+    historyRows,
+    allRows,
+    declaredTeams: opts.declaredTeams,
+    finalsCutoff: opts.finalsCutoff,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -163,6 +195,34 @@ const statTotal = (rows: StatRow[], stat: 'unforcedErrors' | 'doubleFaults'): nu
 const plural = (n: number, one: string, many: string): string =>
   `${n} ${n === 1 ? one : many}`;
 
+/**
+ * Is this match the next one up, rather than one somewhere off in the draw?
+ *
+ * The window rule — a detector sees only what was played strictly before —
+ * has a blind spot at the far end of a season that has been drawn but not
+ * played. Every unplayed fixture shares one window, because there is nothing
+ * played between them, so a round 10 page in August was reporting a round 2
+ * ladder: "White are 0-2 for the season" seven weeks early, and "Yellow go top
+ * of the ladder with a win" off a table two rounds deep. True to the letter of
+ * the window, and nonsense to read.
+ *
+ * So anything that speaks in the present tense about the season — the ladder,
+ * a team's record, a season leaderboard — is gated on this. A played match
+ * always passes (its own round is the latest one in its window, or one past
+ * it), so no historical page changes; a fixture passes only while it is the
+ * round about to be played. Career-window detectors are deliberately not
+ * gated: "on 11 straight wins" is just as true in October.
+ */
+function isNextUp(ctx: InsightContext): boolean {
+  const { match } = ctx;
+  if (match.isFinals) return true;
+  let latest = 0;
+  for (const m of ctx.history) {
+    if (m.season === match.season && !m.isFinals && m.round > latest) latest = m.round;
+  }
+  return match.round <= latest + 1;
+}
+
 // ---------------------------------------------------------------------------
 // Detectors
 // ---------------------------------------------------------------------------
@@ -191,6 +251,7 @@ export function winStreakInsight(ctx: InsightContext): Insight | null {
     label: 'On a run',
     detail: `${best.player} arrives on ${best.streak} straight wins.`,
     team: best.team,
+    subject: best.player,
     weight: 60 + best.streak,
   };
 }
@@ -209,7 +270,15 @@ export function formInsight(ctx: InsightContext): Insight | null {
   // Per set, on the net ledger. Set where it is because a smaller lift is
   // within the week-to-week noise of a social league: at 1.5 this fired on
   // more than half of all matches, which is not what "in form" should mean.
-  const MIN_LIFT = 3;
+  //
+  // It was 3 for a long time, which fired on 40% of all matches — over the
+  // per-detector cap, and grandfathered past it on the grounds that retuning
+  // it wasn't part of a change about banter. That excuse expired: by S5 it was
+  // firing on two thirds of played matches and was the only line on half the
+  // fixture list, which makes it the noise floor rather than an insight.
+  // 4 brings it to 22%, inside the cap, and puts it on the same bar as
+  // `errorFormInsight` — same ledger, same idea of what a real move is.
+  const MIN_LIFT = 4;
 
   const net = (r: StatRow): number | null => {
     if (r.winners === null && r.unforcedErrors === null) return null;
@@ -250,6 +319,7 @@ export function formInsight(ctx: InsightContext): Insight | null {
       `${best.player} has been well above his own career average over the ` +
       `last ${RECENT} matches — ${best.lift.toFixed(1)} more winners than errors per set.`,
     team: best.team,
+    subject: best.player,
     weight: 55,
   };
 }
@@ -301,15 +371,34 @@ export function pairH2HInsight(ctx: InsightContext): Insight | null {
 }
 
 /**
- * One side lost the last time these two teams met — **this season**.
+ * How the last meeting between these two teams went — **this season**, and
+ * only ahead of a final.
  *
- * Deliberately not across seasons. Every team is redrafted every January, so
- * "Navy lost to Pink last season" is a fact about two sets of players who have
- * since been dispersed; it wears the colour of a grudge without being one. It
- * also fired on 78% of all matches when it looked back that far, and a label
- * that's nearly always true tells a reader nothing.
+ * This was "Revenge match", and it was wrong twice over.
+ *
+ * It was wrong across seasons, which is what the season filter fixes: every
+ * team is redrafted every January, so "Navy lost to Pink last season" is a
+ * fact about two sets of players who have since been dispersed. It wears the
+ * colour of a grudge without being one, and it fired on 78% of all matches
+ * when it looked back that far.
+ *
+ * The season filter then made it *dead*, which took longer to notice because
+ * the frequency test measures every detector against all matches and this one
+ * read a respectable 13%. Measured against the matches it can actually reach,
+ * it fired on **28 of 28 finals and 0 of 179 home-and-away matches**. Both
+ * numbers have the same cause: every season on record is a single round-robin,
+ * so two teams meet exactly once before the bracket — never again in the
+ * home-and-away, and always at least once before a final.
+ *
+ * So it is a finals line, and it is one on every final. That's tolerable for
+ * what it now is and wasn't for what it was: "Revenge" claims a story, and a
+ * story that is always there is not a story. "Last meeting" claims a fact, the
+ * same way a scoreline does, and at weight 50 it sits below anything with an
+ * actual angle. If TNT ever runs a double round-robin, drop the `isFinals`
+ * guard — the rest of this works unchanged.
  */
-export function revengeInsight(ctx: InsightContext): Insight | null {
+export function lastMeetingInsight(ctx: InsightContext): Insight | null {
+  if (!ctx.match.isFinals) return null;
   const [a, b] = ctx.match.sides;
   const previous = ctx.history.filter(
     (m) => m.season === ctx.match.season && involves(m, a.team, b.team)
@@ -321,11 +410,11 @@ export function revengeInsight(ctx: InsightContext): Insight | null {
   const loser = last.sides.find((s) => s.team !== last.winner)!;
   const where = last.isFinals ? `in the ${last.roundLabel}` : `in round ${last.roundLabel}`;
   return {
-    kind: 'revenge',
-    label: 'Revenge',
+    kind: 'h2h',
+    label: 'Last meeting',
     detail: `${loser.team} lost the last meeting ${where}, ${scoreFrom(last)}.`,
     team: loser.team,
-    weight: 58,
+    weight: 50,
   };
 }
 
@@ -337,26 +426,6 @@ export function revengeInsight(ctx: InsightContext): Insight | null {
 function scoreFrom(m: MatchRecord): string {
   const winner = m.sides.find((s) => s.team === m.winner);
   return winner?.score ? `${winner.score} to ${winner.team}` : 'score unrecorded';
-}
-
-/** These two teams have never played each other. */
-export function firstMeetingInsight(ctx: InsightContext): Insight | null {
-  const [a, b] = ctx.match.sides;
-  if (ctx.history.some((m) => involves(m, a.team, b.team))) return null;
-  // In the very first round on record everything is a first meeting, which is
-  // true and not worth printing five times.
-  if (ctx.history.length < 10) return null;
-  // A brand-new team (e.g. Brown, added for a season) has never played anyone,
-  // so "never played each other" is trivially true for every one of its
-  // fixtures and says nothing. Only interesting when both teams have a past.
-  const hasPast = (team: string) => ctx.history.some((m) => m.sides.some((s) => s.team === team));
-  if (!hasPast(a.team) || !hasPast(b.team)) return null;
-  return {
-    kind: 'first-meeting',
-    label: 'First meeting',
-    detail: `${a.team} and ${b.team} have never played each other.`,
-    weight: 45,
-  };
 }
 
 /** Somebody is one match away from a round number. */
@@ -375,6 +444,7 @@ export function milestoneInsight(ctx: InsightContext): Insight | null {
           label: 'Milestone',
           detail: `${player} plays his ${ordinal(n)} TNT match.`,
           team: side.team,
+          subject: player,
           weight: 70,
         });
       }
@@ -386,6 +456,7 @@ export function milestoneInsight(ctx: InsightContext): Insight | null {
           label: 'Milestone',
           detail: `${player} needs ${next - winners} more for ${next} career winners.`,
           team: side.team,
+          subject: player,
           weight: 65,
         });
       }
@@ -407,9 +478,10 @@ function ordinal(n: number): string {
  * Home-and-away only, and only where there's a ladder to speak of: the ladder
  * is rebuilt from the window, so this is where the two teams stood going in.
  */
-export function stakesInsight(ctx: InsightContext, finalsCutoff = 8): Insight | null {
+export function stakesInsight(ctx: InsightContext): Insight | null {
   const { match } = ctx;
   if (match.isFinals || match.round <= 2) return null;
+  if (!isNextUp(ctx)) return null;
 
   const before = ctx.historyRows.filter((r) => r.season === match.season);
   if (!before.length) return null;
@@ -424,6 +496,22 @@ export function stakesInsight(ctx: InsightContext, finalsCutoff = 8): Insight | 
   const [high, low] = [...rows].sort((a, b) => a.rank - b.rank);
   const leader = table[0];
 
+  // Two unbeaten sides. The best version of "this one matters", and the one
+  // the ladder branches below couldn't see: they read rank, and two teams both
+  // winning everything are simply first and second, which on its own reads as
+  // an ordinary top-of-the-table game. Needs both to have actually played --
+  // `declaredTeams` seeds an unplayed team at 0/0/0, and a team that has had
+  // two byes is not unbeaten, it is unstarted.
+  if (rows.every((r) => r.matchesPlayed >= 2 && r.losses === 0 && r.wins === r.matchesPlayed)) {
+    return {
+      kind: 'stakes',
+      label: 'Unbeaten clash',
+      detail:
+        `${high.team} (${high.wins}–0) and ${low.team} (${low.wins}–0) both ` +
+        `arrive with a perfect record — one of them leaves without it.`,
+      weight: 78,
+    };
+  }
   // Winner goes top: the better-placed side is first or second, and one win
   // separates them from the summit.
   if (high.rank <= 2 && high.wins + 1 > leader.wins) {
@@ -435,14 +523,24 @@ export function stakesInsight(ctx: InsightContext, finalsCutoff = 8): Insight | 
       weight: 75,
     };
   }
-  // A scrap either side of the cutoff.
-  if (high.rank <= finalsCutoff && low.rank > finalsCutoff && low.rank - high.rank <= 3) {
+  // A scrap either side of the cutoff. The cutoff comes from the season's own
+  // bracket (`finalsBerths`), not from a hardcoded 8: that was right for every
+  // season so far by luck rather than by wiring, and it named "the eight" in
+  // the sentence too, so the first season with a different bracket would have
+  // been wrong twice in one line. No bracket declared, no claim made.
+  const cutoff = ctx.finalsCutoff;
+  if (
+    cutoff !== undefined &&
+    high.rank <= cutoff &&
+    low.rank > cutoff &&
+    low.rank - high.rank <= 3
+  ) {
     return {
       kind: 'stakes',
       label: 'Finals race',
       detail:
         `${low.team} (${ordinal(low.rank)}) are chasing ${high.team} ` +
-        `(${ordinal(high.rank)}) for a place in the eight.`,
+        `(${ordinal(high.rank)}) for a place in the top ${cutoff}.`,
       team: low.team,
       weight: 68,
     };
@@ -460,6 +558,116 @@ export function stakesInsight(ctx: InsightContext, finalsCutoff = 8): Insight | 
     };
   }
   return null;
+}
+
+/**
+ * How the two men on one side of the net have gone as a pair.
+ *
+ * `pairH2HInsight` covers the pairing *across* the net; this is the one nobody
+ * had, and in a doubles league the partnership is the thing people actually
+ * argue about. Career window rather than season: the pair is the pair whatever
+ * colour they're wearing, and a redraft that puts two old team-mates back
+ * together is exactly the case worth mentioning.
+ *
+ * There is deliberately no "first time these two have partnered" variant. It
+ * would be true of nearly every pairing in round one of every season — the
+ * draft remakes ten of them at a stroke — which is the trap that killed the
+ * old `firstMeetingInsight`. A record needs a real sample to be a record, so
+ * the bar is four nights together, which is also what keeps this stingy.
+ *
+ * Nor is there a "won one of six" variant, tempting as it is. It would be an
+ * unflattering line under a kind `NEGATIVE_KINDS` doesn't cover, so it would
+ * slip past `MAX_NEGATIVE` and let two roasts onto one panel; giving it a kind
+ * of its own would instead put a seventh detector in the queue for the single
+ * negative slot, crowding out `drought` and `basement`, which say more. The
+ * bad-pair joke is already told, better, by whichever of those fires.
+ */
+export function partnershipInsight(ctx: InsightContext): Insight | null {
+  const MIN = 4;
+  let best: { pair: string[]; team: string; wins: number; played: number } | null = null;
+
+  for (const side of ctx.match.sides) {
+    const pair = names(side);
+    if (pair.length < 2) continue;
+
+    const together = ctx.history.filter((m) =>
+      m.sides.some((s) => pair.every((p) => names(s).includes(p)))
+    );
+    if (together.length < MIN) continue;
+
+    const wins = together.filter((m) => {
+      const theirs = m.sides.find((s) => pair.every((p) => names(s).includes(p)))!;
+      return m.winner === theirs.team;
+    }).length;
+
+    // Only worth a line if it says something: a pair at 50% has no record,
+    // it has a coin. Two thirds is the bar, and it is one-directional — see
+    // the note above on why the losing half of this isn't here.
+    const rate = wins / together.length;
+    if (rate < 2 / 3) continue;
+    // The better record of the two, when both sides qualify.
+    if (best && rate <= best.wins / best.played) continue;
+    best = { pair, team: side.team, wins, played: together.length };
+  }
+  if (!best) return null;
+
+  const label = best.pair.map(shortName).join(' & ');
+  return {
+    kind: 'partnership',
+    label: 'Proven pair',
+    detail: `${label} have won ${best.wins} of their ${best.played} matches together.`,
+    team: best.team,
+    weight: 56,
+  };
+}
+
+/**
+ * A team taking games off people at a rate nobody else in the league is.
+ *
+ * The ladder has carried `gamesFor`/`gamesAgainst` since the beginning and
+ * nothing here read them: every team-level detector went off wins and losses,
+ * so a side winning 6-0 every week read exactly like one scraping 6-4. The
+ * ratio is the stat that separates them, and it's the one the ladder itself
+ * breaks ties on.
+ *
+ * Present tense about a live ladder, so it's gated like the rest — see
+ * `isNextUp`. The margin requirement is what keeps it rare: leading the league
+ * is common, leading it by a distance is not.
+ */
+export function dominanceInsight(ctx: InsightContext): Insight | null {
+  const { match } = ctx;
+  if (match.isFinals || match.round < 4) return null;
+  if (!isNextUp(ctx)) return null;
+  // How far clear of second the leader has to be before it's worth a line.
+  const MARGIN = 1.15;
+  const MIN_PLAYED = 3;
+
+  const before = ctx.historyRows.filter((r) => r.season === match.season);
+  if (!before.length) return null;
+  const table = ladder(match.season, before, undefined, ctx.declaredTeams);
+
+  // `ratio` is already guarded against a nil `gamesAgainst` — the ladder falls
+  // back to `gamesFor` — so a side that has conceded nothing sorts top rather
+  // than being dropped for dividing by zero, which is the case this is for.
+  const field = table
+    .filter((r) => r.matchesPlayed >= MIN_PLAYED)
+    .sort((a, b) => b.ratio - a.ratio);
+  if (field.length < 4) return null;
+
+  const [top, second] = field;
+  if (top.ratio < second.ratio * MARGIN) return null;
+
+  const side = match.sides.find((s) => s.team === top.team);
+  if (!side) return null;
+  return {
+    kind: 'dominance',
+    label: 'Steamrolling',
+    detail:
+      `${top.team} have won ${top.gamesFor} games to ${top.gamesAgainst} this ` +
+      `season — comfortably the best return in the league.`,
+    team: top.team,
+    weight: 63,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -486,13 +694,23 @@ export function stakesInsight(ctx: InsightContext, finalsCutoff = 8): Insight | 
  * A player carrying a run of four or more losses into the match — **this
  * season**.
  *
- * Two differences from `winStreakInsight`, both deliberate. The bar is one
- * higher: three straight losses fires on 38% of all matches on record and is
- * just a fortnight of tennis, where four is 23% and is a slump. And the run
- * has to be inside the current season, because a losing streak is a claim
- * about right now — carried across a redraft it's a fact about a team that no
- * longer exists, which is the same trap `revengeInsight` documents. It's why
- * this can't fire before round five.
+ * Two differences from `winStreakInsight`, both of them tuning rather than
+ * principle, which is worth saying plainly because the comment here used to
+ * claim otherwise.
+ *
+ * The bar is one higher: three straight losses fires on 38% of all matches on
+ * record and is just a fortnight of tennis, where four is 23% and is a slump.
+ *
+ * And the run has to be inside the current season, which is why this can't
+ * fire before round five. The old reason given for that was the redraft — "a
+ * fact about a team that no longer exists" — and it was borrowed from
+ * `lastMeetingInsight`, where it is true, and wrong here: this is a *player's*
+ * streak, and a redraft scatters his team-mates, not his own record. Angus
+ * Hume's eleven straight wins span three seasons and `winStreakInsight` says
+ * so. The real reason is the frequency, same as the bar above: unbounded, a
+ * losing run reaches back far enough to catch somebody most weeks. The
+ * asymmetry with win streaks is a choice about how often each line should
+ * land, not a claim that the two facts are different in kind.
  */
 export function lossStreakInsight(ctx: InsightContext): Insight | null {
   const MIN = 4;
@@ -519,6 +737,7 @@ export function lossStreakInsight(ctx: InsightContext): Insight | null {
     label: 'Cold snap',
     detail: `${worst.player} arrives on ${worst.streak} straight losses.`,
     team: worst.team,
+    subject: worst.player,
     weight: 54 + worst.streak,
   };
 }
@@ -533,6 +752,9 @@ export function lossStreakInsight(ctx: InsightContext): Insight | null {
  */
 export function droughtInsight(ctx: InsightContext): Insight | null {
   if (ctx.match.isFinals) return null;
+  // "0-2 for the season" is a claim about now. See `isNextUp` — without this
+  // it was being printed on a round 10 fixture in August.
+  if (!isNextUp(ctx)) return null;
   const found: Insight[] = [];
 
   for (const side of ctx.match.sides) {
@@ -581,6 +803,7 @@ export function droughtInsight(ctx: InsightContext): Insight | null {
 export function basementInsight(ctx: InsightContext): Insight | null {
   const { match } = ctx;
   if (match.isFinals || match.round < 4) return null;
+  if (!isNextUp(ctx)) return null;
 
   const before = ctx.historyRows.filter((r) => r.season === match.season);
   if (!before.length) return null;
@@ -652,6 +875,7 @@ export function hoodooInsight(ctx: InsightContext): Insight | null {
     label: 'Hoodoo',
     detail: `${worst.loser} has never beaten ${worst.winner} — 0–${worst.meetings} when they've met.`,
     team: worst.team,
+    subject: worst.loser,
     weight: 51,
   };
 }
@@ -700,6 +924,7 @@ export function errorFormInsight(ctx: InsightContext): Insight | null {
       `${worst.player} has made ${worst.lift.toFixed(1)} more unforced errors a set ` +
       `than the career average over the last ${RECENT} matches.`,
     team: worst.team,
+    subject: worst.player,
     weight: 44,
   };
 }
@@ -709,6 +934,8 @@ export function errorLeaderInsight(ctx: InsightContext): Insight | null {
   const MIN_MATCHES = 4;
   const { match } = ctx;
   if (match.round < 4) return null;
+  // "leads the season" — a present-tense claim about a live leaderboard.
+  if (!isNextUp(ctx)) return null;
 
   const season = ctx.historyRows.filter(
     (r) => r.season === match.season && !r.isSingles && r.unforcedErrors !== null
@@ -734,6 +961,7 @@ export function errorLeaderInsight(ctx: InsightContext): Insight | null {
       `${top.player} leads the season for unforced errors — ` +
       `${top.rate.toFixed(1)} a set.`,
     team: side.team,
+    subject: top.player,
     weight: 46,
   };
 }
@@ -778,6 +1006,7 @@ export function waywardInsight(ctx: InsightContext): Insight | null {
         `${ue.player} has made ${ue.rate.toFixed(1)} unforced errors a set ` +
         `across the last ${RECENT} matches.`,
       team: ue.team,
+      subject: ue.player,
       weight: 42,
     };
   }
@@ -787,6 +1016,7 @@ export function waywardInsight(ctx: InsightContext): Insight | null {
       label: 'Wayward',
       detail: `${df.player} has served ${df.total} double faults in the last ${RECENT} matches.`,
       team: df.team,
+      subject: df.player,
       weight: 42,
     };
   }
@@ -837,6 +1067,7 @@ export function mockMilestoneInsight(ctx: InsightContext): Insight | null {
         `${ue.player} is ${plural(ue.mark - ue.have, 'unforced error', 'unforced errors')} ` +
         `away from ${ue.mark} for a TNT career.`,
       team: ue.team,
+      subject: ue.player,
       weight: 40,
     };
   }
@@ -849,6 +1080,7 @@ export function mockMilestoneInsight(ctx: InsightContext): Insight | null {
         `${df.player} is ${plural(df.mark - df.have, 'double fault', 'double faults')} ` +
         `away from ${df.mark} for a TNT career.`,
       team: df.team,
+      subject: df.player,
       weight: 40,
     };
   }
@@ -863,10 +1095,11 @@ const DETECTORS = [
   stakesInsight,
   milestoneInsight,
   winStreakInsight,
-  revengeInsight,
+  dominanceInsight,
   formInsight,
+  partnershipInsight,
   pairH2HInsight,
-  firstMeetingInsight,
+  lastMeetingInsight,
   basementInsight,
   droughtInsight,
   lossStreakInsight,
@@ -901,6 +1134,28 @@ const NEGATIVE_KINDS: ReadonlySet<InsightKind> = new Set<InsightKind>([
 const MAX_NEGATIVE = 1;
 
 /**
+ * How many lines one player may carry. One.
+ *
+ * Fourteen detectors read the same career, so a single good — or bad — month
+ * lights several of them up about the same man, and the panel then spends all
+ * three of its slots on him. At best that's repetitive; at worst it argues
+ * with itself, which it did:
+ *
+ *   Jonathan Kierce arrives on 9 straight wins.
+ *   Jonathan Kierce has made 5.7 more unforced errors a set than the career
+ *   average over the last 4 matches.
+ *
+ * Both true, both from the same window, and printed together in S2 R1. Over
+ * the archive, 26% of multi-line panels named one player twice. Weight order
+ * decides which of his lines survives, and the rest of the panel goes to
+ * somebody else — which is the point of having three slots.
+ *
+ * Team-level lines (`stakes`, `drought`, `basement`, `dominance`, the h2h
+ * pair) carry no `subject` and are never dropped by this.
+ */
+const MAX_PER_PLAYER = 1;
+
+/**
  * Everything worth saying about a match, best first — and an empty list when
  * there is nothing, which is the common case and entirely fine.
  *
@@ -913,20 +1168,33 @@ export function matchInsights(ctx: InsightContext, limit = 3): Insight[] {
     const insight = detect(ctx);
     if (insight) found.push(insight);
   }
-  // Weight order first, so the one negative that survives is the best one.
+  // Weight order first, so of the lines a cap discards, the ones that survive
+  // are the best rather than whichever detector happens to run first.
+  const kept: Insight[] = [];
   let negatives = 0;
-  return found
-    .sort((a, b) => b.weight - a.weight)
-    .filter((i) => !NEGATIVE_KINDS.has(i.kind) || ++negatives <= MAX_NEGATIVE)
-    .slice(0, limit);
+  const perPlayer = new Map<string, number>();
+  for (const insight of found.sort((a, b) => b.weight - a.weight)) {
+    const negative = NEGATIVE_KINDS.has(insight.kind);
+    if (negative && negatives >= MAX_NEGATIVE) continue;
+    const spoken = insight.subject ? (perPlayer.get(insight.subject) ?? 0) : 0;
+    if (insight.subject && spoken >= MAX_PER_PLAYER) continue;
+    // Both budgets are spent only by a line that actually makes the panel, so
+    // one dropped for talking about the wrong player doesn't also cost the
+    // match its single unflattering line.
+    if (negative) negatives++;
+    if (insight.subject) perPlayer.set(insight.subject, spoken + 1);
+    kept.push(insight);
+    if (kept.length === limit) break;
+  }
+  return kept;
 }
 
 /** Convenience: build the window and run the detectors in one call. */
 export function insightsFor(
   match: MatchRecord,
   allRows: StatRow[],
-  declaredTeams?: string[],
+  opts: InsightOptions = {},
   limit = 3
 ): Insight[] {
-  return matchInsights(insightContext(match, allRows, declaredTeams), limit);
+  return matchInsights(insightContext(match, allRows, opts), limit);
 }

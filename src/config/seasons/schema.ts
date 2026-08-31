@@ -86,3 +86,24 @@ export interface SeasonConfig {
    */
   draftOrder?: string[];
 }
+
+/**
+ * How many teams the season's bracket takes — the highest seed it names.
+ *
+ * The finals cutoff is a fact about the bracket, and the bracket is right here.
+ * `insights.ts` used to hardcode 8, which has been correct every season so far
+ * (S1–S4 took 8 of 9, S5 takes 8 of 10) and was correct by luck: nothing tied
+ * the number to the config, so the first season with a different bracket would
+ * have quietly kept talking about "the eight".
+ *
+ * Undefined for a season with no bracket declared — the caller then has no
+ * business claiming anything about a cutoff.
+ */
+export function finalsBerths(cfg: SeasonConfig | undefined): number | undefined {
+  const seeds = (cfg?.finals ?? [])
+    .flatMap((round) => round.matches)
+    .flatMap((m) => [m.home, m.away])
+    .filter((slot): slot is { seed: number } => 'seed' in slot)
+    .map((slot) => slot.seed);
+  return seeds.length ? Math.max(...seeds) : undefined;
+}
