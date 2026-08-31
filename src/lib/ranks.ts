@@ -15,7 +15,14 @@
  *    top-five mention and no grade.
  */
 import { SITE } from '../config/site.ts';
-import { allPlayers, perSet, playerAgg, type CountingStat, type PlayerAgg } from './stats.ts';
+import {
+  allPlayers,
+  perSet,
+  playerAgg,
+  seasonRounds,
+  type CountingStat,
+  type PlayerAgg,
+} from './stats.ts';
 import type { StatRow } from './types.ts';
 
 /** Totals, or per-set (per-match for the awards). */
@@ -158,6 +165,25 @@ function buildTable(rows: StatRow[], season: number | undefined): RankTable {
   // was played for somebody else's team. The panel follows the same rule, so a
   // badge always ranks exactly the number printed above it.
   const includeFillIns = season === undefined;
+
+  // The bar for being ranked. Off-season this is a flat `rankMinMatches`. But a
+  // season that's still being played hasn't handed anyone enough Tuesdays to
+  // clear it, so a keen regular would carry no badges for most of the season.
+  // For the *current* season only, we fall back to a bar that tracks how far
+  // the season has actually got: everyone who has turned out to all but one of
+  // the rounds played so far (the "minus one" forgives a single bye) is ranked,
+  // even below `rankMinMatches`. `Math.min` means this can only ever *relax*
+  // the bar — past seasons are untouched, and once a current season has run
+  // long enough this rises back to `rankMinMatches` and stops mattering.
+  const roundsComplete =
+    season === SITE.currentSeason
+      ? seasonRounds(rows, season).filter((r) => r.played && r.stage === null).length
+      : 0;
+  const minMatches =
+    season === SITE.currentSeason
+      ? Math.min(SITE.rankMinMatches, Math.max(1, roundsComplete - 1))
+      : SITE.rankMinMatches;
+
   const field: PlayerAggs[] = allPlayers(rows)
     .map((player) => {
       const regular = playerAgg(player, rows, { season, includeFillIns, scope: 'regular' });
@@ -175,7 +201,7 @@ function buildTable(rows: StatRow[], season: number | undefined): RankTable {
           : finals,
       };
     })
-    .filter((a) => a.all.games >= SITE.rankMinMatches);
+    .filter((a) => a.all.games >= minMatches);
 
   const table: RankTable = { total: new Map(), rate: new Map() };
   for (const mode of ['total', 'rate'] as const) {

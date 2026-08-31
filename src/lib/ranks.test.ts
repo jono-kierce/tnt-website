@@ -155,6 +155,49 @@ describe('rank badges', () => {
     expect(rankTable(rows).total.get('Player A')!.votes!.rank).toBe(1);
   });
 
+  it('relaxes the bar for the live season so a partial season still ranks', () => {
+    // The current season, three rounds in — nobody is near `rankMinMatches`
+    // yet, so the flat bar would leave the whole field unranked. The live-season
+    // fallback ranks everyone who has played all but one of the rounds so far.
+    const s = SITE.currentSeason;
+    // The opponent side, so each of the three rounds reads as actually played
+    // (a match is unplayed until both sides have a result).
+    const opp = career('Opp', 3, { Winners: '1', Season: String(s), 'win?': 'FALSE' }).map(
+      (r) => ({ ...r, Team: 'Navy', Opponent: 'Pink', 'win?': 'FALSE' })
+    );
+    const rows = normalizeRows([
+      ...['A', 'B', 'C', 'D', 'E', 'F'].flatMap((p, i) =>
+        career(`Player ${p}`, 3, { Winners: String(10 - i), Season: String(s) })
+      ),
+      // Missed one round (a bye): still ranked.
+      ...career('Bye', 2, { Winners: '4', Season: String(s) }),
+      // Only turned out once — too many gaps, left out.
+      ...career('Late', 1, { Winners: '99', Season: String(s), Round: '3' }),
+      ...opp,
+    ]);
+    const table = rankTable(rows, s);
+    // Three rounds complete -> bar is max(1, 3-1) = 2, well under rankMinMatches.
+    // Field: six regulars + the bye player + the opponent = 8 ranked; Late's
+    // single match falls under the bar and drops out.
+    expect(table.total.get('Player A')!.winners).toMatchObject({ rank: 1, of: 8 });
+    expect(table.total.get('Bye')!.games!.of).toBe(8);
+    expect(playerRanks('Late', rows, s)).toEqual({ total: {}, rate: {} });
+  });
+
+  it('does not relax the bar for a completed past season', () => {
+    // Same shape, but on a season that isn't the live one: the flat
+    // `rankMinMatches` still applies, so a three-match sample is unranked.
+    const past = SITE.currentSeason - 1;
+    const rows = normalizeRows(
+      ['A', 'B', 'C', 'D', 'E', 'F'].flatMap((p, i) =>
+        career(`Player ${p}`, 3, { Winners: String(10 - i), Season: String(past) })
+      )
+    );
+    for (const p of ['A', 'F']) {
+      expect(playerRanks(`Player ${p}`, rows, past)).toEqual({ total: {}, rate: {} });
+    }
+  });
+
   it('ranks a season within that season', () => {
     const rows = normalizeRows([
       // Same six players across two seasons; the order reverses in Season 3.
