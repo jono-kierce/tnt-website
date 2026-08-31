@@ -166,7 +166,27 @@ describe('revenge and first meetings', () => {
     ]);
     expect(firstMeetingInsight(contextForLast(early))).toBe(null);
 
-    // With a real history behind it, a first meeting is worth a line.
+    // With a real history behind it, a first meeting between two teams that
+    // have each played before — but never each other — is worth a line.
+    const rows = [];
+    for (let r = 1; r <= 11; r++) {
+      rows.push(
+        ...played('3', String(r), { team: 'Pink', players: ['A One', 'B Two'] },
+                                   { team: 'Navy', players: ['C Three', 'D Four'] }),
+        ...played('3', String(r), { team: 'Red', players: ['E Five', 'F Six'] },
+                                   { team: 'White', players: ['G 7', 'H 8'] })
+      );
+    }
+    rows.push(
+      ...played('3', '12', { team: 'Pink', players: ['A One', 'B Two'] },
+                            { team: 'Red', players: ['E Five', 'F Six'] })
+    );
+    const insight = firstMeetingInsight(contextForLast(normalizeRows(rows)))!;
+    expect(insight.detail).toMatch(/have never played each other/);
+  });
+
+  it('stays silent when one side is a debut team that has played nobody', () => {
+    // Brown-style newcomer: every fixture is trivially a first meeting.
     const rows = [];
     for (let r = 1; r <= 11; r++) {
       rows.push(
@@ -175,11 +195,10 @@ describe('revenge and first meetings', () => {
       );
     }
     rows.push(
-      ...played('3', '12', { team: 'Red', players: ['E Five', 'F Six'] },
-                            { team: 'White', players: ['G 7', 'H 8'] })
+      ...played('3', '12', { team: 'Pink', players: ['A One', 'B Two'] },
+                            { team: 'Brown', players: ['E Five', 'F Six'] })
     );
-    const insight = firstMeetingInsight(contextForLast(normalizeRows(rows)))!;
-    expect(insight.detail).toMatch(/have never played each other/);
+    expect(firstMeetingInsight(contextForLast(normalizeRows(rows)))).toBe(null);
   });
 });
 

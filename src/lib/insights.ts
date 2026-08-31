@@ -346,6 +346,11 @@ export function firstMeetingInsight(ctx: InsightContext): Insight | null {
   // In the very first round on record everything is a first meeting, which is
   // true and not worth printing five times.
   if (ctx.history.length < 10) return null;
+  // A brand-new team (e.g. Brown, added for a season) has never played anyone,
+  // so "never played each other" is trivially true for every one of its
+  // fixtures and says nothing. Only interesting when both teams have a past.
+  const hasPast = (team: string) => ctx.history.some((m) => m.sides.some((s) => s.team === team));
+  if (!hasPast(a.team) || !hasPast(b.team)) return null;
   return {
     kind: 'first-meeting',
     label: 'First meeting',
