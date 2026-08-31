@@ -442,7 +442,11 @@ export function stakesInsight(ctx: InsightContext, finalsCutoff = 8): Insight | 
       weight: 68,
     };
   }
-  if (high.rank === low.rank - 1 && high.rank <= 4) {
+  // Adjacent rungs near the top only (top three): a 4th-v-5th "winner takes the
+  // higher rung" is true of too many mid-table games to be worth saying, and
+  // keeping it pushed `stakes` over the 30% per-detector cap once S5 results
+  // landed. Top-spot and finals-race stories still carry the panel.
+  if (high.rank === low.rank - 1 && high.rank <= 3) {
     return {
       kind: 'stakes',
       label: 'Ladder scrap',
