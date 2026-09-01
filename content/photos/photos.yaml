@@ -18,6 +18,11 @@
   season: 1
   caption:
 
+- file: season-5/brown-grin.JPG
+  players: [adam-dickson]
+  season: 5
+  caption:
+
 - file: season-1/s1-dickson.jpg
   players: [adam-dickson]
   season: 1
@@ -346,11 +351,6 @@
 
 - file: season-5/brown-forehand.JPG
   players: [ted-angel]
-  season: 5
-  caption:
-
-- file: season-5/brown-grin.JPG
-  players: [adam-dickson]
   season: 5
   caption:
 
