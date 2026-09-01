@@ -1,6 +1,6 @@
 import type { FinalsStage, LadderRow, MatchSide, StatRow } from './types.ts';
 import { SITE } from '../config/site.ts';
-import { shortName } from '../config/aliases.ts';
+import { playerSlug, shortName } from '../config/aliases.ts';
 import { loadStatRows } from './normalize.ts';
 
 // ---------------------------------------------------------------------------
@@ -762,7 +762,10 @@ export function playerAgg(
   opts: AggOptions = {}
 ): PlayerAgg {
   const filtered = playerRows(player, rows, opts);
-  const slug = filtered[0]?.slug ?? '';
+  // The slug names the player, not the window. A player who has only ever
+  // filled in (Billy Coutinho, S5 R3) has no rows in the default window, and
+  // still needs the same URL every other page links him by.
+  const slug = filtered[0]?.slug ?? playerSlug(player);
   // No season means a cross-era window, and cross-era vote tallies are counted
   // era-adjusted so an S1 best-on-court weighs the same as a modern one.
   return aggregateRows(player, slug, filtered, opts.scope ?? 'all', opts.season === undefined);

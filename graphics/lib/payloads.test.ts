@@ -217,7 +217,10 @@ describe('scoreboard', () => {
   });
 
   it('shows only played fixtures — a drawn round is the preview\'s job', async () => {
-    const b = await scoreboardPayload(5, resolveRound('3'));
+    // Whichever round is next up: naming one pins the test to a week of the
+    // season, and it goes red the night that round is entered.
+    const drawn = (await nextPreviewRound(5))!;
+    const b = await scoreboardPayload(5, drawn);
     expect(b.matches).toEqual([]);
   });
 
