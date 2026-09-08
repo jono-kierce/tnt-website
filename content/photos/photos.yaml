@@ -280,12 +280,12 @@
   season: 4
   caption:
 
-- file: season-4/lewis.png
+- file: season-4/lewis.jpg
   players: [lewis-mossman]
   season: 4
   caption:
 
-- file: season-4/luke.png
+- file: season-4/luke.jpg
   players: [luke-sharrock]
   season: 4
   caption:
@@ -386,5 +386,35 @@
 
 - file: season-5/navy-pair.JPG
   players: [will-mumme, ed-simpson]
+  season: 5
+  caption:
+
+- file: season-5/gorton-strike.JPG
+  players: [jimmy-gorton]
+  season: 5
+  caption:
+
+- file: season-5/ed-backhand.JPG
+  players: [ed-simpson]
+  season: 5
+  caption:
+
+- file: season-5/braden-overhead.JPG
+  players: [flynn-braden, lachlan-jenkin]
+  season: 5
+  caption:
+
+- file: season-5/handshake-red-pink.JPG
+  players: [damon-maurice, flynn-braden]
+  season: 5
+  caption:
+
+- file: season-5/raines-leap.JPG
+  players: [jack-raines]
+  season: 5
+  caption:
+
+- file: season-5/inlander-forehand.JPG
+  players: [shayl-inlander]
   season: 5
   caption:
