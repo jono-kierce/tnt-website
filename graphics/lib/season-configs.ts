@@ -12,5 +12,6 @@ export {
   allSeasonConfigs,
   seasonTeamConfigs,
   declaredTeams,
+  withdrawnTeams,
   seasonFinalsBerths,
 } from '../../src/config/seasons/node.ts';

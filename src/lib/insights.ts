@@ -78,6 +78,12 @@ export interface InsightContext {
   allRows: StatRow[];
   declaredTeams?: string[];
   /**
+   * Teams that pulled out mid-season, so the ladder these detectors read is
+   * the one the site shows. Passed in for the same reason `declaredTeams` is
+   * — see `finalsCutoff` below.
+   */
+  withdrawnTeams?: string[];
+  /**
    * How many teams the season's finals bracket takes, from the season config
    * (`finalsBerths`). Passed in for the same reason `declaredTeams` is: this
    * file can't import the configs — they're auto-discovered with
@@ -106,6 +112,8 @@ const isBefore = (a: MatchRecord, b: MatchRecord): boolean => {
 export interface InsightOptions {
   /** The season's declared field — see `InsightContext.declaredTeams`. */
   declaredTeams?: string[];
+  /** Teams that pulled out — see `InsightContext.withdrawnTeams`. */
+  withdrawnTeams?: string[];
   /** How many teams the bracket takes — see `InsightContext.finalsCutoff`. */
   finalsCutoff?: number;
 }
@@ -130,6 +138,7 @@ export function insightContext(
     historyRows,
     allRows,
     declaredTeams: opts.declaredTeams,
+    withdrawnTeams: opts.withdrawnTeams,
     finalsCutoff: opts.finalsCutoff,
   };
 }
@@ -485,7 +494,13 @@ export function stakesInsight(ctx: InsightContext): Insight | null {
 
   const before = ctx.historyRows.filter((r) => r.season === match.season);
   if (!before.length) return null;
-  const table = ladder(match.season, before, undefined, ctx.declaredTeams);
+  const table = ladder(
+    match.season,
+    before,
+    undefined,
+    ctx.declaredTeams,
+    ctx.withdrawnTeams
+  );
   if (table.length < 4) return null;
 
   const rows = match.sides
@@ -644,7 +659,13 @@ export function dominanceInsight(ctx: InsightContext): Insight | null {
 
   const before = ctx.historyRows.filter((r) => r.season === match.season);
   if (!before.length) return null;
-  const table = ladder(match.season, before, undefined, ctx.declaredTeams);
+  const table = ladder(
+    match.season,
+    before,
+    undefined,
+    ctx.declaredTeams,
+    ctx.withdrawnTeams
+  );
 
   // `ratio` is already guarded against a nil `gamesAgainst` — the ladder falls
   // back to `gamesFor` — so a side that has conceded nothing sorts top rather
@@ -807,7 +828,13 @@ export function basementInsight(ctx: InsightContext): Insight | null {
 
   const before = ctx.historyRows.filter((r) => r.season === match.season);
   if (!before.length) return null;
-  const table = ladder(match.season, before, undefined, ctx.declaredTeams);
+  const table = ladder(
+    match.season,
+    before,
+    undefined,
+    ctx.declaredTeams,
+    ctx.withdrawnTeams
+  );
   if (table.length < 6) return null;
 
   const rows = match.sides

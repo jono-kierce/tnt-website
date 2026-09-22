@@ -85,7 +85,10 @@ round is "append rows, push, collect PNGs". Five template families — ladder,
 result card, stat board, preview (the round's unplayed fixtures, for the day
 before — no prediction, at most one `insights.ts` line per fixture) and
 scoreboard (the same round's results on one slide, for a night nobody
-photographed — played fixtures only, winner's row first off `win?`). **Read
+photographed — played fixtures only, winner's row first off `win?`). Plus the
+once-off posts, asked for by `--only`: draft, streaks, headline, predictions,
+pair and **mvpsim** (the MVP race as a Monte Carlo projection — the one family
+whose numbers come from outside this repo; see below). **Read
 `graphics/README.md` before touching it**; the rules that matter here:
 
 - **No graphic computes a statistic.** `graphics/lib/payloads.ts` calls
@@ -107,6 +110,17 @@ photographed — played fixtures only, winner's row first off `win?`). **Read
 - **Sealed votes are refused, not rendered.** Any vote-derived board (votes,
   finals votes, BOG) on a season in `sealedVoteSeasons` throws; the CLI reports
   the skip. A graphic gets posted, so leaking there is worse than on a page.
+  **One deliberate exemption:** the MVP simulation board prints a *projection*
+  of where the race finishes, not the recorded tally, and teasing a live race is
+  the point of the post. The seal still holds for every board that reads the
+  CSV's `votes` column, and a test pins both halves so the exemption can't
+  widen. It also can't fire by accident — out of the default `--only` set, and
+  it needs an explicit `--sim <path>`.
+- **The MVP simulation board is the one graphic fed from outside the CSV.**
+  `graphics/lib/mvp-sim.ts` parses the model's summary file and computes
+  nothing; a row's team still comes from the season config, never from the
+  file's own `Team` column, and a disagreement warns. Ranked by the median
+  tally it prints so that column reads top to bottom; ten players a slide.
 - **Match winners come from `win?`, never from counting sets** — S4 R9 has a
   `5-5` that neither side won.
 - CI renders the current round on push to `main` and uploads the PNGs as an
@@ -130,10 +144,23 @@ photographed — played fixtures only, winner's row first off `win?`). **Read
   teams minus the teams with a fixture. That team set can't come from the CSV —
   a team on a bye in round one has no rows at all — so it's passed in from the
   season config's `teams` keys (`declaredTeams` in `site-data.ts`), which is
-  also what seeds a live ladder at 0/0/0. Round sizes vary on purpose: S5 runs
-  five rounds of four matches and five of five. `check-data` reports byes and
-  never warns about an uneven round; the one thing it errors on is a team drawn
-  twice in the same round.
+  also what seeds a live ladder at 0/0/0. Round sizes vary on purpose: S5 was
+  drawn as five rounds of four matches and five of five. `check-data` reports
+  byes and never warns about an uneven round; the one thing it errors on is a
+  team drawn twice in the same round.
+- **A team can withdraw mid-season, and that is not a bye.** `TeamConfig.withdrawn`
+  marks it (Black, S5, after round four). Its played rows stand — opponents keep
+  the results they earned, its players keep those matches on their career pages
+  — but it comes off the ladder and out of the field the byes are computed
+  against. It has to be **named** to be dropped: both `ladder` and `seasonRounds`
+  build their field by *unioning* the declared teams with whoever appears in the
+  CSV, so a team that played four rounds walks straight back in however the
+  config is edited. Hence a separate `withdrawnTeams` argument rather than a
+  shorter `declaredTeams` — `withdrawnTeams` in `site-data.ts`, threaded through
+  `insights.ts` (`InsightContext`) and the graphics the same way `declaredTeams`
+  is. `declaredTeams` deliberately still lists it, because that list also
+  resolves pairing labels and the rounds it *did* play should read as a pairing,
+  not a bare colour; `activeTeams` is the field still playing.
 - **Match times are the `Start` column, in Melbourne wall time:**
   `2026-08-18T18:30`, exactly what the sign at the courts says. Optional
   everywhere — blank means "not recorded", which is every season before S5 —
@@ -155,7 +182,14 @@ photographed — played fixtures only, winner's row first off `win?`). **Read
   Aliases applied after stripping `(Fill-in)`.
 - **Pairing display order is captain-first, draftee-second.** Set via `pair` in
   the season config; captain is element 0. If unset, pairing is derived from
-  games played (top non-fill-in members).
+  games played (top non-fill-in members). **`pair` is the present tense** — it
+  follows a mid-season change (S5 Green reads Feikema & Hume from round five),
+  so the draft board can't read it or it would retcon draft night. `drafted`
+  holds the pair as drafted and only a team whose line-up changed needs one;
+  `draftPayload` falls back to `pair` for everyone else. A player who moved is
+  in two `pair` lists, so `mvp-sim.ts` lays the withdrawn teams down first and
+  lets the live team overwrite, rather than letting the key order of `teams`
+  settle it by accident.
 - **Votes eras:** S1 = 2/1 + Player-of-the-Round; S2+ = two voters × 3-2-1
   (max 6/match). Blank votes are treated as missing (never 0).
 - **S1 votes are era-adjusted in cross-era windows only:** a career/all-time
@@ -380,19 +414,22 @@ share only a colour), and a label that's nearly always true says nothing.
 
 - **S4 (2025) is complete** — full results, honours filled, votes loaded and
   unsealed.
-- **Season 5 (2026) is LIVE and yet to be played.** `currentSeason` is 5 and
-  `sealedVoteSeasons` is `[5]`. **The full ten-round draw is in the CSV** — 45
-  fixtures across ten Tuesdays, 18 Aug to 20 Oct 2026, nine matches a team, five
-  rounds of four and five of five. Nothing has been played, so the ladder shows
-  all ten teams at 0/0/0 and every S5 prediction sits near 50/50 — which is
-  honest, not a bug. S5 is the first **ten-team** season; **Brown** is in
-  `TEAMS` alongside the original nine. `season-5.ts` has all ten pairings,
-  captain-first; honours and finals fill in at season's end. **Remove 5 from
+- **Season 5 (2026) is LIVE, six rounds played.** `currentSeason` is 5 and
+  `sealedVoteSeasons` is `[5]`. Ten Tuesdays, 18 Aug to 20 Oct 2026; the whole
+  draw is in the CSV and rounds 1–6 have results. **Remove 5 from
   `sealedVoteSeasons`** on awards night.
-- **`npm run graphics` with no arguments exits 0 and renders nothing** while S5
-  has fixtures but no results — a round with no scores is not something a result
-  card can show. That's deliberate, so the CI graphics job stays green between
-  the draft and the first result. Pass `--season 4` to render the archive.
+- **S5 was drafted as ten teams and is being played by nine.** It was the first
+  **ten-team** season — **Brown** joined the original nine in `TEAMS` — and was
+  drawn as 45 fixtures, nine a team, five rounds of four and five of five.
+  **Black withdrew after round four**: Littlejohn stopped playing and Angus Hume
+  moved to Green alongside Quinn Feikema, displacing Lewis Mossman. The back
+  half was redrawn around the remaining nine, so the season is **40 fixtures**
+  and rounds five to ten run three or four matches a night. Black is
+  `withdrawn: true` in `season-5.ts` — off the ladder, never on a bye, still
+  carrying its `pair` so its four rounds print a pairing, and still in
+  `draftOrder` because it was drafted. Its results stand for everyone who
+  played it. Finals take eight of nine now, not eight of ten; the bracket is
+  unchanged and the `finals` shape still declares seeds 1–8.
 - All four brackets have full results. Finals **player stats**: S3 has finals
   MVP votes in the CSV (28/28 rows; the derived 4-3-2-1 tally matches the
   recorded Finals MVP). S1, S2 and S4 finals are **scorelines only** — no

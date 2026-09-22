@@ -39,13 +39,17 @@ CSV — which is exactly the round you just added. PNGs land in `graphics/out/`
 |---|---|
 | `--season <n>` | Default `SITE.currentSeason`. |
 | `--round <r>` | A round number, or `QF` / `SF` / `F`. Default: the season's latest — except for `preview`, see below. |
-| `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `draft`, `preview` — comma-separated. Default `ladder,results,scoreboard,boards`; `draft` and `preview` are once-off posts, so they only render on request. |
+| `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `draft`, `preview`, `streaks`, `headline`, `predictions`, `pair`, `mvpsim` — comma-separated. Default `ladder,results,scoreboard,boards`; the rest are once-off posts, so they only render on request. |
+| `--pair <a,b>` | The two players for `--only pair`, comma-separated. |
+| `--sim <path>` | The MVP projection summary CSV, for `--only mvpsim`. Required — there is no default, because the file lives outside this repo. |
+| `--runs <n>` | How many runs that projection was over, for the subtitle. Omitted, it reads "Simulated". |
 | `--photos <dir>` | Photos for the result cards. |
 | `--career` | Also render the all-time boards. |
 | `--out <dir>` | Default `graphics/out`. |
 
 Filenames are `s4-r09-ladder.png`, `s4-r09-match1-pink-v-white.png`,
-`s4-r09-stat-mvp-race.png`, `s5-r02-scoreboard.png`, `s5-r01-preview.png`.
+`s4-r09-stat-mvp-race.png`, `s5-r02-scoreboard.png`, `s5-r01-preview.png`,
+`s5-r05-mvp-sim-1.png`.
 Rounds are zero-padded and finals sort last, so a folder listing is in playing
 order.
 
@@ -70,6 +74,15 @@ and BOG, which is derived from votes — is **refused, not rendered**, for a
 sealed season. The CLI says which board it skipped and why, and renders the
 rest. A graphic that quietly printed the count would be a worse leak than a
 web page that did, because a graphic gets posted.
+
+**The one exemption is the MVP simulation board** (`--only mvpsim`), and it is
+deliberate: that board prints a *projection* of where the race finishes, not the
+recorded tally, and the whole point of posting it is to tease a live season. The
+seal is untouched for every board that reads the CSV's own `votes` column —
+`statBoardPayload` and `pairBoardPayload` still throw — and a test pins both
+halves of that so the exemption can't quietly widen. The board also can't be
+rendered by accident: it's out of the default `--only` set and needs an explicit
+`--sim <path>`.
 
 ---
 
@@ -101,6 +114,8 @@ graphics/
   lib/
     payloads.ts        stats.ts -> per-template data objects
     boards.ts          which stat boards get rendered (pure config)
+    mvp-sim.ts         the external MVP projection CSV -> typed rows (the one
+                       input that isn't data/alltimestats.csv)
     tokens.ts          TEAMS + brand constants -> templates/_tokens.css
     season-configs.ts  season-N.ts under plain Node (the site's loader is Vite-only)
     payloads.test.ts   score parsing + payload building
@@ -118,6 +133,7 @@ graphics/
     stat-board.html
     preview.html
     scoreboard.html
+    mvp-sim-board.html
     fonts/             vendored .woff2 (committed)
   out/                 rendered PNGs — gitignored
 ```
@@ -185,7 +201,10 @@ through to a neutral default instead of to `var(--team-undefined)`.
 
 ---
 
-## The five families
+## The template families
+
+(The five below are the weekly ones; `streaks`, `headline`, `predictions` and
+`pair` are the once-off posts, rendered only when asked for by `--only`.)
 
 ### Ladder — `ladder.html`
 
@@ -249,6 +268,81 @@ point of it: a Tuesday nobody photographed still gets a post.
   matches of it fill the page. The banter goes on the preview.
 - Renders alongside the result cards by default, so posting a round is still
   one command. Fits five matches comfortably; four sits looser.
+
+### Pair board — `pair-board.html`
+
+Two players' record as team-mates, on one slide — the post for a redraft that
+splits a long-running pair, or for the week they first face each other.
+
+```bash
+node graphics/render.mjs --only pair --pair "Ed Simpson,Jimmy Gorton"
+```
+
+All-time, so it takes no `--season` and no `--round`, like `streaks`. The
+record and the per-season strip come from `pairRecord()` in `stats.ts`; the
+board itself does no arithmetic, and a test asserts its printed record equals
+what `pairRecord` returned.
+
+- **Counting stats only** — winners, aces, unforced errors, double faults,
+  votes and best-on-ground. No rates: a per-set number would need
+  `SITE.perGameMinGames` and a footnote about the denominator, and this board
+  is meant to be read at a glance.
+- **The bigger number is always the one lit, never "the better one"** — the
+  same rule the stat boards rank by. `polarity` only decides which ink it
+  takes, so leading the unforced errors reads red rather than gold.
+- **Finals and fill-in matches both count**, as they do in `headToHead`: a
+  premiership is what a pair is remembered for, and a night the two of them
+  were on court together is a night they played together.
+- **Refused, not rendered, for a pair who played together in a sealed season.**
+  The board carries votes and BOG, so `sealedVoteSeasons` applies — checked
+  against the seasons the pair actually shared, since there's no round to
+  check against. The CLI reports the skip and carries on.
+- The window spans whatever seasons the pair played, which is cross-era by
+  nature, so **S1 votes are rescaled** exactly as a career tally rescales them.
+  The footnote says so, and only when something was actually rescaled.
+
+### MVP simulation — `mvp-sim-board.html`
+
+The MVP race as a Monte Carlo projection: each player's chance of finishing 1st
+/ top 3 / top 5 / top 10 across thousands of simulated runs of the rounds still
+to come, plus their median projected vote tally.
+
+```bash
+node graphics/render.mjs --only mvpsim --sim path/to/summary.csv --runs 10000
+```
+
+**This is the one family whose numbers don't come from `data/alltimestats.csv`.**
+The model lives outside this repo and hands over a summary CSV, so the usual
+rule — every number from `stats.ts` — can't apply and isn't pretended to. What
+applies instead:
+
+- **`graphics/lib/mvp-sim.ts` reads and checks the file; it computes nothing.**
+  Every figure is printed as given, because re-deriving half of them here would
+  make a second, disagreeing model.
+- **The repo still owns the colours.** A row's team comes from
+  `src/config/seasons/season-N.ts`, not from the file's own `Team` column; a
+  disagreement is a warning that says which one won. A player the season doesn't
+  have gets a mute spine and a warning, and a player in the season with no row
+  in the projection is reported too — a board that silently dropped someone
+  reads as a demotion.
+- **A renamed or missing column throws**, naming the column it wanted, rather
+  than parsing as `NaN` and printing a blank.
+- **Ranked by the median tally it prints**, ties broken on the mean, then MVP
+  chance, then name — so the order is total and the votes column reads top to
+  bottom. A votes column that didn't descend would just look broken.
+- **Ten players a slide**, numbered continuously, one PNG each
+  (`-mvp-sim-1.png`, `-2.png`). Every slide carries the same header on purpose:
+  they're one carousel, and the filename is what tells them apart.
+- **The heatmap is one sequential hue.** These are four readings of the same
+  magnitude, so gold at varying alpha rather than the stat boards' green → pink
+  → red, which is a *diverging* ramp and would say "good end, bad end" about a
+  projection. The wash curve is `sqrt`, not linear: linear wastes both ends —
+  6.6% is invisible and everything past 90% is the same block of colour.
+- **A `0` prints as `0`, never as a dash.** The model genuinely never produced
+  that finish; a dash means "not recorded" everywhere else in this repo and
+  would be a different claim.
+- **Exempt from `sealedVoteSeasons`** — see the Sealed votes section above for
+  why, and for what that exemption deliberately does *not* cover.
 
 ### Preview — `preview.html`
 

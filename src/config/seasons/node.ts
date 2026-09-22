@@ -15,7 +15,12 @@
 import { readdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { finalsBerths, type SeasonConfig, type TeamConfig } from './schema.ts';
+import {
+  finalsBerths,
+  withdrawnTeams as withdrawnOf,
+  type SeasonConfig,
+  type TeamConfig,
+} from './schema.ts';
 
 const SEASON_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -70,6 +75,15 @@ export async function seasonTeamConfigs(
 export async function declaredTeams(season: number): Promise<string[]> {
   const cfg = await getSeasonConfig(season);
   return Object.keys(cfg?.teams ?? {});
+}
+
+/**
+ * Teams that pulled out mid-season — see `TeamConfig.withdrawn`. Handed to
+ * `ladder` and `seasonRounds` alongside the declared field, which they union
+ * with the CSV and so can't drop a team on their own.
+ */
+export async function withdrawnTeams(season: number): Promise<string[]> {
+  return withdrawnOf(await getSeasonConfig(season));
 }
 
 /** How many teams this season's bracket takes — see `finalsBerths`. */

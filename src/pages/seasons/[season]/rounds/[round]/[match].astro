@@ -23,6 +23,7 @@ import {
   rows,
   seasonSchedule,
   siteSeasons,
+  withdrawnTeams,
 } from '../../../../../lib/site-data.ts';
 import { predictionFor } from '../../../../../lib/predict.ts';
 import { insightsFor } from '../../../../../lib/insights.ts';
@@ -47,6 +48,7 @@ const sealed = isVotesSealed(season);
 const prediction = predictionFor(match);
 const insights = insightsFor(match, allRows, {
   declaredTeams: declaredTeams(season),
+  withdrawnTeams: withdrawnTeams(season),
   finalsCutoff: finalsCutoff(season),
 });
 

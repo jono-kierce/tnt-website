@@ -62,8 +62,29 @@ export interface Honour {
 export interface TeamConfig {
   /** Manual override of the derived pairing/roster label (optional). */
   pair?: string[];
+  /**
+   * The pair as it was drafted, when that is no longer `pair`.
+   *
+   * `pair` is the present tense — it labels the ladder row and the team's
+   * fixtures, so it has to follow a mid-season change. The draft board is the
+   * past tense: it reports one night in August and must not be retconned when
+   * somebody moves. Only a team whose line-up changed needs this; everyone
+   * else's draft is their `pair`, which is what the board falls back to.
+   */
+  drafted?: string[];
   /** Team captain (not in the CSV). */
   captain?: string;
+  /**
+   * The team pulled out mid-season and plays no further rounds.
+   *
+   * The rows it did play stand: its opponents keep the results they earned and
+   * its players keep those matches on their career pages. What changes is the
+   * season's *field* — a withdrawn team drops off the ladder, and it is not on
+   * a bye for the rounds it isn't drawn in, because it isn't resting, it's
+   * gone. It keeps its entry here, and its place in `draftOrder`, so the
+   * rounds it did play still print a pairing label instead of a bare colour.
+   */
+  withdrawn?: boolean;
 }
 
 export interface SeasonConfig {
@@ -85,6 +106,21 @@ export interface SeasonConfig {
    * nothing else on the site or in the renderer cares.
    */
   draftOrder?: string[];
+}
+
+/**
+ * Teams that pulled out mid-season — see `TeamConfig.withdrawn`.
+ *
+ * This is carried separately from the declared field rather than subtracted
+ * out of it, because subtracting doesn't work: `ladder` and `seasonRounds`
+ * both build their field by *unioning* the declared teams with whoever turns
+ * up in the CSV, so a team that played four rounds walks straight back in
+ * however the config is edited. The only way to drop one is to name it.
+ */
+export function withdrawnTeams(cfg: SeasonConfig | undefined): string[] {
+  return Object.entries(cfg?.teams ?? {})
+    .filter(([, team]) => team.withdrawn)
+    .map(([colour]) => colour);
 }
 
 /**

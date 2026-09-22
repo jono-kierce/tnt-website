@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — MVP simulation</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  header { flex: none; position: relative; }
+  /* Eyebrow and footnote sit in the band Instagram's grid crops away, so the
+     headline and the table keep the whole square — same as the ladder. */
+  .eyebrow { margin-top: -64px; }
+  /* `max-width` keeps the headline clear of the crest and `fitHeadline` steps
+     the size down until it fits — without the guard, "MVP SIMULATION" at 88px
+     runs straight under the mark. */
+  .headline { font-size: 88px; margin-top: 16px; max-width: 770px; }
+  .sub { margin-top: 12px; }
+  header .mark { position: absolute; right: 0; top: -34px; width: 92px; color: var(--gold); }
+  .rule-gold {
+    height: 2px; margin-top: 24px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  /* ---- Columns -------------------------------------------------------------
+     952px between the safe gutters, eight slots and seven 12px gaps. The four
+     percentage cells are fixed and equal so they read as one block, which is
+     what makes the wash across them legible as a gradient rather than as five
+     unrelated chips. Whatever is left goes to the name. */
+  .thead {
+    flex: none; display: flex; align-items: flex-end; gap: 12px;
+    padding: 18px 8px 10px;
+    font-size: 18px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: rgba(244, 241, 232, 0.4);
+  }
+  .c-pos { width: 46px; }
+  .c-bar { width: 8px; }
+  .c-name { flex: 1; min-width: 0; }
+  /* The chance heads carry a "(%)", which "TOP 10 (%)" can't fit in 100px at
+     the thead's own size and tracking — stepped down here rather than widening
+     the cells, which would come straight off the longest name. */
+  .c-cell { width: 100px; text-align: center; font-size: 17px; letter-spacing: 0.06em; }
+  /* Wide enough for "Median Votes" on one line — a wrapped column head would
+     push the thead down and steal height off every row. */
+  .c-votes { width: 140px; text-align: center; color: var(--gold); white-space: nowrap; }
+
+  /* The closing rule matters more here than on the other boards: the wash
+     columns run to the last row's full height, so without it the table looks
+     like it was cut off rather than finished. */
+  .rows { flex: 1; display: flex; flex-direction: column; border-bottom: 1px solid var(--rule); }
+
+  .row {
+    flex: 1;
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 8px;
+    border-top: 1px solid var(--rule);
+    position: relative;
+  }
+  .row:first-child { border-top: 0; }
+
+  .pos {
+    width: 46px; text-align: center;
+    font-family: var(--display); font-weight: 600; font-size: 34px;
+    color: var(--gold);
+  }
+  /* Only the podium is gilded — below that the rank is furniture. The board
+     may start at 11, so this keys off the printed rank, not the row index. */
+  .row:not(.podium) .pos { color: rgba(244, 241, 232, 0.45); }
+
+  .bar { width: 8px; height: 52px; border-radius: 4px; flex: none;
+         background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  /* A player the season config doesn't place still gets a spine, just a mute
+     one — the same fallback the stat board gives a player with no team. */
+  .row.no-team .bar { background: rgba(244, 241, 232, 0.18); }
+
+  .who { flex: 1; min-width: 0; }
+  .name {
+    font-size: 36px; font-weight: 500; letter-spacing: 0.01em; line-height: 1.1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* The team, in the slot the stat board gives coverage. The spine already
+     carries the colour; this names it, which is what the source table's own
+     Team column did. */
+  .team-label {
+    font-size: 18px; font-weight: 500; letter-spacing: 0.14em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.4);
+    margin-top: 1px;
+  }
+
+  /* ---- The heatmap ---------------------------------------------------------
+     One sequential hue, because these are four readings of the same magnitude
+     — a probability from 0 to 100. Gold rather than the stat board's green →
+     red ramp: that ramp is diverging and says "good end, bad end", which is
+     the wrong thing to say about a projection, and a green wash on a deep
+     green canvas has almost no range to work with anyway.
+
+     Alpha is set per cell as `--wash`. */
+  .cell {
+    width: 100px; flex: none; align-self: stretch;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(217, 185, 106, var(--wash, 0));
+    font-size: 32px; font-weight: 600; line-height: 1;
+    color: var(--cell-ink, rgba(244, 241, 232, 0.55));
+  }
+  /* A zero is a real zero here — the model never once produced that finish —
+     so it prints, quietly. A dash would mean "not recorded", which is a
+     different claim and one this file has no right to make. */
+  .cell.zero { color: rgba(244, 241, 232, 0.28); font-weight: 500; }
+
+  /* ---- The anchor column ---------------------------------------------------
+     The projected tally the board is ranked by. Display type and gold, so it
+     reads as the conclusion rather than as a fifth percentage. */
+  .votes {
+    width: 140px; flex: none; text-align: center;
+    font-family: var(--display); font-weight: 700; font-size: 40px;
+    line-height: 1; color: var(--gold-soft);
+  }
+  .row:not(.podium) .votes { color: rgba(244, 241, 232, 0.86); }
+
+  footer {
+    flex: none; display: flex; justify-content: space-between; align-items: flex-end;
+    gap: 28px; padding-top: 20px; margin-bottom: -74px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+    white-space: nowrap;
+  }
+  footer .footnote { text-align: right; line-height: 1.4; font-size: 19px; }
+  /* This board runs with no footnote, so collapse the empty element rather
+     than leaving the flex gap holding space beside the wordmark. */
+  footer .footnote:empty { display: none; }
+</style>
+</head>
+<body>
+<!-- No `.watermark` crest here, unlike the ladder: the wash columns are this
+     board's texture, and a ghosted mark behind them reads as a smudge on the
+     heatmap rather than as a background. -->
+<div class="canvas grain vignette">
+  <header>
+    <div class="mark mark--crest"></div>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="thead">
+    <div class="c-pos">#</div>
+    <div class="c-bar"></div>
+    <div class="c-name">Player</div>
+    <div class="c-cell" id="col-0"></div>
+    <div class="c-cell" id="col-1"></div>
+    <div class="c-cell" id="col-2"></div>
+    <div class="c-cell" id="col-3"></div>
+    <div class="c-votes" id="col-votes"></div>
+  </div>
+
+  <div class="rows" id="rows"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+    <div class="footnote" id="footnote"></div>
+  </footer>
+</div>
+
+<script type="module">
+/* Sample data, so this file opens straight in a browser and looks like the
+   real thing. `render.mjs` calls __render() again with the resolved slide. */
+const DATA = {
+  eyebrow: 'Season 5 · 2026',
+  title: 'MVP Simulation',
+  subtitle: '10,000 runs · After Round 5',
+  columns: ['MVP (%)', 'Top 3 (%)', 'Top 5 (%)', 'Top 10 (%)'],
+  votesLabel: 'Median Votes',
+  footnote: '',
+  rows: [
+    { rank: 1, player: 'Lachlan Jenkin', team: 'Red', votes: '26',
+      cells: [{ value: '98.4', tone: 0.984 }, { value: '100', tone: 1 }, { value: '100', tone: 1 }, { value: '100', tone: 1 }] },
+    { rank: 2, player: 'Luke Sharrock', team: 'Yellow', votes: '23',
+      cells: [{ value: '6.6', tone: 0.066 }, { value: '99.8', tone: 0.998 }, { value: '100', tone: 1 }, { value: '100', tone: 1 }] },
+    { rank: 3, player: 'Adam Dickson', team: 'Brown', votes: '20',
+      cells: [{ value: '0.1', tone: 0.001 }, { value: '83.8', tone: 0.838 }, { value: '99.5', tone: 0.995 }, { value: '100', tone: 1 }] },
+    { rank: 4, player: 'Charlie Simpson', team: 'Pink', votes: '18',
+      cells: [{ value: '0', tone: 0 }, { value: '16.5', tone: 0.165 }, { value: '83.4', tone: 0.834 }, { value: '100', tone: 1 }] },
+    { rank: 5, player: 'Ethan Seamer', team: 'Light Blue', votes: '18',
+      cells: [{ value: '0', tone: 0 }, { value: '14.7', tone: 0.147 }, { value: '64.8', tone: 0.648 }, { value: '99.8', tone: 0.998 }] },
+    { rank: 6, player: 'Jimmy Gorton', team: 'Orange', votes: '17',
+      cells: [{ value: '0', tone: 0 }, { value: '9.9', tone: 0.099 }, { value: '63.4', tone: 0.634 }, { value: '100', tone: 1 }] },
+    { rank: 7, player: 'Will Mumme', team: 'Navy', votes: '16',
+      cells: [{ value: '0', tone: 0 }, { value: '1', tone: 0.01 }, { value: '23.4', tone: 0.234 }, { value: '99.7', tone: 0.997 }] },
+    { rank: 8, player: 'Quinn Feikema', team: 'Green', votes: '14',
+      cells: [{ value: '0', tone: 0 }, { value: '0', tone: 0 }, { value: '3.1', tone: 0.031 }, { value: '96.1', tone: 0.961 }] },
+    { rank: 9, player: 'Jack Raines', team: 'Yellow', votes: '14',
+      cells: [{ value: '0', tone: 0 }, { value: '0.1', tone: 0.001 }, { value: '3.4', tone: 0.034 }, { value: '94.3', tone: 0.943 }] },
+    { rank: 10, player: 'Jonathan Kierce', team: 'White', votes: '13',
+      cells: [{ value: '0', tone: 0 }, { value: '0', tone: 0 }, { value: '0.1', tone: 0.001 }, { value: '95.2', tone: 0.952 }] },
+  ],
+  slide: 1,
+  slides: 2,
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/**
+ * Tone (0–1) → the cell's wash alpha and ink.
+ *
+ * Linear alpha is what the matplotlib original does and it wastes both ends:
+ * 6.6% is invisible and everything past 90% is the same block of colour. The
+ * square root opens up the bottom of the range, and the ceiling stops short of
+ * opaque so the 100s don't fuse into one gold slab down the right-hand side.
+ *
+ * The ink lifts to full paper once the wash is dark enough to need it, which is
+ * also roughly where a value stops being a footnote and starts being the point.
+ */
+const WASH_MAX = 0.40;
+const INK_AT = 0.45;
+
+function wash(tone) {
+  const t = Math.min(Math.max(Number(tone) || 0, 0), 1);
+  return { alpha: Math.sqrt(t) * WASH_MAX, lift: t >= INK_AT };
+}
+
+/**
+ * Set the headline as large as it goes on one line, down to a floor. The title
+ * is fixed here, unlike the stat board's, but the fit is cheap and it means a
+ * retitled board can't silently wrap and eat a row off the table.
+ */
+function fitHeadline(el, max = 88, min = 52) {
+  el.style.whiteSpace = 'nowrap';
+  for (let size = max; size >= min; size -= 2) {
+    el.style.fontSize = `${size}px`;
+    if (el.scrollWidth <= el.clientWidth) return;
+  }
+  el.style.whiteSpace = 'normal';
+}
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow ?? '';
+  document.getElementById('title').textContent = d.title ?? '';
+  fitHeadline(document.getElementById('title'));
+  document.getElementById('subtitle').textContent = d.subtitle ?? '';
+  document.getElementById('footnote').textContent = d.footnote ?? '';
+
+  (d.columns ?? []).forEach((label, i) => {
+    const el = document.getElementById(`col-${i}`);
+    if (el) el.textContent = label;
+  });
+  document.getElementById('col-votes').textContent = d.votesLabel ?? '';
+
+  document.getElementById('rows').innerHTML = (d.rows ?? []).map((r) => {
+    const cells = (r.cells ?? []).map((c) => {
+      const { alpha, lift } = wash(c.tone);
+      const zero = Number(c.tone) === 0;
+      return `<div class="cell${zero ? ' zero' : ''}"
+                   style="--wash: ${alpha.toFixed(3)}${lift ? '; --cell-ink: var(--paper)' : ''}">
+                ${esc(c.value)}
+              </div>`;
+    }).join('');
+
+    return `
+      <div class="row ${r.rank <= 3 ? 'podium' : ''} ${r.team ? '' : 'no-team'}"
+           ${r.team ? `data-team="${esc(r.team)}"` : ''}>
+        <div class="pos">${r.rank}</div>
+        <div class="bar"></div>
+        <div class="who">
+          <div class="name">${esc(r.player)}</div>
+          ${r.team ? `<div class="team-label">${esc(r.team)}</div>` : ''}
+        </div>
+        ${cells}
+        <div class="votes">${esc(r.votes)}</div>
+      </div>`;
+  }).join('');
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

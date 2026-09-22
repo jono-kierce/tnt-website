@@ -34,6 +34,8 @@ import {
   resultCardPayloads,
   rows as allRows,
   scoreboardPayload,
+  pairBoardPayload,
+  mvpSimPayloads,
   statBoardPayload,
   streakBoardPayload,
 } from './lib/payloads.ts';
@@ -59,6 +61,9 @@ const { values: argv } = parseArgs({
     headline: { type: 'string' },
     subhead: { type: 'string' },
     eyebrow: { type: 'string' },
+    pair: { type: 'string' },
+    sim: { type: 'string' },
+    runs: { type: 'string' },
     career: { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h', default: false },
   },
@@ -72,16 +77,18 @@ TNT graphics renderer
   --round <r>      Round number, or QF / SF / F. Default: the season's latest
                    round in the CSV.
   --only <list>    Comma-separated: ladder, results, scoreboard, boards, draft,
-                   preview, streaks, headline, predictions.
+                   preview, streaks, headline, predictions, pair, mvpsim.
                    Default: ladder,results,scoreboard,boards
-                   — draft, preview, streaks, headline and predictions are
-                   once-off posts, so they only render when asked.
+                   — draft, preview, streaks, headline, predictions and pair
+                   are once-off posts, so they only render when asked.
                    scoreboard is the whole round's results on one slide — the
                    post for a night nobody photographed.
                    predictions renders one card per analyst (the pundits'
                    pre-season picks); it needs no --round.
                    streaks is the all-time record book (longest win streaks);
                    it needs no --season or --round.
+                   pair is two players' record as team-mates; it needs --pair
+                   and no --season or --round.
                    preview needs no --round: it defaults to the next round
                    with an unplayed fixture, which is the point of it — run it
                    the day before with no flags and get next Tuesday's card.
@@ -92,7 +99,28 @@ TNT graphics renderer
   --career         Also render the all-time boards.
   --subtitle <s>   Override the draft board's subtitle.
   --footnote <s>   Small print bottom-right of the draft board (date, venue).
+  --pair <a,b>     The two players for --only pair, comma-separated:
+                   --pair "Ed Simpson,Jimmy Gorton".
   --out <dir>      Output folder. Default: graphics/out.
+
+Pair board (--only pair) — two players' record as team-mates:
+
+  --pair <a,b>     The two players, comma-separated, as the CSV names them:
+                   --pair "Ed Simpson,Jimmy Gorton". Refused for a pair who
+                   played together in a season whose votes are still sealed.
+
+MVP simulation (--only mvpsim) — the MVP race as a Monte Carlo projection:
+
+  --sim <path>     The simulation summary CSV (required). Produced outside this
+                   repo; every other number on every other graphic comes from
+                   data/alltimestats.csv, this one doesn't.
+  --runs <n>       How many runs the projection was over, for the subtitle.
+                   Omit and it reads "Simulated".
+
+                   Renders one slide per ten players, ranked by projected
+                   tally: s5-r05-mvp-sim-1.png, -2.png. Unlike every other
+                   vote-derived board it is NOT refused for a sealed season —
+                   a projection is not the tally. See mvpSimPayloads().
 
 Headline card (--only headline) — an ad-hoc news/banter post:
 
@@ -115,7 +143,7 @@ if (!Number.isFinite(season)) {
 // `draft` and `preview` are deliberately not in the default set — a draft is a
 // once-a-season post, and a preview is a once-a-week one you ask for the day
 // before, not something every CI push should render.
-const KINDS = ['ladder', 'results', 'scoreboard', 'boards', 'draft', 'preview', 'streaks', 'headline', 'predictions'];
+const KINDS = ['ladder', 'results', 'scoreboard', 'boards', 'draft', 'preview', 'streaks', 'headline', 'predictions', 'pair', 'mvpsim'];
 const only = new Set(
   (argv.only ?? 'ladder,results,scoreboard,boards').split(',').map((s) => s.trim()).filter(Boolean)
 );
@@ -301,6 +329,55 @@ if (only.has('streaks')) {
   // All-time record book — no season, no round. A once-off post, so it's out
   // of the default set like draft and preview.
   await shoot('streak-board.html', streakBoardPayload(), 'longest-win-streaks.png');
+}
+
+if (only.has('pair')) {
+  // A partnership, all-time — no season, no round, like streaks. The board
+  // carries votes and BOG, so a pair who played together in a sealed season is
+  // refused rather than rendered; the CLI reports the skip and carries on, the
+  // same way a sealed stat board does.
+  const names = (argv.pair ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (names.length !== 2) {
+    warnings.push('--only pair needs --pair "First Last,First Last". Nothing rendered.');
+  } else {
+    try {
+      const board = pairBoardPayload(names[0], names[1]);
+      await shoot('pair-board.html', board, `${board.id}.png`);
+    } catch (err) {
+      if (err instanceof SealedVotesError) warnings.push(err.message);
+      else throw err;
+    }
+  }
+}
+
+if (only.has('mvpsim')) {
+  // The MVP race as a projection. A once-off post, out of the default set, and
+  // the only family whose numbers come from outside this repo — so it renders
+  // nothing at all without an explicit --sim path. That's also what keeps it
+  // honest against `sealedVoteSeasons`: it can't be rendered by accident.
+  if (!argv.sim) {
+    warnings.push('--only mvpsim needs --sim <path-to-summary.csv>. Nothing rendered.');
+  } else {
+    const simPath = resolve(process.cwd(), argv.sim);
+    if (!existsSync(simPath)) {
+      warnings.push(`--sim ${argv.sim}: no such file. Nothing rendered.`);
+    } else {
+      const runs = argv.runs === undefined ? undefined : Number(argv.runs);
+      if (runs !== undefined && !Number.isFinite(runs)) {
+        console.error(`Not a run count: ${argv.runs}`);
+        process.exit(1);
+      }
+      const sim = await mvpSimPayloads(simPath, season, round, { runs });
+      warnings.push(...sim.warnings);
+      for (const slide of sim.slides) {
+        await shoot(
+          'mvp-sim-board.html',
+          slide,
+          `${stem}-mvp-sim-${slide.slide}.png`
+        );
+      }
+    }
+  }
 }
 
 if (only.has('headline')) {

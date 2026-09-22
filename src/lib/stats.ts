@@ -284,17 +284,26 @@ export interface SeasonRound {
  * byes are computed against whoever appears in the CSV that season, which
  * under-reports: a team on a bye in round one, with no fixture drawn yet for
  * any later round, isn't in the CSV at all.
+ *
+ * `withdrawnTeams` is the other direction — a team that pulled out mid-season
+ * and is therefore neither drawn nor resting. Without it, the rounds after it
+ * left list it on a bye every week.
  */
 export function seasonRounds(
   rows: StatRow[],
   season: number,
-  declaredTeams?: string[]
+  declaredTeams?: string[],
+  withdrawnTeams?: string[]
 ): SeasonRound[] {
   const matches = seasonMatches(rows, season);
   const field = new Set([
     ...(declaredTeams ?? []),
     ...matches.flatMap((m) => m.sides.map((s) => s.team)),
   ]);
+  // A team that withdrew is not on a bye for the rounds it isn't drawn in —
+  // and it has to be removed after the union, not left out of `declaredTeams`,
+  // because the rounds it *did* play put it straight back in.
+  for (const team of withdrawnTeams ?? []) field.delete(team);
 
   const byRound = new Map<number, MatchRecord[]>();
   for (const m of matches) {
@@ -461,24 +470,34 @@ export function lineupPairingName(
  * so a team on a bye in round one isn't missing from the table. It can't be
  * read off the CSV: a team whose first fixture is round three has no rows at
  * all yet. `site-data.ts` takes it from the season config.
+ *
+ * `withdrawnTeams` drops a team that pulled out mid-season off the table
+ * without touching anybody else's numbers: the results its opponents earned
+ * against it stand, because those are their own sides of those matches.
  */
 export function ladder(
   season: number,
   rows: StatRow[] = loadStatRows(),
   pairings?: Record<string, string>,
-  declaredTeams?: string[]
+  declaredTeams?: string[],
+  withdrawnTeams?: string[]
 ): LadderRow[] {
   const sides = matchSides(rows, season);
+  const gone = new Set(withdrawnTeams ?? []);
   const teams = new Map<
     string,
     { matchesPlayed: number; wins: number; gamesFor: number; gamesAgainst: number }
   >();
 
   for (const team of declaredTeams ?? []) {
+    if (gone.has(team)) continue;
     teams.set(team, { matchesPlayed: 0, wins: 0, gamesFor: 0, gamesAgainst: 0 });
   }
 
   for (const s of sides) {
+    // A withdrawn team's matches still count for the side that played it —
+    // that's a different `s` — but the team itself is off the table.
+    if (gone.has(s.team)) continue;
     const t = teams.get(s.team) ?? {
       matchesPlayed: 0,
       wins: 0,
@@ -528,12 +547,17 @@ export function ladderWithPairings(
   season: number,
   rows: StatRow[],
   teamConfig?: (team: string) => { pair?: string[]; captain?: string } | undefined,
-  declaredTeams?: string[]
+  declaredTeams?: string[],
+  withdrawnTeams?: string[]
 ): LadderRow[] {
   // Fixtures count here even though they count nowhere else: a team that has
   // been drawn to play still needs its pairing label resolved. The label comes
   // from the season config's `pair` when there is one, and from games played
   // when there isn't — which is why a drawn-but-unplayed season needs `pair`.
+  //
+  // A withdrawn team is labelled too, though `ladder` will drop its row: the
+  // same map labels the rounds it did play, and a past fixture should read
+  // "A. Littlejohn & A. Hume", not "Black".
   const teams = [
     ...new Set([
       ...(declaredTeams ?? []),
@@ -547,7 +571,7 @@ export function ladderWithPairings(
     const label = teamRoster(team, season, rows, teamConfig?.(team)).pairingName;
     if (label) pairings[team] = label;
   }
-  return ladder(season, rows, pairings, declaredTeams);
+  return ladder(season, rows, pairings, declaredTeams, withdrawnTeams);
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +579,27 @@ export function ladderWithPairings(
 // ---------------------------------------------------------------------------
 
 /** Stats that accumulate during play, and can be missing from a given game. */
+/**
+ * A 6-0 scoreline, from this row's point of view — a "bagel".
+ *
+ * Only ever asked of a **single-set** match, which is every home-and-away
+ * round and every quarter-final; semis and finals run to two or three sets, so
+ * a 6-0 there is a set inside a match rather than a result, and counting it
+ * alongside the others would compare different things. `r.sets === 1` is the
+ * whole of that rule — nothing needs to know which stage it was.
+ *
+ * Defined on the scoreline rather than on `win?`, because a bagel *is* a
+ * scoreline. The two can't disagree (a test asserts every 6-0 side is also the
+ * recorded winner), so this stays a fact about the games won and `win?` stays
+ * the only authority on who won the match.
+ */
+export const isBagelFor = (r: StatRow): boolean =>
+  r.sets === 1 && r.setScores[0]?.for === 6 && r.setScores[0]?.against === 0;
+
+/** The same scoreline from the other side: handed a 6-0. */
+export const isBagelAgainst = (r: StatRow): boolean =>
+  r.sets === 1 && r.setScores[0]?.against === 6 && r.setScores[0]?.for === 0;
+
 export const COUNTING_STATS = [
   'winners',
   'unforcedErrors',
@@ -619,6 +664,13 @@ export interface PlayerAgg {
   votes: number | null;
   /** True when the vote tally above actually rescaled an S1 vote. */
   votesEraAdjusted: boolean;
+  /**
+   * 6-0 results handed out and conceded, over single-set matches only — see
+   * `isBagelFor`. A plain count, not nullable: every played row carries a
+   * scoreline, so zero here means zero, not "not recorded".
+   */
+  bagelsFor: number;
+  bagelsAgainst: number;
   winnerToUe: number | null;
   /** Votes are awarded per match, not per set, so this rate stays per match. */
   votesPerGame: number | null;
@@ -670,6 +722,8 @@ function aggregateRows(
     sets = 0,
     finalsGames = 0,
     bog = 0,
+    bagelsFor = 0,
+    bagelsAgainst = 0,
     votesEraAdjusted = false;
   let fsIn = 0,
     fsOut = 0,
@@ -680,6 +734,8 @@ function aggregateRows(
     sets += r.sets;
     if (r.isFinals) finalsGames++;
     if (r.bog) bog++;
+    if (isBagelFor(r)) bagelsFor++;
+    if (isBagelAgainst(r)) bagelsAgainst++;
 
     for (const stat of COUNTING_STATS) {
       // A cross-era window counts S1 votes rescaled onto the modern 3-2-1
@@ -728,6 +784,8 @@ function aggregateRows(
     errorsForced: total('errorsForced'),
     votes: total('votes'),
     votesEraAdjusted,
+    bagelsFor,
+    bagelsAgainst,
     winnerToUe:
       winners === null ? null : ue ? winners / ue : winners > 0 ? Infinity : null,
     votesPerGame: tally.votes.games ? tally.votes.total / tally.votes.games : null,
@@ -963,6 +1021,136 @@ export function headToHead(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Partnerships — two players on the same side of the net
+// ---------------------------------------------------------------------------
+
+/** One season's slice of a partnership. A pair can be redrafted onto a new
+ * team, so the team travels with the season rather than with the pair. */
+export interface PairSeasonRecord {
+  season: number;
+  team: string;
+  wins: number;
+  losses: number;
+  gamesFor: number;
+  gamesAgainst: number;
+}
+
+/**
+ * Two players' record as team-mates, and each one's own numbers over exactly
+ * those matches.
+ *
+ * The counterpart to `headToHead`, and it follows the same two rules for the
+ * same reasons: **finals count** — a premiership is the thing a pair is
+ * remembered for — and **fill-in appearances count**, because a night the two
+ * of them were on court together is a night they played together, whoever the
+ * team sheet said they were turning out for.
+ *
+ * `members` are full `PlayerAgg`s built by the same aggregator every other
+ * window uses, so a partnership panel gets null-if-blank coverage, era-adjusted
+ * votes and the rest without this function knowing anything about stat columns.
+ * The window spans whatever seasons the pair played, which is cross-era by
+ * nature, so S1 votes are rescaled exactly as a career tally rescales them —
+ * `PlayerAgg.votesEraAdjusted` is the cue to footnote it.
+ */
+export interface PairRecord {
+  players: [string, string];
+  slugs: [string, string];
+  /** Matches played as team-mates. */
+  matches: number;
+  wins: number;
+  losses: number;
+  winPct: number;
+  gamesFor: number;
+  gamesAgainst: number;
+  /** gamesFor / gamesAgainst, guarded to gamesFor (as on the ladder). */
+  ratio: number;
+  /** Oldest season first. */
+  seasons: PairSeasonRecord[];
+  /** Each player's own aggregate over the shared matches, in `players` order. */
+  members: [PlayerAgg, PlayerAgg];
+}
+
+/**
+ * A pair's record together, or null if they have never partnered.
+ *
+ * Null rather than a zero-filled record: "these two have never played
+ * together" is a different statement from "these two are 0-0", and a caller
+ * that prints the second when it means the first is lying with a number.
+ */
+export function pairRecord(
+  a: string,
+  b: string,
+  rows: StatRow[] = loadStatRows(),
+  opts: { scope?: StatScope } = {}
+): PairRecord | null {
+  const scope = opts.scope ?? 'all';
+  // Fold to whole matches first so games for/against and the winner are read
+  // off `MatchRecord` rather than recounted here — `win?` stays the only
+  // authority on who won, as it is everywhere else.
+  const shared = seasonMatches(rows)
+    .filter((m) => !m.scheduled && !m.isSingles)
+    .flatMap((m) => {
+      const side = m.sides.find((s) => {
+        const names = s.players.map((p) => p.player);
+        return names.includes(a) && names.includes(b);
+      });
+      if (!side || !side.players.some((r) => inScope(r, scope))) return [];
+      return [{ match: m, side }];
+    });
+  if (!shared.length) return null;
+
+  let wins = 0,
+    gamesFor = 0,
+    gamesAgainst = 0;
+  const bySeason = new Map<number, PairSeasonRecord>();
+  for (const { match, side } of shared) {
+    const won = match.winner === side.team;
+    if (won) wins++;
+    gamesFor += side.gamesFor;
+    gamesAgainst += side.gamesAgainst;
+    const s =
+      bySeason.get(match.season) ??
+      bySeason
+        .set(match.season, {
+          season: match.season,
+          team: side.team,
+          wins: 0,
+          losses: 0,
+          gamesFor: 0,
+          gamesAgainst: 0,
+        })
+        .get(match.season)!;
+    won ? s.wins++ : s.losses++;
+    s.gamesFor += side.gamesFor;
+    s.gamesAgainst += side.gamesAgainst;
+  }
+
+  // Each player's own rows over exactly the shared matches. Straight to the
+  // shared aggregator, so nothing about stat columns is reimplemented here.
+  const member = (player: string): PlayerAgg => {
+    const mine = shared
+      .flatMap(({ side }) => side.players)
+      .filter((r) => r.player === player && inScope(r, scope));
+    return aggregateRows(player, mine[0]?.slug ?? playerSlug(player), mine, scope, true);
+  };
+
+  const matches = shared.length;
+  return {
+    players: [a, b],
+    slugs: [playerSlug(a), playerSlug(b)],
+    matches,
+    wins,
+    losses: matches - wins,
+    winPct: wins / matches,
+    gamesFor,
+    gamesAgainst,
+    ratio: gamesAgainst === 0 ? gamesFor : gamesFor / gamesAgainst,
+    seasons: [...bySeason.values()].sort((x, y) => x.season - y.season),
+    members: [member(a), member(b)],
+  };
+}
+
 /**
  * Win% first, then meetings — 5–0 beats 4–0 beats 3–0 — and the games ratio
  * only settles a dead heat on both.
@@ -1047,7 +1235,14 @@ export function playerTrend(
 // Leaderboards
 // ---------------------------------------------------------------------------
 
-export type LeaderStat = CountingStat | 'winPct' | 'winnerToUe' | 'bog' | 'finalsVotes';
+export type LeaderStat =
+  | CountingStat
+  | 'winPct'
+  | 'winnerToUe'
+  | 'bog'
+  | 'finalsVotes'
+  | 'bagelsFor'
+  | 'bagelsAgainst';
 
 /**
  * Rates are compared across all matches; raw totals only over the H&A season.
@@ -1056,6 +1251,10 @@ export type LeaderStat = CountingStat | 'winPct' | 'winnerToUe' | 'bog' | 'final
  */
 export const defaultScope = (stat: LeaderStat, perSet: boolean): StatScope =>
   stat === 'finalsVotes' ? 'finals'
+  // Bagels want the quarter-finals in — a QF is one set, same as a Tuesday,
+  // so it can end 6-0 the same way. `isBagelFor` drops the multi-set rounds
+  // itself, which is why the scope can be the wide one.
+  : stat === 'bagelsFor' || stat === 'bagelsAgainst' ? 'all'
   : perSet || stat === 'winPct' || stat === 'winnerToUe' ? 'all'
   : 'regular';
 
@@ -1097,6 +1296,12 @@ export function leaderboard(
         return agg.winnerToUe === Infinity ? agg.winners : agg.winnerToUe;
       case 'bog':
         return agg.bog;
+      // Counts of a result, not of a stat cell, so a per-set rate would be
+      // meaningless — both ignore the rate switch.
+      case 'bagelsFor':
+        return agg.bagelsFor;
+      case 'bagelsAgainst':
+        return agg.bagelsAgainst;
       // Votes are awarded once per match however many sets it ran to. The
       // finals board reads the same column under a finals-only scope.
       case 'votes':

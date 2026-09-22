@@ -1,13 +1,16 @@
 import type { SeasonConfig } from './schema.ts';
 
 /**
- * SEASON 5 (2026) — drafted, not yet live.
+ * SEASON 5 (2026) — live.
  *
- * Teams are set from the draft; S5 runs TEN teams for the first time (Brown
- * joins the nine-colour palette). The season goes live when the first S5 rows
- * land in the CSV: flip `currentSeason` to 5 in `src/config/site.ts` at that
- * point (and add 5 to `sealedVoteSeasons` if votes stay hidden until awards
- * night). Until there are rows, no /seasons/5/ page is generated.
+ * Drafted as TEN teams, the first time TNT has run more than nine (Brown
+ * joined the nine-colour palette). **Black withdrew after round four**: its
+ * four rounds stand — Navy, Light Blue, Orange and Yellow keep what they got
+ * off it, and Littlejohn and Hume keep those matches on their career pages —
+ * but it is off the ladder and out of the draw from round five, and Angus Hume
+ * moved to Green alongside Quinn Feikema. That leaves nine teams and a redrawn
+ * back half: rounds five to ten run three or four matches a night with byes,
+ * 40 fixtures across the season rather than the 45 originally drawn.
  *
  * `finals` below is the bracket *shape* only — no `result` on any match yet,
  * so seed slots resolve against the live in-progress ladder and `winnerOf`
@@ -19,11 +22,23 @@ const season5: SeasonConfig = {
   year: 2026,
 
   // Captain-first, draftee-second — the order they were read out in the draft.
+  // Green is the exception: it was drafted Feikema & Mossman, and reads
+  // Feikema & Hume from round five, when Black folded into it.
   teams: {
     Navy: { captain: 'Will Mumme', pair: ['Will Mumme', 'Ed Simpson'] },
-    Black: { captain: 'Archie Littlejohn', pair: ['Archie Littlejohn', 'Angus Hume'] },
+    // Withdrew after round four. Kept here, and in `draftOrder` below, so the
+    // four rounds it did play still print a pairing rather than a colour.
+    Black: {
+      captain: 'Archie Littlejohn',
+      pair: ['Archie Littlejohn', 'Angus Hume'],
+      withdrawn: true,
+    },
     'Light Blue': { captain: 'Shayl Inlander', pair: ['Shayl Inlander', 'Ethan Seamer'] },
-    Green: { captain: 'Quinn Feikema', pair: ['Quinn Feikema', 'Lewis Mossman'] },
+    Green: {
+      captain: 'Quinn Feikema',
+      pair: ['Quinn Feikema', 'Angus Hume'],
+      drafted: ['Quinn Feikema', 'Lewis Mossman'],
+    },
     Orange: { captain: 'Jimmy Gorton', pair: ['Jimmy Gorton', 'Lachy Godden'] },
     Pink: { captain: 'Charlie Simpson', pair: ['Charlie Simpson', 'Damon Maurice'] },
     Red: { captain: 'Lachlan Jenkin', pair: ['Lachlan Jenkin', 'Jamie Harris'] },
@@ -48,8 +63,10 @@ const season5: SeasonConfig = {
 
   honours: [],
 
-  // Top-10 field: 1 and 2 bye to the qualifying round; 7 v 8 play in first for
-  // a shot at 2. Seeds are off the live ladder, so this fills in as S5 is played.
+  // Drafted as a top-10 field: 1 and 2 bye to the qualifying round; 7 v 8 play
+  // in first for a shot at 2. Seeds are off the live ladder, so this fills in
+  // as S5 is played — now out of nine teams, Black having withdrawn, which
+  // makes it eight of nine, the same cut S1–S4 ran.
   finals: [
     {
       name: 'Wildcard',

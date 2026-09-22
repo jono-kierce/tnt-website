@@ -18,7 +18,11 @@ import {
   COUNTING_STATS,
 } from '../src/lib/stats.ts';
 import { NAME_ALIASES } from '../src/config/aliases.ts';
-import { declaredTeams, getSeasonConfig } from '../src/config/seasons/node.ts';
+import {
+  declaredTeams,
+  getSeasonConfig,
+  withdrawnTeams,
+} from '../src/config/seasons/node.ts';
 import { SITE, isVotesSealed } from '../src/config/site.ts';
 import { allPhotos, missingPhotoFiles, unlistedPhotos, photoFilesOnDisk } from '../src/lib/photos.ts';
 
@@ -248,8 +252,9 @@ for (const raw of rawRows) {
 
 for (const season of allSeasons(rows)) {
   const field = await declaredTeams(season);
+  const gone = await withdrawnTeams(season);
   const cfg = await getSeasonConfig(season);
-  const rounds = seasonRounds(rows, season, field);
+  const rounds = seasonRounds(rows, season, field, gone);
 
   for (const round of rounds) {
     const drawn = round.matches.filter((m) => m.scheduled);
@@ -339,10 +344,18 @@ if (scheduled.length) {
   const seasonsWithFixtures = [...new Set(scheduled.map((r) => r.season))].sort();
   for (const season of seasonsWithFixtures) {
     const field = await declaredTeams(season);
-    const rounds = seasonRounds(rows, season, field).filter((r) =>
+    const gone = await withdrawnTeams(season);
+    // A team that pulled out is neither drawn nor on a bye, so it's out of the
+    // field this report counts — and named, because "field of 9" with ten
+    // teams in the config is the sort of thing you want spelled out.
+    const playing = field.filter((t) => !gone.includes(t));
+    const rounds = seasonRounds(rows, season, field, gone).filter((r) =>
       r.matches.some((m) => m.scheduled)
     );
-    console.log(`  S${season}: field of ${field.length || '?'} teams`);
+    console.log(
+      `  S${season}: field of ${playing.length || '?'} teams` +
+        (gone.length ? ` (withdrawn: ${gone.join(', ')})` : '')
+    );
     for (const r of rounds) {
       const drawn = r.matches.filter((m) => m.scheduled).length;
       console.log(
@@ -354,7 +367,7 @@ if (scheduled.length) {
     // visible without being called an error — an uneven one is on purpose.
     const tally = new Map<string, { drawn: number; played: number }>();
     for (const team of field) tally.set(team, { drawn: 0, played: 0 });
-    for (const m of seasonRounds(rows, season, field).flatMap((r) => r.matches)) {
+    for (const m of seasonRounds(rows, season, field, gone).flatMap((r) => r.matches)) {
       for (const side of m.sides) {
         const e = tally.get(side.team) ?? { drawn: 0, played: 0 };
         if (m.scheduled) e.drawn += 1;

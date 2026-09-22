@@ -73,5 +73,32 @@ export function careerBoards(): StatBoardSpec[] {
       polarity: 'high',
       showPhoto: true,
     },
+    // A pair, and they're meant to be posted as one. Both count every night a
+    // player was on court, fill-ins included — a 6-0 is a 6-0 whoever you were
+    // turning out for, and leaving those matches out would quietly drop a
+    // result somebody definitely remembers. `isBagelFor` keeps the semis and
+    // the final out on its own, so nothing here has to say so.
+    {
+      id: 'bagels-handed-out',
+      title: 'Bagels Handed Out',
+      subtitle: '6-0 results',
+      metricLabel: 'Bagels',
+      stat: 'bagelsFor',
+      polarity: 'high',
+      rows: 10,
+      includeFillIns: true,
+    },
+    {
+      id: 'bagels-received',
+      title: 'Bagels Received',
+      subtitle: '6-0 defeats',
+      metricLabel: 'Bagels',
+      stat: 'bagelsAgainst',
+      // Ranking never flips — #1 is the biggest number, as everywhere else.
+      // The ramp is what turns this board red at the top.
+      polarity: 'low',
+      rows: 10,
+      includeFillIns: true,
+    },
   ];
 }

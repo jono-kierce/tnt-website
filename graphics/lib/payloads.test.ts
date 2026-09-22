@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   SealedVotesError,
   draftPayload,
@@ -12,11 +15,18 @@ import {
   rows,
   scoreboardPayload,
   seasonRounds,
+  pairBoardPayload,
+  mvpSimPayloads,
   statBoardPayload,
   streakBoardPayload,
 } from './payloads.ts';
 import { ANALYSTS } from './predictions.ts';
-import { ladderWithPairings, winStreaks } from '../../src/lib/stats.ts';
+import {
+  ladderWithPairings,
+  winStreaks,
+  pairRecord,
+  seasonRounds as matchRounds,
+} from '../../src/lib/stats.ts';
 import { SITE, TEAMS } from '../../src/config/site.ts';
 import { getSeasonConfig } from './season-configs.ts';
 
@@ -217,10 +227,14 @@ describe('scoreboard', () => {
   });
 
   it('shows only played fixtures — a drawn round is the preview\'s job', async () => {
-    // Whichever round is next up: naming one pins the test to a week of the
-    // season, and it goes red the night that round is entered.
-    const drawn = (await nextPreviewRound(5))!;
-    const b = await scoreboardPayload(5, drawn);
+    // Whichever round is wholly undrawn: naming one pins the test to a week of
+    // the season. It can't just be the next round up for preview — a round
+    // half entered, four sheets in and the fifth still to come, is a legitimate
+    // state (`check-data` warns, never errors), and its board rightly carries
+    // the four that were played.
+    const drawn = matchRounds(rows, 5).find((r) => r.matches.every((m) => m.scheduled));
+    expect(drawn).toBeDefined();
+    const b = await scoreboardPayload(5, resolveRound(drawn!.stage ?? String(drawn!.round)));
     expect(b.matches).toEqual([]);
   });
 
@@ -368,8 +382,12 @@ describe('stat boards', () => {
   });
 
   it('refuses to render a vote board for a sealed season', () => {
-    // sealedVoteSeasons is empty today, so seal one for the length of this test.
+    // Seal season 4 for the length of this test, then put the list back as it
+    // was. Restoring the *contents* rather than emptying the array matters:
+    // S5's votes are genuinely sealed, and clearing it here would unseal them
+    // for every test that runs after this one.
     const sealed = SITE.sealedVoteSeasons as unknown as number[];
+    const before = [...sealed];
     sealed.push(4);
     try {
       const spec = {
@@ -390,11 +408,12 @@ describe('stat boards', () => {
       ).not.toThrow();
     } finally {
       sealed.length = 0;
+      sealed.push(...before);
     }
   });
 
   it('leaves an unsealed season vote board alone', () => {
-    expect(SITE.sealedVoteSeasons).toHaveLength(0);
+    expect(SITE.sealedVoteSeasons).not.toContain(4);
     expect(() =>
       statBoardPayload({ id: 'mvp', title: 'x', metricLabel: 'Votes', stat: 'votes', season: 4 })
     ).not.toThrow();
@@ -470,5 +489,228 @@ describe('predictions cards', () => {
     const cards = await predictionsPayloads(5);
     expect(cards.map((c) => c.slug)).toContain('the-commissioner');
     expect(cards.map((c) => c.slug)).toContain('ai-claude');
+  });
+});
+
+describe('pair board', () => {
+  const board = pairBoardPayload('Ed Simpson', 'Jimmy Gorton');
+
+  it('prints the record stats.ts derived, and does no arithmetic of its own', () => {
+    const rec = pairRecord('Ed Simpson', 'Jimmy Gorton', rows)!;
+    expect(board.record).toBe(`${rec.wins}\u2013${rec.losses}`);
+    expect(board.matchesLine).toBe(`${rec.matches} matches together`);
+    expect(board.gamesLine).toBe(`${rec.gamesFor}\u2013${rec.gamesAgainst} games`);
+    expect(board.seasons.map((s) => s.label)).toEqual(rec.seasons.map((s) => `S${s.season}`));
+    expect(board.seasons.map((s) => s.team)).toEqual(rec.seasons.map((s) => s.team));
+  });
+
+  it('lights the bigger number, never "the better one"', () => {
+    // Ranking never flips, as on every stat board: Simpson leads the unforced
+    // errors because his number is larger, and `polarity` is what turns that
+    // red instead of gold.
+    const ue = board.stats.find((s) => s.label === 'Unforced errors')!;
+    expect(Number(ue.a)).toBeGreaterThan(Number(ue.b));
+    expect(ue.lead).toBe('a');
+    expect(ue.polarity).toBe('low');
+
+    const winners = board.stats.find((s) => s.label === 'Winners')!;
+    expect(Number(winners.b)).toBeGreaterThan(Number(winners.a));
+    expect(winners.lead).toBe('b');
+    expect(winners.polarity).toBe('high');
+
+    // Every row agrees: `lead` names whichever column holds the bigger number.
+    for (const row of board.stats) {
+      if (row.a === '\u2014' || row.b === '\u2014' || row.a === row.b) continue;
+      expect(row.lead).toBe(Number(row.a) > Number(row.b) ? 'a' : 'b');
+    }
+  });
+
+  it('footnotes the S1 vote rescale, because this window spans the eras', () => {
+    expect(board.footnote).toContain('S1 votes scaled');
+  });
+
+  it('refuses a pair who played together in a season with sealed votes', () => {
+    // Pink's S5 pair. The board carries votes and BOG, so it is refused rather
+    // than rendered — the same rule the MVP race board lives under.
+    expect(SITE.sealedVoteSeasons).toContain(5);
+    expect(() => pairBoardPayload('Charlie Simpson', 'Damon Maurice')).toThrow(SealedVotesError);
+  });
+
+  it('refuses two players who have never partnered', () => {
+    expect(() => pairBoardPayload('Jonathan Kierce', 'Jimmy Gorton')).toThrow(
+      /never played a match as team-mates/
+    );
+  });
+});
+
+describe('MVP simulation board', () => {
+  // A fixture rather than the owner's real summary file: the projection lives
+  // outside this repo, so a test that read it would fail on a machine that
+  // hasn't run the model. Everything here is shaped exactly like the real file
+  // — percentages with a '%', votes bare, and the same column order.
+  let dir: string;
+  const csv = (body: string) =>
+    '﻿Player,1st Percentage,Top 3 Percentage,Top 5 Percentage,Top 10 Percentage,' +
+    'Median Votes,Team,Mean Votes,5th Pct Votes,95th Pct Votes\r\n' +
+    body;
+
+  // Six S5 players. Median votes are deliberately tied twice, so the
+  // documented tiebreaks (mean, then MVP chance, then name) are exercised.
+  const SAMPLE = csv(
+    [
+      'Lachlan Jenkin,98.4%,100.0%,100.0%,100.0%,26.0,Red,25.9,24,28',
+      'Luke Sharrock,6.6%,99.8%,100.0%,100.0%,23.0,Yellow,23.0,21,24',
+      'Charlie Simpson,0.0%,16.5%,83.4%,100.0%,18.0,Pink,18.1,16,20',
+      'Ethan Seamer,0.0%,14.7%,64.8%,99.8%,18.0,Light Blue,17.6,15,21',
+      'Will Mumme,0.0%,1.0%,23.4%,99.7%,16.0,Navy,15.9,14,18',
+      'Jamie Harris,0.0%,0.0%,0.0%,0.0%,2.0,Red,1.8,1,3',
+      '',
+    ].join('\r\n')
+  );
+
+  const write = (name: string, text: string) => {
+    const at = join(dir, name);
+    writeFileSync(at, text);
+    return at;
+  };
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'tnt-mvp-sim-'));
+  });
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('ranks by median votes, breaking ties on mean then MVP chance then name', async () => {
+    const { slides } = await mvpSimPayloads(write('a.csv', SAMPLE), 5, resolveRound('5'));
+    expect(slides).toHaveLength(1);
+    expect(slides[0].rows.map((r) => r.player)).toEqual([
+      'Lachlan Jenkin',
+      'Luke Sharrock',
+      // Both on 18; Charlie's mean (18.1) is the higher, so he leads.
+      'Charlie Simpson',
+      'Ethan Seamer',
+      'Will Mumme',
+      'Jamie Harris',
+    ]);
+    expect(slides[0].rows.map((r) => r.rank)).toEqual([1, 2, 3, 4, 5, 6]);
+    // The printed column must read top to bottom, which is the whole reason
+    // the board ranks on the number it prints.
+    const votes = slides[0].rows.map((r) => Number(r.votes));
+    expect([...votes].sort((x, y) => y - x)).toEqual(votes);
+  });
+
+  it('prints the percentages the way the source does, and a zero as a zero', async () => {
+    const { slides } = await mvpSimPayloads(write('b.csv', SAMPLE), 5, resolveRound('5'));
+    const [jenkin, , , , mumme, harris] = slides[0].rows;
+    // Trailing ".0" dropped; a real decimal kept.
+    expect(jenkin.cells.map((c) => c.value)).toEqual(['98.4', '100', '100', '100']);
+    expect(mumme.cells.map((c) => c.value)).toEqual(['0', '1', '23.4', '99.7']);
+    // 0% is a real result — the model never once produced that finish — so it
+    // prints. A dash would mean "not recorded", which is a different claim.
+    expect(harris.cells.every((c) => c.value === '0')).toBe(true);
+    expect(harris.cells.every((c) => c.tone === 0)).toBe(true);
+    // Tone is the plain share, for the template's wash.
+    expect(jenkin.cells[0].tone).toBeCloseTo(0.984, 6);
+    expect(jenkin.votes).toBe('26');
+  });
+
+  it('splits into slides of ten, numbered continuously', async () => {
+    const many = csv(
+      Array.from({ length: 23 }, (_, i) =>
+        // Descending medians, so the expected order is the file's own order.
+        `P${String(i).padStart(2, '0')},0.0%,0.0%,0.0%,0.0%,${100 - i}.0,Red,${100 - i},1,3`
+      ).join('\r\n')
+    );
+    const { slides } = await mvpSimPayloads(write('c.csv', many), 5, resolveRound('5'));
+    expect(slides.map((s) => s.rows.length)).toEqual([10, 10, 3]);
+    expect(slides.map((s) => s.slide)).toEqual([1, 2, 3]);
+    expect(slides.every((s) => s.slides === 3)).toBe(true);
+    expect(slides[1].rows[0].rank).toBe(11);
+    expect(slides[2].rows.at(-1)!.rank).toBe(23);
+    // Every slide carries the same header — they're one carousel, and the
+    // filename is what tells them apart.
+    expect(new Set(slides.map((s) => s.subtitle)).size).toBe(1);
+    // None of these fake players is on an S5 team, so each one is reported.
+    expect(slides[0].rows.every((r) => r.team === null)).toBe(true);
+  });
+
+  it('takes the team from the season config and warns when the file disagrees', async () => {
+    // Luke Sharrock is Yellow in season-5.ts; a file that claims otherwise
+    // must not be able to recolour a row.
+    const wrong = csv('Luke Sharrock,0.0%,0.0%,0.0%,0.1%,6.0,Green,6.4,5,9\r\n');
+    const { slides, warnings } = await mvpSimPayloads(
+      write('d.csv', wrong),
+      5,
+      resolveRound('5')
+    );
+    const cfg = await getSeasonConfig(5);
+    expect(cfg!.teams!.Yellow.pair).toContain('Luke Sharrock');
+    expect(slides[0].rows[0].team).toBe('Yellow');
+    expect(
+      warnings.some((w) => /Luke Sharrock on Green.*config has them on Yellow/.test(w))
+    ).toBe(true);
+  });
+
+  it('colours a player whose team folded by the team he plays for now', async () => {
+    // Angus Hume is in two `pair` lists: Black, which withdrew after round
+    // four, and Green, which he moved to. The live team wins, and the team
+    // that folded still claims the player who left with it.
+    const moved = csv(
+      'Angus Hume,0.0%,0.0%,0.0%,0.1%,6.0,Green,6.4,5,9\r\n' +
+        'Archie Littlejohn,0.0%,0.0%,0.0%,0.0%,2.0,Black,2.0,1,4\r\n'
+    );
+    const { slides, warnings } = await mvpSimPayloads(
+      write('f.csv', moved),
+      5,
+      resolveRound('5')
+    );
+    expect(slides[0].rows.map((r) => r.team)).toEqual(['Green', 'Black']);
+    // Neither row is a disagreement with the config, so neither is reported.
+    // (The rest of the field is missing from this two-row file, which is its
+    // own warning and not what this test is about.)
+    expect(warnings.some((w) => /config has them on/.test(w))).toBe(false);
+  });
+
+  it('warns about a player the season does not have, and renders them uncoloured', async () => {
+    const stranger = csv('Roger Federer,0.0%,0.0%,0.0%,0.0%,1.0,Red,1.0,0,2\r\n');
+    const { slides, warnings } = await mvpSimPayloads(
+      write('e.csv', stranger),
+      5,
+      resolveRound('5')
+    );
+    expect(slides[0].rows[0].team).toBeNull();
+    expect(warnings.some((w) => w.includes('"Roger Federer" is not on any Season 5 team'))).toBe(
+      true
+    );
+  });
+
+  it('fails loudly on a renamed column rather than parsing it as NaN', async () => {
+    const renamed = SAMPLE.replace('Median Votes', 'Median Vote');
+    await expect(mvpSimPayloads(write('f.csv', renamed), 5, resolveRound('5'))).rejects.toThrow(
+      /no "Median Votes" column/
+    );
+  });
+
+  it('is the one vote-derived board exempt from sealedVoteSeasons', async () => {
+    // A deliberate, scoped exemption: this board prints a PROJECTION, and the
+    // point of the post is to tease a live race. The seal still holds for every
+    // board that reads the CSV's own `votes` column — that's what this pins.
+    expect(SITE.sealedVoteSeasons).toContain(5);
+    await expect(
+      mvpSimPayloads(write('g.csv', SAMPLE), 5, resolveRound('5'))
+    ).resolves.toBeDefined();
+    expect(() =>
+      statBoardPayload({ id: 'mvp', title: 'x', metricLabel: 'Votes', stat: 'votes', season: 5 })
+    ).toThrow(SealedVotesError);
+    expect(() => pairBoardPayload('Charlie Simpson', 'Damon Maurice')).toThrow(SealedVotesError);
+  });
+
+  it('says "pre-season" when there is no round to report after', async () => {
+    const { slides } = await mvpSimPayloads(write('h.csv', SAMPLE), 5, null, { runs: 10000 });
+    expect(slides[0].subtitle).toBe('10,000 runs · Pre-season');
+    // And a run count is optional — the model may not report one.
+    const bare = await mvpSimPayloads(write('i.csv', SAMPLE), 5, resolveRound('5'));
+    expect(bare.slides[0].subtitle).toBe('Simulated · After Round 5');
   });
 });

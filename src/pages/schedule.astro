@@ -5,7 +5,7 @@ import LadderTable from '../components/LadderTable.astro';
 import { SITE, seasonLabel } from '../config/site.ts';
 import { seasonHref } from '../lib/url.ts';
 import {
-  declaredTeams,
+  activeTeams,
   defaultScheduleRound,
   seasonLadder,
   seasonRoundList,
@@ -20,7 +20,8 @@ const rosters = seasonRosters(season);
 const pairings = Object.fromEntries(
   Object.entries(rosters).map(([team, r]) => [team, r.pairingName])
 );
-const teams = declaredTeams(season);
+// The field still playing — nine of S5's ten, once Black pulled out.
+const teams = activeTeams(season);
 const played = rounds.filter((r) => r.played).length;
 const toPlay = rounds.filter((r) => r.matches.some((m) => m.scheduled)).length;
 ---

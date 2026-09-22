@@ -19,6 +19,8 @@ import {
   seasonRounds as matchRoundsFor,
   winStreaks,
   streakEndLabel,
+  pairRecord,
+  type CountingStat,
   type LeaderStat,
   type PlayerAgg,
   type StatScope,
@@ -32,10 +34,12 @@ import {
   getSeasonConfig,
   seasonTeamConfigs,
   declaredTeams,
+  withdrawnTeams,
   seasonFinalsBerths,
 } from './season-configs.ts';
 import { shortName, slugify } from '../../src/config/aliases.ts';
 import { ANALYSTS, type AnalystPredictions } from './predictions.ts';
+import { loadMvpSim } from './mvp-sim.ts';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -178,7 +182,16 @@ export async function ladderPayload(
   // right: the final ladder is what seeded the bracket.
   const upToRound = rows.filter((r) => r.round <= round.round);
   const teamConfig = await seasonTeamConfigs(season);
-  const table = ladderWithPairings(season, upToRound, teamConfig);
+  // The same field the site's ladder is built on: declared teams enter at
+  // 0/0/0, and a team that withdrew mid-season comes off. A posted ladder
+  // disagreeing with the printed one is the thing this module exists to stop.
+  const table = ladderWithPairings(
+    season,
+    upToRound,
+    teamConfig,
+    await declaredTeams(season),
+    await withdrawnTeams(season)
+  );
 
   const cutoff = opts.finalsCutoff ?? DEFAULT_FINALS_CUTOFF;
   const complete =
@@ -401,13 +414,23 @@ async function previewField(season: number): Promise<string[] | undefined> {
 }
 
 /**
+ * Teams that pulled out mid-season — see `TeamConfig.withdrawn`. Without it a
+ * withdrawn team is listed on a bye on every card for the rest of the season.
+ */
+async function previewGone(season: number): Promise<string[] | undefined> {
+  const gone = await withdrawnTeams(season);
+  return gone.length ? gone : undefined;
+}
+
+/**
  * The next round with an unplayed fixture — what "post it the Monday before"
  * means. Unlike `latestRound`, which only ever looks at played rounds, this is
  * allowed to land on a season that hasn't started a night of tennis yet.
  */
 export async function nextPreviewRound(season: number): Promise<RoundRef | null> {
   const field = await previewField(season);
-  const next = matchRoundsFor(rows, season, field).find((r) =>
+  const gone = await previewGone(season);
+  const next = matchRoundsFor(rows, season, field, gone).find((r) =>
     r.matches.some((m) => m.scheduled)
   );
   return next ? resolveRound(next.stage ?? next.round) : null;
@@ -423,7 +446,10 @@ export async function previewPayload(
   round: RoundRef
 ): Promise<PreviewPayload> {
   const field = await previewField(season);
-  const sr = matchRoundsFor(rows, season, field).find((r) => r.round === round.round);
+  const gone = await previewGone(season);
+  const sr = matchRoundsFor(rows, season, field, gone).find(
+    (r) => r.round === round.round
+  );
   if (!sr) {
     throw new Error(
       `Season ${season} has no round matching "${round.input}" to preview.`
@@ -443,7 +469,12 @@ export async function previewPayload(
       const pairing = (side: typeof a) =>
         lineupPairingName(side.players, teamConfig(side.team));
       // Top-weighted only — a preview card has room for one line, not three.
-      const [top] = insightsFor(m, rows, { declaredTeams: field, finalsCutoff }, 1);
+      const [top] = insightsFor(
+        m,
+        rows,
+        { declaredTeams: field, withdrawnTeams: gone, finalsCutoff },
+        1
+      );
       return {
         teamA: a.team,
         pairingA: pairing(a),
@@ -512,7 +543,10 @@ export async function scoreboardPayload(
   round: RoundRef
 ): Promise<ScoreboardPayload> {
   const field = await previewField(season);
-  const sr = matchRoundsFor(rows, season, field).find((r) => r.round === round.round);
+  const gone = await previewGone(season);
+  const sr = matchRoundsFor(rows, season, field, gone).find(
+    (r) => r.round === round.round
+  );
   if (!sr) {
     throw new Error(
       `Season ${season} has no round matching "${round.input}" to report.`
@@ -599,7 +633,9 @@ export async function draftPayload(
 
   const rows = order.map((team, i) => {
     const entry = cfg.teams?.[team];
-    const pair = entry?.pair ?? [];
+    // The pair as drafted — `pair` follows a mid-season change, and the draft
+    // board is a record of draft night, not of who is playing now.
+    const pair = entry?.drafted ?? entry?.pair ?? [];
     const captain = entry?.captain ?? pair[0];
     if (!captain) {
       throw new Error(
@@ -714,9 +750,13 @@ const VOTE_STATS = new Set<LeaderStat>(['votes', 'finalsVotes', 'bog']);
 export class SealedVotesError extends Error {}
 
 /** Values are printed, not computed — this is the only place rounding happens. */
+/** Counts of a result rather than of a stat cell — never shown as a rate. */
+const COUNT_STATS = new Set<LeaderStat>(['bagelsFor', 'bagelsAgainst']);
+
 function formatValue(stat: LeaderStat, perSetMode: boolean, v: number): string {
   if (stat === 'winPct') return `${Math.round(v * 100)}%`;
   if (stat === 'winnerToUe') return v.toFixed(2);
+  if (COUNT_STATS.has(stat)) return String(v);
   if (perSetMode) return v.toFixed(2);
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
 }
@@ -1019,4 +1059,277 @@ export async function predictionsPayloads(
       return { category: c.label, team, primary: value, secondary: team };
     }),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Pair board — two players' record as team-mates
+// ---------------------------------------------------------------------------
+
+export interface PairStatRowPayload {
+  label: string;
+  /** Already formatted for print, in the board's two-column order. */
+  a: string;
+  b: string;
+  /** The larger of the two, for the emphasis the template puts on a lead.
+   * 'a', 'b', or null when they are level or the stat wasn't recorded.
+   *
+   * Always the bigger number, never "the better one" — the same rule the stat
+   * boards follow. Leading the unforced errors is still leading them; it's
+   * `polarity` that tells the template to colour it as the disgrace it is. */
+  lead: 'a' | 'b' | null;
+  /** 'low' where a big number is a bad number, for the template's colour. */
+  polarity: 'high' | 'low';
+}
+
+export interface PairSeasonRowPayload {
+  label: string;
+  team: string;
+  record: string;
+}
+
+export interface PairBoardPayload {
+  kind: 'pair-board';
+  id: string;
+  eyebrow: string;
+  /** "Ed Simpson & Jimmy Gorton". */
+  title: string;
+  /** The two names again, split for the stat columns. */
+  a: string;
+  b: string;
+  teamA: string | null;
+  teamB: string | null;
+  record: string;
+  matchesLine: string;
+  gamesLine: string;
+  seasons: PairSeasonRowPayload[];
+  stats: PairStatRowPayload[];
+  footnote: string;
+}
+
+/**
+ * The stats the board prints, in order. Deliberately counting stats only —
+ * a rate would need `SITE.perGameMinGames` and a footnote explaining the
+ * denominator, and this board is meant to be read at a glance.
+ */
+const PAIR_STATS: {
+  label: string;
+  stat: CountingStat;
+  polarity: 'high' | 'low';
+}[] = [
+  { label: 'Winners', stat: 'winners', polarity: 'high' },
+  { label: 'Aces', stat: 'aces', polarity: 'high' },
+  { label: 'Unforced errors', stat: 'unforcedErrors', polarity: 'low' },
+  { label: 'Double faults', stat: 'doubleFaults', polarity: 'low' },
+  { label: 'Votes', stat: 'votes', polarity: 'high' },
+];
+
+/**
+ * Two players' partnership, one slide.
+ *
+ * **Refused, not rendered, when the pair played together in a sealed season.**
+ * The board carries votes and best-on-ground, both vote-derived, so the same
+ * rule the MVP race lives under applies here — and it is checked against the
+ * seasons the pair actually shared rather than the current one, because a pair
+ * board is an all-time post with no round to speak of.
+ */
+export function pairBoardPayload(a: string, b: string): PairBoardPayload {
+  const rec = pairRecord(a, b, rows);
+  if (!rec) {
+    throw new Error(
+      `${a} and ${b} have never played a match as team-mates, so there is no ` +
+        `pair board to render. Check the spelling against the canonical names ` +
+        `in src/config/aliases.ts.`
+    );
+  }
+
+  const sealed = rec.seasons.map((s) => s.season).filter(isVotesSealed);
+  if (sealed.length) {
+    throw new SealedVotesError(
+      `${a} & ${b} played together in season ${sealed.join(', ')}, whose votes ` +
+        `are sealed (SITE.sealedVoteSeasons), so the pair board can't be ` +
+        `rendered — it carries votes and best-on-ground. Remove the season ` +
+        `from sealedVoteSeasons once the votes are public.`
+    );
+  }
+
+  const [aggA, aggB] = rec.members;
+  // A blank stat cell is null, never 0, so a stat neither of them ever
+  // recorded prints as a dash rather than as a pair of honest-looking zeroes.
+  const cell = (v: number | null) => (v === null ? '—' : String(v));
+  const lead = (x: number | null, y: number | null): 'a' | 'b' | null =>
+    x === null || y === null || x === y ? null : x > y ? 'a' : 'b';
+
+  const stats: PairStatRowPayload[] = PAIR_STATS.map(({ label, stat, polarity }) => {
+    const x = aggA.tally[stat].total;
+    const y = aggB.tally[stat].total;
+    return { label, a: cell(x), b: cell(y), lead: lead(x, y), polarity };
+  });
+  // BOG is a count of matches, not a stat cell, so it sits outside PAIR_STATS.
+  stats.push({
+    label: 'Best on ground',
+    a: String(aggA.bog),
+    b: String(aggB.bog),
+    lead: lead(aggA.bog, aggB.bog),
+    polarity: 'high',
+  });
+
+  const notes = ['Finals and fill-in matches included'];
+  // Only footnote the rescale when it actually rescaled something.
+  if (aggA.votesEraAdjusted || aggB.votesEraAdjusted) {
+    notes.push('S1 votes scaled to the 3-2-1 era');
+  }
+
+  return {
+    kind: 'pair-board',
+    id: `pair-${slugify(a)}-${slugify(b)}`,
+    eyebrow: 'Together',
+    title: `${a} & ${b}`,
+    a: shortName(a),
+    b: shortName(b),
+    teamA: currentTeamForChip(a),
+    teamB: currentTeamForChip(b),
+    record: `${rec.wins}\u2013${rec.losses}`,
+    matchesLine: `${rec.matches} matches together`,
+    gamesLine: `${rec.gamesFor}\u2013${rec.gamesAgainst} games`,
+    seasons: rec.seasons.map((s) => ({
+      label: `S${s.season}`,
+      team: s.team,
+      record: `${s.wins}\u2013${s.losses}`,
+    })),
+    stats,
+    footnote: notes.join(' \u00b7 '),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// MVP simulation board
+// ---------------------------------------------------------------------------
+
+/**
+ * The MVP race as a Monte Carlo projection — where each player finishes across
+ * thousands of simulated runs of the rounds still to come.
+ *
+ * **Why this board is exempt from `sealedVoteSeasons`.** Every other
+ * vote-derived board is refused for a sealed season, because it would print the
+ * recorded tally that's meant to be a surprise on awards night. This one prints
+ * a *projection* produced by a model outside this repo, and posting it is a
+ * deliberate editorial decision: the point of the graphic is to tease the race
+ * while it's still live. The sealed check is untouched for every board that
+ * reads the `votes` column — `statBoardPayload` and `pairBoardPayload` still
+ * throw — so nothing here weakens the rule it sits beside. If the projection
+ * should go back to being sealed, don't render it: it's a once-off post, out of
+ * the default `--only` set, and it needs an explicit `--sim <path>`.
+ *
+ * **No arithmetic.** The percentages and the vote figures are read out of the
+ * summary file by `mvp-sim.ts` and printed. This builder sorts, splits into
+ * slides, formats for print and normalises a percentage to a 0–1 tone. That's
+ * the whole of it.
+ */
+export interface MvpSimCellPayload {
+  /** As printed: "98.4", "100", "0". */
+  value: string;
+  /** 0–1 share, for the template's heatmap wash. */
+  tone: number;
+}
+
+export interface MvpSimRowPayload {
+  rank: number;
+  player: string;
+  /** CSV team name, or null for a player the season config doesn't place. */
+  team: string | null;
+  cells: MvpSimCellPayload[];
+  /** Projected final tally — the median run. */
+  votes: string;
+}
+
+export interface MvpSimPayload {
+  kind: 'mvp-sim';
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  /** Column heads over the four percentage cells. */
+  columns: string[];
+  votesLabel: string;
+  footnote: string;
+  rows: MvpSimRowPayload[];
+  /** `1` and `2` of a two-slide carousel; used for the filename. */
+  slide: number;
+  slides: number;
+}
+
+/** Ranks per slide. Ten rows is the stat board's own rhythm at this type size. */
+const MVP_SIM_PER_SLIDE = 10;
+
+const MVP_SIM_COLUMNS = ['MVP (%)', 'Top 3 (%)', 'Top 5 (%)', 'Top 10 (%)'] as const;
+
+/**
+ * `98.4` → "98.4", `100` → "100", `0` → "0". Trailing ".0" is dropped because a
+ * column of "100.0" and "93.0" reads as false precision at this size, and the
+ * source file gives one decimal for everything.
+ */
+function formatSimPct(v: number): string {
+  return v.toFixed(1).replace(/\.0$/, '');
+}
+
+/** Votes are whole in every run the model reports, so print them whole. */
+function formatSimVotes(v: number): string {
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
+export async function mvpSimPayloads(
+  path: string,
+  season: number,
+  round: RoundRef | null,
+  opts: { runs?: number } = {}
+): Promise<{ slides: MvpSimPayload[]; warnings: string[] }> {
+  const { rows: sim, warnings } = await loadMvpSim(path, season);
+
+  // Ranked by the projected tally itself — an MVP race is a vote count, and
+  // ranking on the number the board prints is what keeps that column reading
+  // top to bottom. Mean, then MVP chance, then name break the ties, so the
+  // order is total and the same on every run.
+  const ranked = [...sim].sort(
+    (x, y) =>
+      y.medianVotes - x.medianVotes ||
+      y.meanVotes - x.meanVotes ||
+      y.first - x.first ||
+      x.player.localeCompare(y.player)
+  );
+
+  const total = Math.ceil(ranked.length / MVP_SIM_PER_SLIDE);
+  const runsNote = opts.runs ? `${opts.runs.toLocaleString('en-AU')} runs` : 'Simulated';
+  const after = round ? `After ${round.label}` : 'Pre-season';
+
+  const slides: MvpSimPayload[] = [];
+  for (let s = 0; s < total; s += 1) {
+    const chunk = ranked.slice(s * MVP_SIM_PER_SLIDE, (s + 1) * MVP_SIM_PER_SLIDE);
+    const from = s * MVP_SIM_PER_SLIDE + 1;
+
+    slides.push({
+      kind: 'mvp-sim',
+      eyebrow: eyebrowLabel(season),
+      title: 'MVP Simulation',
+      // No slide range in the subtitle and no footnote: the two slides carry
+      // the same header on purpose, so they read as one carousel rather than
+      // as two boards. The filename is what tells them apart.
+      subtitle: `${runsNote} · ${after}`,
+      columns: [...MVP_SIM_COLUMNS],
+      votesLabel: 'Median Votes',
+      footnote: '',
+      rows: chunk.map((r, i) => ({
+        rank: from + i,
+        player: r.player,
+        team: r.team,
+        cells: [r.first, r.top3, r.top5, r.top10].map((v) => ({
+          value: formatSimPct(v),
+          tone: Math.min(Math.max(v / 100, 0), 1),
+        })),
+        votes: formatSimVotes(r.medianVotes),
+      })),
+      slide: s + 1,
+      slides: total,
+    });
+  }
+
+  return { slides, warnings };
 }

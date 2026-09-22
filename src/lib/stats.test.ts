@@ -16,6 +16,10 @@ import {
   records,
   seasonMatches,
   seasonRounds,
+  isBagelFor,
+  isBagelAgainst,
+  playedRows,
+  pairRecord,
   teamRoster,
   lineupPairingName,
   winStreaks,
@@ -192,6 +196,71 @@ describe('ladder math', () => {
         'Red',
       ]);
     });
+  });
+});
+
+describe('a team that withdraws mid-season', () => {
+  // Three teams, two rounds. Red plays both, Navy plays both, Pink plays the
+  // first round and then pulls out. Pink is declared, so without the
+  // withdrawal it would be on the ladder and on a bye in round two.
+  const rows = normalizeRows([
+    raw({ Team: 'Pink', Opponent: 'Navy', Season: '5', Round: '1', Player: 'P1', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '2' }),
+    raw({ Team: 'Navy', Opponent: 'Pink', Season: '5', Round: '1', Player: 'N1', 'win?': 'FALSE', 'Team Score': '2', 'Opponent Score': '6' }),
+    raw({ Team: 'Red', Opponent: 'Navy', Season: '5', Round: '2', Player: 'R1', 'win?': 'FALSE', 'Team Score': '3', 'Opponent Score': '6' }),
+    raw({ Team: 'Navy', Opponent: 'Red', Season: '5', Round: '2', Player: 'N1', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '3' }),
+  ]);
+  const field = ['Pink', 'Navy', 'Red'];
+
+  it('comes off the ladder, declared or not', () => {
+    expect(ladder(5, rows, undefined, field).map((r) => r.team)).toContain('Pink');
+    const t = ladder(5, rows, undefined, field, ['Pink']);
+    expect(t.map((r) => r.team)).toEqual(['Navy', 'Red']);
+  });
+
+  it('cannot be dropped by leaving it out of the declared field', () => {
+    // The field is a union with whoever appears in the CSV, so the round it
+    // played puts it back. Naming it is the only thing that works — which is
+    // the whole reason `withdrawnTeams` is a separate argument.
+    expect(ladder(5, rows, undefined, ['Navy', 'Red']).map((r) => r.team)).toContain(
+      'Pink'
+    );
+  });
+
+  it('leaves the results it handed out standing', () => {
+    const t = ladder(5, rows, undefined, field, ['Pink']);
+    const navy = t.find((r) => r.team === 'Navy')!;
+    // Navy lost to Pink in round one and beat Red in round two: two matches,
+    // one win, and the 2-6 still on its games record.
+    expect(navy).toMatchObject({
+      matchesPlayed: 2,
+      wins: 1,
+      losses: 1,
+      gamesFor: 8,
+      gamesAgainst: 9,
+    });
+  });
+
+  it('is not on a bye for the rounds after it leaves', () => {
+    const [r1, r2] = seasonRounds(rows, 5, field);
+    expect(r1.byes).toEqual(['Red']);
+    expect(r2.byes).toEqual(['Pink']);
+
+    const [w1, w2] = seasonRounds(rows, 5, field, ['Pink']);
+    expect(w1.byes).toEqual(['Red']);
+    expect(w2.byes).toEqual([]);
+  });
+
+  it('still gets a pairing label, for the rounds it did play', () => {
+    // `ladder` drops the row, but `ladderWithPairings` resolves every label
+    // first — the same map names the withdrawn team on its old fixtures.
+    const t = ladderWithPairings(
+      5,
+      rows,
+      (team) => (team === 'Pink' ? { pair: ['P1', 'P2'] } : undefined),
+      field,
+      ['Pink']
+    );
+    expect(t.map((r) => r.team)).toEqual(['Navy', 'Red']);
   });
 });
 
@@ -1047,8 +1116,11 @@ describe('the real S5 draw', () => {
 
   it('every S5 match has a start time, on a Tuesday night, at 6:30 or later', () => {
     const matches = seasonMatches(rows, 5);
-    // Five rounds of four and five of five, so nine matches each for ten teams.
-    expect(matches.length).toBe(45);
+    // Drawn as 45 — five rounds of four and five of five, nine each for ten
+    // teams. Black withdrew after round four and the back half was redrawn
+    // around the remaining nine, which is why this is 40 and why rounds five
+    // to ten run three or four matches rather than a tidy pattern.
+    expect(matches.length).toBe(40);
     for (const m of matches) {
       expect(m.start, `S5 R${m.roundLabel} ${m.key}`).not.toBeNull();
       const d = new Date(m.start + ':00Z');
@@ -1068,6 +1140,27 @@ describe('the real S5 draw', () => {
       const nights = new Set(r.matches.map((m) => m.start!.slice(0, 10)));
       expect(nights.size, `R${r.roundLabel} spans ${nights.size} nights`).toBe(1);
     }
+  });
+
+  it('is a nine-team draw from round five, Black having withdrawn', () => {
+    const byRound = new Map<number, Set<string>>();
+    for (const m of seasonMatches(rows, 5)) {
+      const teams = byRound.get(m.round) ?? new Set<string>();
+      for (const side of m.sides) teams.add(side.team);
+      byRound.set(m.round, teams);
+    }
+    // Black is drawn for the first four rounds and never again.
+    for (const [round, teams] of byRound) {
+      expect(teams.has('Black'), `Black in R${round}`).toBe(round <= 4);
+    }
+    // Nine teams, nine matches each, except Black's four and the four its
+    // withdrawal left short.
+    const played = new Map<string, number>();
+    for (const [, teams] of byRound) {
+      for (const t of teams) played.set(t, (played.get(t) ?? 0) + 1);
+    }
+    expect(played.get('Black')).toBe(4);
+    expect(played.size).toBe(10);
   });
 
   it('starts each round at 6:30 and never double-books a slot', () => {
@@ -1195,5 +1288,166 @@ describe('the real CSV, with Season 5 fixtures in it', () => {
       );
       expect(headToHead(p, all)).toEqual(headToHead(p, played));
     }
+  });
+});
+
+describe('bagels — 6-0 results', () => {
+  const all = loadStatRows();
+  const single = playedRows(all).filter((r) => !r.isSingles);
+
+  it('counts a 6-0 only in a single-set match, so semis and finals are out', () => {
+    for (const r of single.filter(isBagelFor)) {
+      expect(r.sets).toBe(1);
+      expect(r.isFinals ? r.stage : 'QF').toBe('QF');
+    }
+    // The S3 final has a 6-0 set in it. It is not a bagel.
+    const s3Final = single.filter((r) => r.season === 3 && r.stage === 'F');
+    expect(s3Final.some((r) => r.setScores.some((x) => x.for === 6 && x.against === 0))).toBe(true);
+    expect(s3Final.some(isBagelFor)).toBe(false);
+  });
+
+  it('never disagrees with the `win?` column about who won', () => {
+    for (const r of single.filter(isBagelFor)) expect(r.win).toBe(true);
+    for (const r of single.filter(isBagelAgainst)) expect(r.win).toBe(false);
+  });
+
+  it('is symmetric: every bagel handed out was received by someone', () => {
+    expect(single.filter(isBagelFor).length).toBe(single.filter(isBagelAgainst).length);
+  });
+
+  it('aggregates onto PlayerAgg and matches a hand count of the rows', () => {
+    for (const player of allPlayers(all)) {
+      const agg = playerAgg(player, all, { includeFillIns: true });
+      const mine = single.filter((r) => r.player === player);
+      expect(agg.bagelsFor).toBe(mine.filter(isBagelFor).length);
+      expect(agg.bagelsAgainst).toBe(mine.filter(isBagelAgainst).length);
+    }
+  });
+
+  it('leaderboards rank on the count and include the quarter-finals', () => {
+    const out = leaderboard('bagelsFor', all);
+    const received = leaderboard('bagelsAgainst', all);
+    expect(out[0].player).toBe('Ethan Seamer');
+    expect(out[0].value).toBe(6);
+    expect(received[0].player).toBe('Lewis Mossman');
+    expect(received[0].value).toBe(4);
+    // Mossman is also on the handing-out board — the only player on both.
+    expect(out.find((e) => e.player === 'Lewis Mossman')!.value).toBe(3);
+    // Dropping the QFs costs Seamer the one he conceded and one he handed out.
+    const regular = leaderboard('bagelsFor', all, { scope: 'regular' });
+    expect(regular.find((e) => e.player === 'Ethan Seamer')!.value).toBe(5);
+    // Sorted descending, as every board is.
+    expect([...out].sort((a, b) => b.value - a.value).map((e) => e.value)).toEqual(
+      out.map((e) => e.value)
+    );
+  });
+
+  it('a fixture contributes nothing', () => {
+    const drawn = all.filter((r) => r.scheduled);
+    expect(drawn.length).toBeGreaterThan(0);
+    expect(drawn.some(isBagelFor)).toBe(false);
+    expect(drawn.some(isBagelAgainst)).toBe(false);
+  });
+});
+
+describe('pairRecord — two players as team-mates', () => {
+  const all = loadStatRows();
+  // Orange/Yellow's long-running pair: S1, S2 and S4, and S2 champions. They
+  // face each other for the first time in S5 R4, which is what makes them the
+  // useful fixture here — a pair whose shared history is closed.
+  const SG = pairRecord('Ed Simpson', 'Jimmy Gorton', all)!;
+
+  it('finds only matches where both were on the same side', () => {
+    expect(SG).not.toBeNull();
+    const matches = seasonMatches(all).filter((m) => !m.scheduled);
+    const hand = matches.filter((m) =>
+      m.sides.some((s) => {
+        const n = s.players.map((p) => p.player);
+        return n.includes('Ed Simpson') && n.includes('Jimmy Gorton');
+      })
+    );
+    expect(SG.matches).toBe(hand.length);
+    expect(SG.wins + SG.losses).toBe(SG.matches);
+  });
+
+  it('agrees with the two players\' own win counts over those matches', () => {
+    // Both were on the winning side of exactly the same matches, so the pair's
+    // win count is each member's win count. A mismatch means the fold dropped
+    // a row or picked up a match only one of them played.
+    expect(SG.members[0].wins).toBe(SG.wins);
+    expect(SG.members[1].wins).toBe(SG.wins);
+    expect(SG.members[0].games).toBe(SG.matches);
+    expect(SG.members[1].games).toBe(SG.matches);
+  });
+
+  it('takes the winner from `win?`, never from counting sets', () => {
+    // S2's final is 2-6 6-6 3-3 — two sets nobody recorded a breaker for. A
+    // pair record that counted sets would not have them as champions.
+    const s2 = SG.seasons.find((s) => s.season === 2)!;
+    const final = seasonMatches(all).find((m) => m.season === 2 && m.stage === 'F')!;
+    expect(final.winner).toBe('Orange');
+    expect(final.sides.find((s) => s.team === 'Orange')!.score).toBe('2-6 6-6 3-3');
+    expect(s2.team).toBe('Orange');
+    expect(s2.wins).toBeGreaterThan(0);
+  });
+
+  it('splits by season and carries the team, because a pair gets redrafted', () => {
+    expect(SG.seasons.map((s) => s.season)).toEqual([1, 2, 4]);
+    expect(SG.seasons.map((s) => s.team)).toEqual(['Yellow', 'Orange', 'Orange']);
+    // The per-season slices reconstitute the whole.
+    const sum = (f: 'wins' | 'losses' | 'gamesFor' | 'gamesAgainst') =>
+      SG.seasons.reduce((t, s) => t + s[f], 0);
+    expect(sum('wins')).toBe(SG.wins);
+    expect(sum('losses')).toBe(SG.losses);
+    expect(sum('gamesFor')).toBe(SG.gamesFor);
+    expect(sum('gamesAgainst')).toBe(SG.gamesAgainst);
+  });
+
+  it('is symmetric in its two arguments', () => {
+    const flipped = pairRecord('Jimmy Gorton', 'Ed Simpson', all)!;
+    expect(flipped.matches).toBe(SG.matches);
+    expect(flipped.wins).toBe(SG.wins);
+    expect(flipped.gamesFor).toBe(SG.gamesFor);
+    // The members follow the argument order, so the aggregates swap with them.
+    expect(flipped.members[0].player).toBe('Jimmy Gorton');
+    expect(flipped.members[1].player).toBe('Ed Simpson');
+    expect(flipped.members[0].tally.winners.total).toBe(SG.members[1].tally.winners.total);
+  });
+
+  it('scopes to the regular season on request, dropping the finals', () => {
+    const regular = pairRecord('Ed Simpson', 'Jimmy Gorton', all, { scope: 'regular' })!;
+    const finals = pairRecord('Ed Simpson', 'Jimmy Gorton', all, { scope: 'finals' })!;
+    expect(regular.matches + finals.matches).toBe(SG.matches);
+    expect(regular.matches).toBeLessThan(SG.matches);
+    // S1's only shared finals appearance is a QF, so a finals-scoped window
+    // still spans all three seasons.
+    expect(finals.matches).toBeGreaterThan(0);
+  });
+
+  it('returns null for two players who have never partnered', () => {
+    // They have faced each other, which is exactly the case that a fold keyed
+    // on "both appear in this match" would get wrong.
+    const h2h = headToHead('Jonathan Kierce', all).find((h) => h.opponent === 'Jimmy Gorton');
+    expect(h2h!.meetings).toBeGreaterThan(0);
+    expect(pairRecord('Jonathan Kierce', 'Jimmy Gorton', all)).toBeNull();
+  });
+
+  it('never reports a fixture as a result', () => {
+    // S5's whole draw is in the CSV. Every S5 pair is 0 matches so far unless
+    // they have actually taken the court. Counted over the matches the two of
+    // them played *together*, not over Pink's matches: a team's declared pair
+    // is not who turned out every week — R6 is Charlie Simpson with a fill-in.
+    const drawn = pairRecord('Charlie Simpson', 'Damon Maurice', all)!;
+    const played = seasonMatches(all).filter(
+      (m) =>
+        !m.scheduled &&
+        m.season === 5 &&
+        m.sides.some((s) => {
+          const names = s.players.map((p) => p.player);
+          return names.includes('Charlie Simpson') && names.includes('Damon Maurice');
+        })
+    );
+    expect(drawn.seasons.find((s) => s.season === 5)!.wins + drawn.seasons.find((s) => s.season === 5)!.losses)
+      .toBe(played.length);
   });
 });

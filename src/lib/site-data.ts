@@ -22,6 +22,7 @@ import {
   seasonFinalsBerths,
   seasonTeamConfig,
 } from '../config/seasons/index.ts';
+import { withdrawnTeams as withdrawnOf } from '../config/seasons/schema.ts';
 import { seasonLabel } from '../config/site.ts';
 
 /**
@@ -50,6 +51,27 @@ export const fixtures: StatRow[] = scheduledRows(allRows);
 export function declaredTeams(season: number): string[] {
   const declared = Object.keys(getSeasonConfig(season)?.teams ?? {});
   return declared.length ? declared : seasonTeams(season);
+}
+
+/**
+ * Teams that pulled out mid-season — see `TeamConfig.withdrawn`.
+ *
+ * Deliberately *not* subtracted from `declaredTeams` above: that list is also
+ * what resolves pairing labels, and the rounds a withdrawn team did play
+ * should still read as a pairing. The subtraction happens where the field is
+ * a field — the ladder and the byes.
+ */
+export function withdrawnTeams(season: number): string[] {
+  return withdrawnOf(getSeasonConfig(season));
+}
+
+/**
+ * The teams still in the season — the number the schedule page counts. Nine
+ * of S5's ten, once Black pulled out after round four.
+ */
+export function activeTeams(season: number): string[] {
+  const gone = new Set(withdrawnTeams(season));
+  return declaredTeams(season).filter((t) => !gone.has(t));
 }
 
 /**
@@ -89,7 +111,8 @@ export function seasonLadder(season: number): LadderRow[] {
     season,
     allRows,
     (team) => seasonTeamConfig(season, team),
-    declaredTeams(season)
+    declaredTeams(season),
+    withdrawnTeams(season)
   );
 }
 
@@ -104,7 +127,12 @@ export function seasonSchedule(season: number): MatchRecord[] {
 
 /** A season's rounds with their matches and byes, in playing order. */
 export function seasonRoundList(season: number): SeasonRound[] {
-  return seasonRounds(allRows, season, declaredTeams(season));
+  return seasonRounds(
+    allRows,
+    season,
+    declaredTeams(season),
+    withdrawnTeams(season)
+  );
 }
 
 /**

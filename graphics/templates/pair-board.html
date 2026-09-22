@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Pair board</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  header { flex: none; position: relative; }
+  .eyebrow { margin-top: -64px; }
+  .headline { font-size: 76px; margin-top: 16px; max-width: 820px; line-height: 1.05; }
+  header .mark { position: absolute; right: 0; top: -34px; width: 92px; color: var(--gold); }
+  .rule-gold {
+    height: 2px; margin-top: 22px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  /* ---- The record: the one number the post is about ---- */
+  .record { flex: none; text-align: center; padding: 30px 0 22px; }
+  .record .score {
+    font-family: var(--display); font-weight: 700; font-size: 148px;
+    color: var(--gold); line-height: 0.92; font-variant-numeric: tabular-nums;
+  }
+  .record .matches {
+    font-family: var(--display); font-weight: 600; font-size: 26px;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--paper);
+    margin-top: 10px;
+  }
+  .record .games {
+    font-size: 22px; font-weight: 500; letter-spacing: 0.14em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.42); margin-top: 6px;
+  }
+
+  /* ---- Season strip: where those matches were played ---- */
+  .seasons { flex: none; display: flex; justify-content: center; gap: 0; margin-bottom: 8px; }
+  .season { display: flex; align-items: center; gap: 12px; padding: 0 26px; }
+  .season + .season { border-left: 1px solid var(--rule); }
+  .season .bar { width: 8px; height: 40px; border-radius: 4px;
+                 background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  .season .txt { line-height: 1.15; }
+  .season .lbl {
+    font-size: 19px; font-weight: 600; letter-spacing: 0.16em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.45);
+  }
+  .season .rec {
+    font-family: var(--display); font-weight: 600; font-size: 30px;
+    color: var(--paper); font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- Column heads: the two men ---- */
+  .heads {
+    flex: none; display: flex; align-items: flex-end; gap: 24px;
+    padding: 26px 8px 14px; border-top: 1px solid var(--rule);
+  }
+  .heads .who { width: 300px; flex: none; display: flex; align-items: center; gap: 14px; }
+  .heads .who.right { justify-content: flex-end; }
+  .heads .who.right .nm { text-align: right; }
+  .heads .bar { width: 10px; height: 48px; border-radius: 5px; flex: none;
+                background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  .heads .who.no-team .bar { background: rgba(244, 241, 232, 0.18); }
+  .nm { font-size: 34px; font-weight: 500; letter-spacing: 0.015em; line-height: 1.1; }
+  .heads .mid {
+    flex: 1; text-align: center;
+    font-family: var(--display); font-weight: 600; font-size: 21px;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold-soft);
+    padding-bottom: 6px;
+  }
+
+  /* ---- The stat rows ---- */
+  .stats { flex: 1; display: flex; flex-direction: column; }
+  .srow {
+    flex: 1; display: flex; align-items: center; gap: 24px;
+    padding: 0 8px; border-top: 1px solid var(--rule);
+  }
+  .val {
+    width: 300px; flex: none;
+    font-family: var(--display); font-weight: 700; font-size: 62px; line-height: 0.9;
+    color: rgba(244, 241, 232, 0.55); font-variant-numeric: tabular-nums;
+  }
+  .val.right { text-align: right; }
+  /* The bigger number is always the one lit — ranking never flips. Polarity
+     only decides *which* ink it takes, so leading the unforced errors reads
+     as the disgrace it is rather than as an achievement. */
+  .srow.lead-a .val.left, .srow.lead-b .val.right { color: var(--gold); }
+  .srow.low.lead-a .val.left, .srow.low.lead-b .val.right { color: var(--tone-3); }
+  .label {
+    flex: 1; text-align: center;
+    font-size: 23px; font-weight: 500; letter-spacing: 0.16em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.5);
+  }
+
+  footer {
+    flex: none; display: flex; justify-content: space-between; align-items: flex-end;
+    gap: 28px; padding-top: 18px; margin-bottom: -74px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+    white-space: nowrap;
+  }
+  footer .footnote { text-align: right; line-height: 1.4; font-size: 19px; }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette" id="canvas">
+  <header>
+    <div class="mark mark--crest"></div>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="record">
+    <div class="score" id="record"></div>
+    <div class="matches" id="matches"></div>
+    <div class="games" id="games"></div>
+  </div>
+
+  <div class="seasons" id="seasons"></div>
+
+  <div class="heads">
+    <div class="who" id="headA"></div>
+    <div class="mid">In matches together</div>
+    <div class="who right" id="headB"></div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+    <div class="footnote" id="footnote"></div>
+  </footer>
+</div>
+
+<script type="module">
+const DATA = {
+  eyebrow: 'Together',
+  title: 'Ed Simpson & Jimmy Gorton',
+  a: 'E. Simpson', b: 'J. Gorton',
+  teamA: 'Navy', teamB: 'Orange',
+  record: '15–11',
+  matchesLine: '26 matches together',
+  gamesLine: '139–134 games',
+  seasons: [
+    { label: 'S1', team: 'Yellow', record: '3–4' },
+    { label: 'S2', team: 'Orange', record: '6–3' },
+    { label: 'S4', team: 'Orange', record: '6–4' },
+  ],
+  stats: [
+    { label: 'Winners',         a: '49',  b: '87',  lead: 'b', polarity: 'high' },
+    { label: 'Aces',            a: '11',  b: '3',   lead: 'a', polarity: 'high' },
+    { label: 'Unforced errors', a: '206', b: '130', lead: 'a', polarity: 'low'  },
+    { label: 'Double faults',   a: '18',  b: '26',  lead: 'b', polarity: 'low'  },
+    { label: 'Votes',           a: '44',  b: '91',  lead: 'b', polarity: 'high' },
+    { label: 'Best on ground',  a: '3',   b: '9',   lead: 'b', polarity: 'high' },
+  ],
+  footnote: 'Finals and fill-in matches included · S1 votes scaled to the 3-2-1 era',
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/** As large as the headline goes on one line, down to a floor. */
+function fitHeadline(el, max = 76, min = 44) {
+  el.style.whiteSpace = 'nowrap';
+  for (let size = max; size >= min; size -= 2) {
+    el.style.fontSize = `${size}px`;
+    if (el.scrollWidth <= el.clientWidth) return;
+  }
+  el.style.whiteSpace = 'normal';
+}
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+  fitHeadline(document.getElementById('title'));
+  document.getElementById('record').textContent = d.record;
+  document.getElementById('matches').textContent = d.matchesLine;
+  document.getElementById('games').textContent = d.gamesLine;
+  document.getElementById('footnote').textContent = d.footnote;
+
+  document.getElementById('seasons').innerHTML = d.seasons.map((s) => `
+    <div class="season" data-team="${esc(s.team)}">
+      <div class="bar"></div>
+      <div class="txt">
+        <div class="lbl">${esc(s.label)}</div>
+        <div class="rec">${esc(s.record)}</div>
+      </div>
+    </div>`).join('');
+
+  // A player with no team on record still gets a spine, just a mute one.
+  const head = (name, team, right) => `
+    ${right ? `<div class="nm">${esc(name)}</div><div class="bar"></div>`
+            : `<div class="bar"></div><div class="nm">${esc(name)}</div>`}`;
+  const hA = document.getElementById('headA');
+  const hB = document.getElementById('headB');
+  hA.className = `who${d.teamA ? '' : ' no-team'}`;
+  hB.className = `who right${d.teamB ? '' : ' no-team'}`;
+  if (d.teamA) hA.dataset.team = d.teamA;
+  if (d.teamB) hB.dataset.team = d.teamB;
+  hA.innerHTML = head(d.a, d.teamA, false);
+  hB.innerHTML = head(d.b, d.teamB, true);
+
+  document.getElementById('stats').innerHTML = d.stats.map((s) => `
+    <div class="srow ${s.lead ? `lead-${s.lead}` : ''} ${s.polarity === 'low' ? 'low' : ''}">
+      <div class="val left">${esc(s.a)}</div>
+      <div class="label">${esc(s.label)}</div>
+      <div class="val right">${esc(s.b)}</div>
+    </div>`).join('');
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>
