@@ -102,3 +102,58 @@ export function careerBoards(): StatBoardSpec[] {
     },
   ];
 }
+
+/**
+ * The main counting stats, each as a season total and a per-match rate — a
+ * carousel of eight, rendered on request (`--only leaders`) rather than every
+ * week alongside `seasonBoards`.
+ *
+ * "Per match" is the per-set rate over the home-and-away season, and the two
+ * are the same number: every Tuesday match is one set, so on the `'regular'`
+ * scope sets == matches. The scope is what keeps it honest — widen it and a
+ * three-set semi would count as one "match" worth of winners times three. A
+ * test holds every player's sets to their matches so the label can't drift.
+ */
+export function leaderBoards(season: number): StatBoardSpec[] {
+  const stats = [
+    { key: 'winners', title: 'Winners', polarity: 'high' },
+    // #1 is still the biggest number; the ramp flips so topping it reads red.
+    { key: 'unforcedErrors', title: 'Unforced Errors', polarity: 'low' },
+    { key: 'aces', title: 'Aces', polarity: 'high' },
+    { key: 'errorsForced', title: 'Errors Forced', polarity: 'high' },
+  ] as const;
+  const slug = (s: string) => s.toLowerCase().replace(/\s+/g, '-');
+
+  // The title stays the bare stat on both boards so it never wraps; the
+  // subtitle and the column heading are what tell the pair apart.
+  return stats.flatMap(({ key, title, polarity }): StatBoardSpec[] => [
+    {
+      id: `${slug(title)}-total`,
+      title,
+      subtitle: 'Season total · home & away',
+      metricLabel: 'Total',
+      heroUnit: title,
+      stat: key,
+      season,
+      scope: 'regular',
+      polarity,
+      showPhoto: true,
+    },
+    {
+      id: `${slug(title)}-per-match`,
+      title,
+      subtitle: 'Per match · home & away',
+      metricLabel: 'Per match',
+      heroUnit: `${title} / match`,
+      stat: key,
+      perSet: true,
+      season,
+      scope: 'regular',
+      polarity,
+      showPhoto: true,
+      // Second frame where there is one, so a player leading both halves of
+      // a stat isn't pictured identically on consecutive slides.
+      photoIndex: 1,
+    },
+  ]);
+}

@@ -54,6 +54,11 @@ src/lib/normalize.ts     THE normalization layer: CSV -> StatRow[], all quirks h
                           derivation, Round->stage, Score->sets, played-vs-fixture)
 src/lib/stats.ts         ladder, rosters/pairings, player aggregates, leaderboards,
                          records, and MatchRecord/seasonRounds (whole matches + byes)
+src/lib/points.ts        points in a match, rebuilt from the box score: W+A+UE+DF
+                         once each, forced errors once per direction (MAX of the
+                         errorsForced / forcedErrors ledgers); per-player
+                         involvement + pair share ("ball heavy"). Refuses
+                         (null) any match whose stats would undercount
 src/lib/predict.ts       the rating model: regularised global skill fit, win
                          probabilities, power ratings, backtest, tuning
 src/lib/linalg.ts        dependency-free Cholesky SPD solve, for the fit's Newton steps
@@ -87,7 +92,11 @@ before — no prediction, at most one `insights.ts` line per fixture) and
 scoreboard (the same round's results on one slide, for a night nobody
 photographed — played fixtures only, winner's row first off `win?`). Plus the
 once-off posts, asked for by `--only`: draft, streaks, headline, predictions,
-pair and **mvpsim** (the MVP race as a Monte Carlo projection — the one family
+pair, **pointsladder** and **pairsplit** (teams by share of points won beside
+the real ladder, and each pair's share of its point-ending shots — both read
+`src/lib/points.ts`), **leaders** (eight stat boards: winners/UE/aces/errors forced as a
+season total and per match — per-set on the H&A scope, where a match is one
+set) and **mvpsim** (the MVP race as a Monte Carlo projection — the one family
 whose numbers come from outside this repo; see below). **Read
 `graphics/README.md` before touching it**; the rules that matter here:
 
@@ -203,7 +212,7 @@ whose numbers come from outside this repo; see below). **Read
   the Votes leaderboard, and only a `'finals'`-scoped aggregate reports them
   (the skip lives in `aggregateRows` in `stats.ts`). They do drive BOG in a
   final, same rule as any other match.
-- **Serve stats:** S1 only. **Errors Forced:** S2+ only.
+- **Serve stats:** S1 only. **Errors Forced:** S2+, plus the S1 finals (counting started there).
 - **BOG = most votes in a match** (both sides of the fixture); ties share it.
 - **Fill-in games** are excluded from leaderboards by default (toggle to include).
   On a **player page it depends on the window**: career numbers count them (a

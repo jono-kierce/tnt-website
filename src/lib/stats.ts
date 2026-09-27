@@ -1444,6 +1444,128 @@ export function winStreaks(rows: StatRow[]): StreakRecord[] {
   return out.sort((a, b) => b.streak - a.streak);
 }
 
+/** One match of a streak, from the streaker's side of the net. */
+export interface StreakRunMatch {
+  match: MatchRecord;
+  /** The streaker's side, and the side across the net. */
+  side: MatchLineup;
+  opposition: MatchLineup;
+  /** Everyone who shared the side with him that night, fill-ins included. */
+  partners: string[];
+}
+
+export interface StreakRunPartner {
+  player: string;
+  /** Matches of the run they played alongside him. */
+  matches: number;
+}
+
+/**
+ * A player's longest win streak told match by match — the detail behind one
+ * row of `winStreaks`, for a post that walks through the run. Same rules as
+ * `winStreaks` (finals count, fill-in nights don't, a later run of equal
+ * length is the one described), and a test holds the two to the same count
+ * and the same edges.
+ *
+ * Null for a player who has never won.
+ */
+export interface StreakRun {
+  player: string;
+  streak: number;
+  active: boolean;
+  matches: StreakRunMatch[];
+  /** The loss the run began after. Null when it opens his career. */
+  before: StreakRunMatch | null;
+  /** The loss that ended it. Null while it's alive. */
+  after: StreakRunMatch | null;
+  /** His next drawn fixture — only while the run is alive, only if one is drawn. */
+  next: StreakRunMatch | null;
+  /** Games won and lost across the run, every set of every match. */
+  gamesFor: number;
+  gamesAgainst: number;
+  /** Team-mates across the run, first appearance first. */
+  partners: StreakRunPartner[];
+  /** Everyone beaten, no repeats, first meeting first. */
+  opponentsBeaten: string[];
+  seasons: number[];
+  /** Grand finals won inside the run. */
+  titles: number;
+}
+
+export function winStreakRun(player: string, rows: StatRow[]): StreakRun | null {
+  const matches = seasonMatches(rows);
+  const mine = (m: MatchRecord) =>
+    m.sides.findIndex((s) =>
+      s.players.some((p) => p.player === player && !p.isFillIn && !p.isSingles)
+    );
+  const view = (m: MatchRecord): StreakRunMatch => {
+    const i = mine(m);
+    const side = m.sides[i];
+    return {
+      match: m,
+      side,
+      opposition: m.sides[1 - i],
+      partners: side.players.map((p) => p.player).filter((p) => p !== player),
+    };
+  };
+
+  // The same sequence `winStreaks` walks: his played, non-fill-in nights.
+  const played = matches.filter((m) => !m.scheduled && mine(m) !== -1).map(view);
+  let best = 0,
+    cur = 0,
+    runStart = 0,
+    bestStart = -1,
+    bestEnd = -1;
+  played.forEach((v, i) => {
+    if (v.side.win) {
+      if (cur === 0) runStart = i;
+      cur++;
+      if (cur >= best) {
+        best = cur;
+        bestStart = runStart;
+        bestEnd = i;
+      }
+    } else {
+      cur = 0;
+    }
+  });
+  if (best === 0) return null;
+
+  const run = played.slice(bestStart, bestEnd + 1);
+  const active = cur > 0 && cur === best;
+
+  const partners: StreakRunPartner[] = [];
+  const beaten: string[] = [];
+  for (const v of run) {
+    for (const p of v.partners) {
+      const known = partners.find((x) => x.player === p);
+      if (known) known.matches++;
+      else partners.push({ player: p, matches: 1 });
+    }
+    for (const p of v.opposition.players) {
+      if (!p.isSingles && !beaten.includes(p.player)) beaten.push(p.player);
+    }
+  }
+
+  return {
+    player,
+    streak: best,
+    active,
+    matches: run,
+    before: played[bestStart - 1] ?? null,
+    after: active ? null : played[bestEnd + 1] ?? null,
+    next: active
+      ? (matches.filter((m) => m.scheduled && mine(m) !== -1).map(view)[0] ?? null)
+      : null,
+    gamesFor: run.reduce((t, v) => t + v.side.gamesFor, 0),
+    gamesAgainst: run.reduce((t, v) => t + v.side.gamesAgainst, 0),
+    partners,
+    opponentsBeaten: beaten,
+    seasons: [...new Set(run.map((v) => v.match.season))],
+    titles: run.filter((v) => v.match.stage === 'F').length,
+  };
+}
+
 export function records(rows: StatRow[] = loadStatRows()) {
   return {
     mostWinnersGame: bestSingleGame(rows, (r) => r.winners).slice(0, 5),

@@ -18,18 +18,22 @@ import {
   lineupPairingName,
   seasonRounds as matchRoundsFor,
   winStreaks,
+  winStreakRun,
   streakEndLabel,
   pairRecord,
+  teamRoster,
   type CountingStat,
   type LeaderStat,
   type PlayerAgg,
   type StatScope,
+  type StreakRunMatch,
 } from '../../src/lib/stats.ts';
+import { STREAK_NOTES } from './streak-notes.ts';
 import { insightsFor } from '../../src/lib/insights.ts';
-import { formatDateLong, formatTime } from '../../src/lib/datetime.ts';
+import { formatDate, formatDateLong, formatTime } from '../../src/lib/datetime.ts';
 import type { MatchSide, SetScore, StatRow } from '../../src/lib/types.ts';
 import { SITE, isVotesSealed } from '../../src/config/site.ts';
-import { PHOTOS_DIR, avatarPhoto } from '../../src/lib/photos.ts';
+import { PHOTOS_DIR, avatarPhoto, playerPhotos, type Photo } from '../../src/lib/photos.ts';
 import {
   getSeasonConfig,
   seasonTeamConfigs,
@@ -40,6 +44,7 @@ import {
 import { shortName, slugify } from '../../src/config/aliases.ts';
 import { ANALYSTS, type AnalystPredictions } from './predictions.ts';
 import { loadMvpSim } from './mvp-sim.ts';
+import { pairSplit, teamPoints } from '../../src/lib/points.ts';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -704,6 +709,14 @@ export interface StatBoardSpec {
   showPhoto?: boolean;
   /** A transparent cut-out sits flush; a normal photo gets a framed crop. */
   cutout?: boolean;
+  /**
+   * Which of the leader's eligible photos to use, wrapping round — so two
+   * boards led by the same player in one carousel don't repeat a frame when
+   * there's a second one to show. Default 0.
+   */
+  photoIndex?: number;
+  /** The words beside the leader's big number. Default `metricLabel`. */
+  heroUnit?: string;
   /** Extra line under the footnote the builder generates. */
   note?: string;
 }
@@ -736,7 +749,7 @@ export interface StatBoardPayload {
   footnote: string;
   rows: StatBoardRowPayload[];
   /** Hero band: the leader, pictured. Null when there's no photo to show. */
-  hero: { player: string; value: string; photo: string; cutout: boolean } | null;
+  hero: { player: string; value: string; unit: string; photo: string; cutout: boolean } | null;
 }
 
 /** Boards whose numbers would give away a sealed season's votes. */
@@ -800,6 +813,19 @@ function currentTeamForChip(player: string): string | null {
   return drawn ? drawn.team : teamForChip(player);
 }
 
+/**
+ * The leader's photo. A season board only ever pictures that season — a
+ * leaderboard for 2026 fronted by a 2023 frame reads as a mistake, and the kit
+ * is usually wrong — so it takes solo shots tagged with that season and nothing
+ * else; no photo means no hero, and the plain board renders. A career board
+ * takes the avatar, same as the site.
+ */
+export function leaderPhoto(slug: string, season?: number, index = 0): Photo | null {
+  if (season === undefined) return avatarPhoto(slug);
+  const mine = playerPhotos(slug).filter((p) => p.season === season && p.players.length === 1);
+  return mine.length ? mine[index % mine.length] : null;
+}
+
 /** "32 of 41 matches" when a stat is missing from some of them. */
 function coverageNote(agg: PlayerAgg, stat: LeaderStat): string | null {
   if (stat === 'winPct' || stat === 'winnerToUe' || stat === 'bog') return null;
@@ -818,10 +844,10 @@ export function statBoardPayload(spec: StatBoardSpec): StatBoardPayload {
     polarity = 'high',
     includeFillIns = false,
   } = spec;
-  // A hero band costs roughly three rows' worth of canvas, so a board that
-  // asks for a photo without saying how many rows it wants gets the shorter
-  // list rather than ten rows squeezed to fit.
-  const rowCount = spec.rows ?? (spec.showPhoto ? 7 : 10);
+  // The spotlight takes the leader out of the table and costs about two more
+  // rows of canvas, so a photo board shows #1 up top and #2–#8 beneath. (If
+  // there turns out to be no photo, the plain board just shows eight.)
+  const rowCount = spec.rows ?? (spec.showPhoto ? 8 : 10);
 
   if (VOTE_STATS.has(stat) && season !== undefined && isVotesSealed(season)) {
     throw new SealedVotesError(
@@ -868,7 +894,7 @@ export function statBoardPayload(spec: StatBoardSpec): StatBoardPayload {
   if (spec.note) notes.push(spec.note);
 
   const leader = payloadRows[0];
-  const photo = spec.showPhoto && leader ? avatarPhoto(leader.slug) : null;
+  const photo = spec.showPhoto && leader ? leaderPhoto(leader.slug, season, spec.photoIndex) : null;
 
   return {
     kind: 'stat-board',
@@ -884,6 +910,7 @@ export function statBoardPayload(spec: StatBoardSpec): StatBoardPayload {
         ? {
             player: leader.player,
             value: leader.value,
+            unit: spec.heroUnit ?? spec.metricLabel,
             // Absolute: the template is loaded from `graphics/templates/`, so a
             // path relative to the repo root would resolve under that folder.
             photo: pathToFileURL(resolve(PHOTOS_DIR, photo.file)).href,
@@ -1059,6 +1086,285 @@ export async function predictionsPayloads(
       return { category: c.label, team, primary: value, secondary: team };
     }),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Streak story — one player's live streak as a carousel
+// ---------------------------------------------------------------------------
+
+/**
+ * One chip on the rail that runs along the foot of every slide: the loss the
+ * run began after, a W per win, and an open slot for the next fixture while
+ * the run is alive. Every slide carries the whole rail and lights its own
+ * stretch of it, so swiping reads like a strip of film.
+ */
+export interface StreakChipPayload {
+  kind: 'L' | 'W' | 'next';
+  /** 1-based win number for a W. */
+  n: number | null;
+  /** For the season ticks under the rail. */
+  season: number;
+}
+
+export interface StreakRailPayload {
+  chips: StreakChipPayload[];
+  /** Inclusive chip-index range this slide lights. */
+  lit: [number, number];
+}
+
+export interface StreakMatchPayload {
+  /** 1-based win number inside the run; null for the loss either side of it. */
+  n: number | null;
+  /** "R4", "QF", "Final". */
+  round: string;
+  season: number;
+  team: string;
+  pairing: string;
+  opponent: string;
+  opponentPairing: string;
+  /** The streaker's side of the scoreline, and the other side's. */
+  sets: SetPayload[];
+  opponentSets: SetPayload[];
+  won: boolean;
+  /** Won a grand final. */
+  title: boolean;
+  note: string | null;
+}
+
+interface StreakSlideBase {
+  kind: 'streak-story';
+  /** 1-based, for the filename and the "2 / 5" counter. */
+  index: number;
+  total: number;
+  player: string;
+  rail: StreakRailPayload;
+}
+
+export interface StreakCoverSlide extends StreakSlideBase {
+  slide: 'cover';
+  team: string;
+  streak: number;
+  active: boolean;
+  /** "A TNT record", "Equals the TNT record", or null. */
+  status: string | null;
+  photo: string | null;
+  facts: { value: string; label: string }[];
+}
+
+export interface StreakBeforeSlide extends StreakSlideBase {
+  slide: 'before';
+  match: StreakMatchPayload;
+  /** What came after it: "He hasn’t lost since." while the run is alive. */
+  since: string;
+}
+
+export interface StreakChapterSlide extends StreakSlideBase {
+  slide: 'chapter';
+  /** "Chapter I". */
+  chapter: string;
+  season: number;
+  team: string;
+  /** "With Angus Hume". */
+  partners: string;
+  record: string;
+  photo: string | null;
+  matches: StreakMatchPayload[];
+}
+
+export interface StreakRecordSlide extends StreakSlideBase {
+  slide: 'record';
+  team: string;
+  rows: {
+    rank: number;
+    player: string;
+    team: string | null;
+    streak: number;
+    active: boolean;
+    self: boolean;
+    /** "His partner for 9 of the 14" — the record book's link to this run. */
+    note: string | null;
+  }[];
+  next: {
+    round: string;
+    date: string | null;
+    time: string | null;
+    opponent: string;
+    opponentPairing: string;
+  } | null;
+}
+
+export type StreakStorySlide =
+  | StreakCoverSlide
+  | StreakBeforeSlide
+  | StreakChapterSlide
+  | StreakRecordSlide;
+
+const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+const FINALS_ROUND = { QF: 'Qualifying Final', SF: 'Semi Final', F: 'Grand Final' } as const;
+
+const photoUrl = (file: string) => pathToFileURL(resolve(PHOTOS_DIR, file)).href;
+
+/**
+ * The streak carousel: a cover, the loss it began after, one chapter per
+ * season-and-team the run passed through, and the record book with the next
+ * fixture. Every count comes off `winStreakRun`; this only lays it out.
+ *
+ * `player` defaults to whoever holds the longest live streak. Photos default
+ * to the manifest — the player's latest photo in the run's last season for the
+ * cover, his first (solo preferred) in each chapter's season — and can be
+ * overridden slide by slide.
+ */
+export async function streakStoryPayloads(
+  player?: string,
+  opts: { cover?: string; chapters?: (string | undefined)[] } = {}
+): Promise<StreakStorySlide[]> {
+  const who = player ?? winStreaks(rows).find((s) => s.active)?.player;
+  if (!who) throw new Error('Nobody is on a live win streak.');
+  const run = winStreakRun(who, rows);
+  if (!run) throw new Error(`${who} has never won a match, so there's no streak to tell.`);
+
+  const configs = new Map<number, Awaited<ReturnType<typeof seasonTeamConfigs>>>();
+  const configFor = async (season: number) => {
+    if (!configs.has(season)) configs.set(season, await seasonTeamConfigs(season));
+    return configs.get(season)!;
+  };
+
+  const matchPayload = async (v: StreakRunMatch, n: number | null): Promise<StreakMatchPayload> => {
+    const cfg = await configFor(v.match.season);
+    return {
+      n,
+      round: v.match.stage ? FINALS_ROUND[v.match.stage] : `R${v.match.round}`,
+      season: v.match.season,
+      team: v.side.team,
+      pairing: lineupPairingName(v.side.players, cfg(v.side.team)),
+      opponent: v.opposition.team,
+      opponentPairing: lineupPairingName(v.opposition.players, cfg(v.opposition.team)),
+      sets: setsFor(v.side),
+      opponentSets: setsFor(v.opposition),
+      won: v.side.win,
+      title: v.match.stage === 'F' && v.side.win,
+      note: STREAK_NOTES[v.match.key] ?? null,
+    };
+  };
+
+  // --- The rail ------------------------------------------------------------
+  const chips: StreakChipPayload[] = [
+    ...(run.before ? [{ kind: 'L' as const, n: null, season: run.before.match.season }] : []),
+    ...run.matches.map((v, i) => ({ kind: 'W' as const, n: i + 1, season: v.match.season })),
+    ...(run.next ? [{ kind: 'next' as const, n: null, season: run.next.match.season }] : []),
+  ];
+  const offset = run.before ? 1 : 0;
+  const winsLit = (from: number, to: number): StreakRailPayload['lit'] => [offset + from, offset + to];
+
+  // --- Chapters: consecutive matches for the same season and team ----------
+  const chapters: { season: number; team: string; from: number; to: number }[] = [];
+  run.matches.forEach((v, i) => {
+    const last = chapters.at(-1);
+    if (last && last.season === v.match.season && last.team === v.side.team) last.to = i;
+    else chapters.push({ season: v.match.season, team: v.side.team, from: i, to: i });
+  });
+
+  const seasonPhoto = (season: number, pick: 'first' | 'last') => {
+    const mine = playerPhotos(slugify(who)).filter((p) => p.season === season);
+    const solo = mine.filter((p) => p.players.length === 1);
+    const pool = solo.length && pick === 'first' ? solo : mine;
+    const photo = pick === 'first' ? pool[0] : pool.at(-1);
+    return photo ? photoUrl(photo.file) : null;
+  };
+  const override = (p: string | undefined) => (p ? pathToFileURL(resolve(p)).href : undefined);
+
+  const board = winStreaks(rows);
+  const rivals = board.filter((s) => s.player !== who);
+  const status =
+    rivals.every((s) => s.streak < run.streak)
+      ? 'A TNT record'
+      : rivals.every((s) => s.streak <= run.streak)
+        ? 'Equals the TNT record'
+        : null;
+  const lastTeam = run.matches.at(-1)!.side.team;
+
+  const slides: Omit<StreakStorySlide, 'index' | 'total'>[] = [];
+
+  slides.push({
+    kind: 'streak-story',
+    slide: 'cover',
+    player: who,
+    team: lastTeam,
+    streak: run.streak,
+    active: run.active,
+    status,
+    photo: override(opts.cover) ?? seasonPhoto(run.seasons.at(-1)!, 'last'),
+    facts: [
+      { value: String(run.opponentsBeaten.length), label: 'players beaten' },
+      { value: `${run.gamesFor}–${run.gamesAgainst}`, label: 'games' },
+      { value: String(run.partners.length), label: run.partners.length === 1 ? 'partner' : 'partners' },
+      { value: String(run.seasons.length), label: run.seasons.length === 1 ? 'season' : 'seasons' },
+      ...(run.titles ? [{ value: String(run.titles), label: run.titles === 1 ? 'flag' : 'flags' }] : []),
+    ],
+    rail: { chips, lit: winsLit(0, run.matches.length - 1) },
+  } as StreakCoverSlide);
+
+  if (run.before) {
+    slides.push({
+      kind: 'streak-story',
+      slide: 'before',
+      player: who,
+      match: await matchPayload(run.before, null),
+      since: run.active ? 'He hasn’t lost since.' : `Then came ${run.streak} straight.`,
+      rail: { chips, lit: [0, 0] },
+    } as StreakBeforeSlide);
+  }
+
+  for (const [i, c] of chapters.entries()) {
+    const span = run.matches.slice(c.from, c.to + 1);
+    const mates = [...new Set(span.flatMap((v) => v.partners))];
+    slides.push({
+      kind: 'streak-story',
+      slide: 'chapter',
+      player: who,
+      chapter: `Chapter ${NUMERALS[i] ?? i + 1}`,
+      season: c.season,
+      team: c.team,
+      partners: mates.length ? `With ${mates.join(' & ')}` : '',
+      record: `${span.length}–0`,
+      photo: override(opts.chapters?.[i]) ?? seasonPhoto(c.season, 'first'),
+      matches: await Promise.all(span.map((v, j) => matchPayload(v, c.from + j + 1))),
+      rail: { chips, lit: winsLit(c.from, c.to) },
+    } as StreakChapterSlide);
+  }
+
+  const next = run.next;
+  const nextCfg = next ? await configFor(next.match.season) : null;
+  slides.push({
+    kind: 'streak-story',
+    slide: 'record',
+    player: who,
+    team: lastTeam,
+    rows: board.slice(0, 5).map((s, i) => {
+      const shared = run.partners.find((p) => p.player === s.player)?.matches ?? 0;
+      return {
+        rank: i + 1,
+        player: s.player,
+        team: currentTeamForChip(s.player),
+        streak: s.streak,
+        active: s.active,
+        self: s.player === who,
+        note: shared ? `His partner for ${shared} of the ${run.streak}` : null,
+      };
+    }),
+    next: next
+      ? {
+          round: next.match.stage ? FINALS_ROUND[next.match.stage] : `Round ${next.match.round}`,
+          date: formatDate(next.match.start),
+          time: formatTime(next.match.start),
+          opponent: next.opposition.team,
+          opponentPairing: lineupPairingName(next.opposition.players, nextCfg!(next.opposition.team)),
+        }
+      : null,
+    rail: { chips, lit: [0, chips.length - 1] },
+  } as StreakRecordSlide);
+
+  return slides.map((s, i) => ({ ...s, index: i + 1, total: slides.length }) as StreakStorySlide);
 }
 
 // ---------------------------------------------------------------------------
@@ -1332,4 +1638,167 @@ export async function mvpSimPayloads(
   }
 
   return { slides, warnings };
+}
+
+// ---------------------------------------------------------------------------
+// Points — the points ladder and the pair split
+//
+// Both read `src/lib/points.ts`, which rebuilds every point from the box score
+// (winners, aces, UEs and double faults once each; forced errors once per
+// direction). Neither does any counting here — only ranking and print.
+// ---------------------------------------------------------------------------
+
+const ordinal = (n: number): string => {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`;
+};
+
+export interface PointsLadderRowPayload {
+  /** Position by share of points won. */
+  rank: number;
+  team: string;
+  pairing: string;
+  won: number;
+  lost: number;
+  /** "58.0%" */
+  share: string;
+  /** Percentage points either side of an even split, for the bar: 8.0, -2.5. */
+  edge: number;
+  /** "6th" — where the actual ladder has them. */
+  ladder: string;
+  /**
+   * Ladder position less points position. Positive: the ladder has them lower
+   * than their points would. Zero when the two agree.
+   */
+  gap: number;
+}
+
+export interface PointsLadderPayload {
+  kind: 'points-ladder';
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  footnote: string;
+  rows: PointsLadderRowPayload[];
+}
+
+/**
+ * The season's teams ranked by share of points won, beside where the real
+ * ladder has them. Same field as the ladder — declared teams, withdrawn ones
+ * off — and the same window, home and away up to `round`.
+ */
+export async function pointsLadderPayload(
+  season: number,
+  round: RoundRef
+): Promise<PointsLadderPayload> {
+  const upToRound = rows.filter((r) => r.round <= round.round);
+  const table = ladderWithPairings(
+    season,
+    upToRound,
+    await seasonTeamConfigs(season),
+    await declaredTeams(season),
+    await withdrawnTeams(season)
+  );
+  const onLadder = new Map(table.map((r) => [r.team, r]));
+  const points = teamPoints(upToRound, season).filter((p) => onLadder.has(p.team));
+
+  const complete = round.stage !== null || homeAndAwayComplete(season, round.round);
+  return {
+    kind: 'points-ladder',
+    eyebrow: eyebrowLabel(season),
+    title: 'The Points Ladder',
+    subtitle: complete ? 'Home & away · every point counted' : `After ${round.label} · every point counted`,
+    footnote: '',
+    rows: points.map((p, i) => {
+      const l = onLadder.get(p.team)!;
+      return {
+        rank: i + 1,
+        team: p.team,
+        pairing: l.pairingName,
+        won: p.won,
+        lost: p.lost,
+        share: `${(p.share * 100).toFixed(1)}%`,
+        edge: Math.round((p.share * 100 - 50) * 10) / 10,
+        ladder: ordinal(l.rank),
+        gap: l.rank - (i + 1),
+      };
+    }),
+  };
+}
+
+export interface PairSplitSidePayload {
+  name: string;
+  /** "75%" */
+  share: string;
+  /** 0–100, for the bar. */
+  pct: number;
+}
+
+export interface PairSplitRowPayload {
+  team: string;
+  /** The heavier hitter first. */
+  players: [PairSplitSidePayload, PairSplitSidePayload];
+  matches: number;
+}
+
+export interface PairSplitPayload {
+  kind: 'pair-split';
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  footnote: string;
+  rows: PairSplitRowPayload[];
+}
+
+/**
+ * Ball hogs: each active team's pair, split by share of the point-ending
+ * shots between them, most lopsided first. The pair is the season config's
+ * present-tense `pair`, falling back to the roster's core two, and only the
+ * matches the two actually played together count — a fill-in night isn't
+ * theirs to split.
+ */
+export async function pairSplitPayload(
+  season: number,
+  round: RoundRef
+): Promise<PairSplitPayload> {
+  const upToRound = rows.filter((r) => r.round <= round.round);
+  const config = await seasonTeamConfigs(season);
+  const table = ladderWithPairings(
+    season,
+    upToRound,
+    config,
+    await declaredTeams(season),
+    await withdrawnTeams(season)
+  );
+
+  const out: PairSplitRowPayload[] = [];
+  for (const { team } of table) {
+    const pair = config(team)?.pair ?? teamRoster(team, season, upToRound).core.map((c) => c.player);
+    if (pair.length !== 2) continue;
+    const split = pairSplit(upToRound, pair[0], pair[1], { season, scope: 'regular' });
+    if (!split) continue;
+    const sides = split.players
+      .map((name, i) => ({ name: shortName(name), share: split.shares[i] }))
+      .sort((a, b) => b.share - a.share);
+    out.push({
+      team,
+      players: sides.map((s) => ({
+        name: s.name,
+        share: `${Math.round(s.share * 100)}%`,
+        pct: s.share * 100,
+      })) as [PairSplitSidePayload, PairSplitSidePayload],
+      matches: split.matches,
+    });
+  }
+  out.sort((a, b) => b.players[0].pct - a.players[0].pct || a.team.localeCompare(b.team));
+
+  return {
+    kind: 'pair-split',
+    eyebrow: eyebrowLabel(season),
+    title: 'Ball Hogs',
+    subtitle: 'Matches played together',
+    footnote: '',
+    rows: out,
+  };
 }

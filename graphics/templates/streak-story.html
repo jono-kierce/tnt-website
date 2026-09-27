@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Streak story</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  /* One template, four slide kinds — `data-slide` on the canvas picks which
+     block shows. The rail and the footer are common to all of them, because
+     the rail is what ties the carousel together as you swipe. */
+  .slide { display: none; flex: 1; flex-direction: column; min-height: 0; }
+  .canvas[data-slide="cover"]   .slide.cover,
+  .canvas[data-slide="before"]  .slide.before,
+  .canvas[data-slide="chapter"] .slide.chapter,
+  .canvas[data-slide="record"]  .slide.record { display: flex; }
+
+  /* ---- Full-bleed photo (cover) and photo band (chapter) ------------------ */
+  .bleed {
+    position: absolute !important; inset: 0; z-index: 0 !important;
+    display: none;
+  }
+  .bleed img { width: 100%; height: 100%; object-fit: cover; display: block;
+               filter: brightness(1.08) contrast(1.06) saturate(1.05); }
+  .bleed::after {
+    content: ''; position: absolute; inset: 0;
+    background: var(--scrim);
+  }
+  .canvas.has-photo .bleed { display: block; }
+  .canvas[data-slide="cover"] {
+    --scrim: linear-gradient(180deg,
+      rgba(5,11,7,0.85) 0%, rgba(5,11,7,0.45) 14%, rgba(5,11,7,0) 28%, rgba(5,11,7,0) 38%,
+      rgba(5,11,7,0.78) 56%, var(--ink-deep) 76%);
+  }
+  /* Zoomed about the subject's face so the frame is him, not the court furniture. */
+  .canvas[data-slide="cover"] .bleed img { object-position: 62% 30%; transform: scale(1.5) translateY(-11%); transform-origin: 58% 38%;
+                                            filter: brightness(1.18) contrast(1.08) saturate(1.05); }
+  .canvas[data-slide="chapter"] .bleed { bottom: auto; height: 520px; }
+  .canvas[data-slide="chapter"] .bleed img { object-position: center 24%; }
+  .canvas[data-slide="chapter"] {
+    --scrim: linear-gradient(180deg,
+      rgba(5,11,7,0.5) 0%, rgba(10,19,13,0.35) 30%, rgba(10,19,13,0.86) 72%, var(--ink) 100%);
+  }
+
+  /* ---- Top bar -------------------------------------------------------------- */
+  .top { flex: none; display: flex; justify-content: space-between; align-items: flex-start;
+         margin-top: -72px; }
+  .top .mark { width: 76px; color: var(--gold); margin-top: -6px; }
+
+  /* ---- The rail ------------------------------------------------------------ */
+  .rail-wrap { flex: none; margin-top: 26px; }
+  .rail { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 8px; }
+  .chip {
+    height: 58px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--display); font-weight: 700; font-size: 26px;
+    border: 2px solid rgba(217, 185, 106, 0.28);
+    color: rgba(217, 185, 106, 0.4);
+    background: rgba(10, 19, 13, 0.5);
+  }
+  .chip.W.lit {
+    background: linear-gradient(180deg, var(--gold-soft), var(--gold));
+    border-color: var(--gold-soft); color: var(--ink-deep);
+    box-shadow: 0 0 22px rgba(217, 185, 106, 0.35);
+  }
+  .chip.L { border-color: rgba(224, 69, 60, 0.35); color: rgba(224, 69, 60, 0.55); }
+  .chip.L.lit { background: #b8342c; border-color: #e0453c; color: var(--paper);
+                box-shadow: 0 0 22px rgba(224, 69, 60, 0.4); }
+  .chip.next { border-style: dashed; border-color: rgba(217, 185, 106, 0.55); color: var(--gold); }
+  .chip.next.lit { border-color: var(--gold-soft); color: var(--gold-soft);
+                   box-shadow: 0 0 26px rgba(217, 185, 106, 0.5), inset 0 0 14px rgba(217, 185, 106, 0.25); }
+  /* Season ticks: a label under the first chip of each season. */
+  .ticks { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 8px; margin-top: 8px; }
+  .tick { font-size: 17px; font-weight: 600; letter-spacing: 0.14em;
+          color: rgba(244, 241, 232, 0.4); white-space: nowrap; overflow: visible; }
+  .tick.start { border-left: 2px solid rgba(217, 185, 106, 0.5); padding-left: 6px; }
+
+  footer {
+    flex: none; display: flex; justify-content: space-between; align-items: center;
+    padding-top: 22px; margin-bottom: -80px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 22px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+  }
+
+  /* ---- Cover ---------------------------------------------------------------- */
+  .cover { justify-content: flex-end; }
+  .cover-status {
+    align-self: flex-start;
+    font-family: var(--display); font-weight: 700; font-size: 24px;
+    letter-spacing: 0.3em; text-transform: uppercase;
+    color: var(--ink-deep); background: var(--gold);
+    padding: 10px 18px 8px 22px; border-radius: 4px;
+  }
+  .cover-hero { display: flex; align-items: flex-end; gap: 30px; margin-top: 10px; }
+  .big {
+    font-family: var(--display); font-weight: 700; font-size: 330px; line-height: 0.8;
+    color: var(--gold); letter-spacing: -0.02em;
+    text-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    margin-left: -10px;
+  }
+  .cover-words { flex: 1; padding-bottom: 14px; }
+  .cover-kicker { font-family: var(--display); font-weight: 700; font-size: 50px;
+                  text-transform: uppercase; letter-spacing: 0.06em; line-height: 1; }
+  .tally { display: block; margin-top: 20px; height: 82px; }
+  .tally line { stroke: var(--gold-soft); stroke-width: 7; stroke-linecap: round; }
+  .cover-name {
+    font-family: var(--display); font-weight: 700; font-size: 74px;
+    text-transform: uppercase; letter-spacing: 0.05em; line-height: 1; margin-top: 26px;
+  }
+  .facts { display: flex; gap: 0; margin-top: 22px; border-top: 1px solid var(--rule-strong); padding-top: 16px; }
+  .fact { flex: 1; border-left: 1px solid var(--rule); padding-left: 16px; }
+  .fact:first-child { border-left: 0; padding-left: 0; }
+  .fact-v { font-family: var(--display); font-weight: 700; font-size: 44px; color: var(--paper); line-height: 1; }
+  .fact-l { font-size: 20px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
+            color: rgba(244,241,232,0.55); margin-top: 6px; }
+
+  /* ---- Before: the last loss ------------------------------------------------ */
+  .ghost {
+    position: absolute !important; z-index: 0 !important;
+    right: -60px; top: 140px;
+    font-family: var(--display); font-weight: 700; font-size: 900px; line-height: 0.8;
+    color: rgba(224, 69, 60, 0.07);
+    display: none;
+  }
+  .canvas[data-slide="before"] .ghost { display: block; }
+  .before .headline { font-size: 104px; margin-top: 44px; }
+  .before .sub { margin-top: 18px; }
+  .board { margin-top: 64px; border-top: 2px solid var(--rule-strong); border-bottom: 2px solid var(--rule-strong); }
+  .brow { display: flex; align-items: center; gap: 22px; padding: 26px 0; }
+  .brow + .brow { border-top: 1px solid var(--rule); }
+  .bbar { width: 12px; height: 76px; border-radius: 6px; flex: none;
+          background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  .bwho { flex: 1; min-width: 0; }
+  .bteam { font-size: 22px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: rgba(244,241,232,0.5); }
+  .bpair { font-size: 50px; font-weight: 500; letter-spacing: 0.01em; line-height: 1.05; }
+  .bsets { display: flex; gap: 26px; }
+  .bset { width: 54px; text-align: center; font-family: var(--display); font-weight: 700; font-size: 60px; line-height: 1; }
+  .brow.lost .bpair, .brow.lost .bset { color: rgba(244,241,232,0.5); }
+  .brow.self .bpair { color: var(--paper); }
+  .brow.won .bset.w { color: var(--gold); }
+  .brow .bset.l { color: rgba(244,241,232,0.42); }
+  .result-tag { font-family: var(--display); font-weight: 700; font-size: 30px; width: 54px; height: 54px;
+                border-radius: 8px; display: flex; align-items: center; justify-content: center; flex: none; }
+  .brow.self .result-tag { background: #b8342c; color: var(--paper); }
+  .brow:not(.self) .result-tag { visibility: hidden; }
+  .note {
+    margin-top: 44px; font-size: 34px; font-weight: 500; line-height: 1.3;
+    color: rgba(244,241,232,0.78); padding-left: 26px; border-left: 3px solid var(--gold);
+    max-width: 900px;
+  }
+  .since {
+    margin: auto 0; font-family: var(--display); font-weight: 700; font-size: 70px;
+    text-transform: uppercase; letter-spacing: 0.03em; line-height: 1; color: var(--gold);
+  }
+
+  /* ---- Chapter --------------------------------------------------------------- */
+  .chapter-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;
+                  margin-top: 150px; }
+  .chapter-team { display: flex; align-items: center; gap: 20px; margin-top: 14px; }
+  .chapter-team .dot { width: 20px; height: 84px; border-radius: 8px;
+                       background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  .chapter-team .headline { font-size: 96px; text-shadow: 0 4px 30px rgba(0,0,0,0.6); }
+  .chapter .sub { margin-top: 14px; color: rgba(244,241,232,0.85); text-shadow: 0 2px 16px rgba(0,0,0,0.7); }
+  .chapter-record { text-align: right; }
+  .chapter-record .rec { font-family: var(--display); font-weight: 700; font-size: 124px; line-height: 0.85; color: var(--gold);
+                         text-shadow: 0 4px 30px rgba(0,0,0,0.6); }
+  .flag { display: inline-block; margin-top: 12px; font-family: var(--display); font-weight: 700; font-size: 20px;
+          letter-spacing: 0.3em; text-transform: uppercase; color: var(--ink-deep); background: var(--gold);
+          padding: 7px 12px 5px 16px; border-radius: 4px; }
+  .matches { flex: 1; display: flex; flex-direction: column; margin-top: 30px; min-height: 0;
+             border-top: 2px solid var(--rule-strong); }
+  .m { flex: 1; max-height: 124px; display: flex; align-items: center; gap: 20px; border-bottom: 1px solid var(--rule); padding: 0 6px; }
+  .m-n { width: 66px; height: 44px; flex: none; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+         font-family: var(--display); font-weight: 700; font-size: 22px; color: var(--ink-deep);
+         background: linear-gradient(180deg, var(--gold-soft), var(--gold)); }
+  .m-round { width: 118px; flex: none; font-size: 24px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+             color: rgba(244,241,232,0.55); line-height: 1.05; }
+  .m-bar { width: 8px; height: 44px; border-radius: 4px; flex: none;
+           background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  .m-opp { flex: 1; min-width: 0; font-size: 36px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-opp .v { color: rgba(244,241,232,0.45); margin-right: 8px; }
+  .m-score { flex: none; display: flex; gap: 18px; font-family: var(--display); font-weight: 700; font-size: 38px; }
+  .m-score .set.lost { color: rgba(244,241,232,0.45); }
+  .m.title { background: linear-gradient(90deg, rgba(217,185,106,0.2), rgba(217,185,106,0.02)); }
+  .m.title .m-round { color: var(--gold); }
+
+  /* ---- Record book + next --------------------------------------------------- */
+  .record .headline { font-size: 88px; margin-top: 44px; }
+  .record .sub { margin-top: 12px; }
+  .bars { margin-top: 40px; display: flex; flex-direction: column; gap: 14px; }
+  .bar-row { display: flex; align-items: center; gap: 18px; }
+  .bar-pos { width: 40px; font-family: var(--display); font-weight: 700; font-size: 32px; color: rgba(244,241,232,0.45); text-align: center; }
+  .bar-track { flex: 1; position: relative; height: 78px; }
+  .bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px;
+              background: rgba(244,241,232,0.08); border-left: 8px solid var(--team); }
+  .bar-row.self .bar-fill { background: linear-gradient(90deg, rgba(217,185,106,0.5), rgba(217,185,106,0.18)); border-left-color: var(--gold); }
+  .bar-label { position: absolute; left: 26px; top: 50%; transform: translateY(-50%); line-height: 1.05; white-space: nowrap; }
+  .bar-name { font-size: 38px; font-weight: 500; }
+  .bar-row.self .bar-name { font-weight: 700; color: var(--gold-soft); }
+  .bar-note { font-size: 20px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); margin-top: 3px; }
+  .bar-val { width: 104px; text-align: right; font-family: var(--display); font-weight: 700; font-size: 58px; line-height: 1; }
+  .bar-row.self .bar-val { color: var(--gold); }
+  .bar-val .star { color: var(--gold); font-size: 40px; }
+
+  .next { margin-top: auto; display: flex; align-items: center; gap: 34px;
+          border: 2px dashed rgba(217,185,106,0.6); border-radius: 14px; padding: 26px 32px; }
+  .next-n { font-family: var(--display); font-weight: 700; font-size: 150px; line-height: 0.8; color: transparent;
+            -webkit-text-stroke: 3px var(--gold); }
+  .next-body { flex: 1; min-width: 0; }
+  .next-k { font-size: 22px; font-weight: 600; letter-spacing: 0.26em; text-transform: uppercase; color: var(--gold); }
+  .next-when { white-space: nowrap; font-family: var(--display); font-weight: 700; font-size: 34px; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 8px; }
+  .next-opp { display: flex; align-items: center; gap: 14px; margin-top: 10px; font-size: 36px; font-weight: 500; }
+  .next-opp .m-bar { height: 40px; }
+  .next-opp .v { color: rgba(244,241,232,0.5); }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette" id="canvas">
+  <div class="bleed"><img id="photo" alt=""></div>
+  <div class="ghost">L</div>
+
+  <div class="top">
+    <div class="eyebrow" id="eyebrow"></div>
+    <div class="mark mark--crest"></div>
+  </div>
+
+  <!-- Cover -->
+  <section class="slide cover">
+    <div class="cover-status" id="c-status"></div>
+    <div class="cover-hero">
+      <div class="big" id="c-big"></div>
+      <div class="cover-words">
+        <div class="cover-kicker" id="c-kicker"></div>
+        <svg class="tally" id="c-tally"></svg>
+      </div>
+    </div>
+    <div class="cover-name" id="c-name"></div>
+    <div class="facts" id="c-facts"></div>
+  </section>
+
+  <!-- The loss before it -->
+  <section class="slide before">
+    <h1 class="headline">The last loss</h1>
+    <div class="sub" id="b-sub"></div>
+    <div class="board" id="b-board"></div>
+    <div class="note" id="b-note"></div>
+    <div class="since" id="b-since"></div>
+  </section>
+
+  <!-- A chapter -->
+  <section class="slide chapter">
+    <div class="chapter-head">
+      <div>
+        <div class="chapter-team" id="ch-team"><div class="dot"></div><h1 class="headline" id="ch-title"></h1></div>
+        <div class="sub" id="ch-sub"></div>
+      </div>
+      <div class="chapter-record">
+        <div class="rec" id="ch-rec"></div>
+        <div id="ch-flag"></div>
+      </div>
+    </div>
+    <div class="matches" id="ch-matches"></div>
+  </section>
+
+  <!-- Record book + what's next -->
+  <section class="slide record">
+    <h1 class="headline">Longest win streaks</h1>
+    <div class="sub">All time · finals count</div>
+    <div class="bars" id="r-bars"></div>
+    <div class="next" id="r-next"></div>
+  </section>
+
+  <div class="rail-wrap">
+    <div class="rail" id="rail"></div>
+    <div class="ticks" id="ticks"></div>
+  </div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+  </footer>
+</div>
+
+<script type="module">
+const set = (games, tiebreak = null, won = true) => ({ games: String(games), tiebreak, won, level: false });
+const chips = [
+  { kind: 'L', n: null, season: 3 },
+  ...Array.from({ length: 14 }, (_, i) => ({ kind: 'W', n: i + 1, season: i < 9 ? 4 : 5 })),
+  { kind: 'next', n: null, season: 5 },
+];
+const SAMPLES = {
+  cover: {
+    slide: 'cover', index: 1, total: 5, player: 'Luke Sharrock', team: 'Yellow', streak: 14, active: true,
+    status: 'A TNT record', photo: null,
+    facts: [
+      { value: '17', label: 'players beaten' }, { value: '88–48', label: 'games' },
+      { value: '2', label: 'partners' }, { value: '2', label: 'seasons' }, { value: '1', label: 'flag' },
+    ],
+    rail: { chips, lit: [1, 14] },
+  },
+  before: {
+    slide: 'before', index: 2, total: 5, player: 'Luke Sharrock', since: 'He hasn’t lost since.',
+    match: { n: null, round: 'Semi Final', season: 3, team: 'Red', pairing: 'L. Sharrock & J. Harris',
+      opponent: 'Orange', opponentPairing: 'J. Gorton & L. Mossman',
+      sets: [set(1, null, false), set(6), set(3, null, false)], opponentSets: [set(6), set(1, null, false), set(6)],
+      won: false, title: false, note: 'Suspended under council lighting rules with six match points saved.' },
+    rail: { chips, lit: [0, 0] },
+  },
+  chapter: {
+    slide: 'chapter', index: 3, total: 5, player: 'Luke Sharrock', chapter: 'Chapter I', season: 4, team: 'Pink',
+    partners: 'With Angus Hume', record: '9–0', photo: null,
+    matches: [
+      { n: 1, round: 'R1', opponent: 'Navy', opponentPairing: 'L. Jenkin & J. Virgona', sets: [set(6)], opponentSets: [set(0, null, false)], title: false },
+      { n: 2, round: 'R3', opponent: 'Orange', opponentPairing: 'J. Gorton & E. Simpson', sets: [set(6)], opponentSets: [set(5, 4, false)], title: false },
+      { n: 9, round: 'Grand Final', opponent: 'White', opponentPairing: 'J. Kierce & L. Godden', sets: [set(6), set(7)], opponentSets: [set(4, null, false), set(6, 3, false)], title: true },
+    ],
+    rail: { chips, lit: [1, 9] },
+  },
+  record: {
+    slide: 'record', index: 5, total: 5, player: 'Luke Sharrock', team: 'Yellow',
+    rows: [
+      { rank: 1, player: 'Luke Sharrock', team: 'Yellow', streak: 14, active: true, self: true, note: null },
+      { rank: 2, player: 'Angus Hume', team: 'Green', streak: 12, active: false, self: false, note: 'His partner for 9 of the 14' },
+      { rank: 3, player: 'Jonathan Kierce', team: 'White', streak: 9, active: false, self: false, note: null },
+      { rank: 4, player: 'Ethan Seamer', team: 'Light Blue', streak: 9, active: false, self: false, note: null },
+      { rank: 5, player: 'Damon Maurice', team: 'Pink', streak: 7, active: false, self: false, note: null },
+    ],
+    next: { round: 'Round 8', date: 'Tue 6 Oct', time: '7:50pm', opponent: 'White', opponentPairing: 'J. Kierce & J. Virgona' },
+    rail: { chips, lit: [0, 15] },
+  },
+};
+
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const $ = (id) => document.getElementById(id);
+
+/** Tally marks: gates of five (four strokes and a slash), then the remainder. */
+function tally(svg, count) {
+  const h = 82, gap = 17, gateGap = 34;
+  let x = 6, out = '';
+  for (let g = 0; g * 5 < count; g++) {
+    const inGate = Math.min(5, count - g * 5);
+    const x0 = x;
+    for (let i = 0; i < Math.min(4, inGate); i++) {
+      // A touch of wobble so it reads as scratched, not typeset.
+      const w = ((g * 7 + i * 3) % 5) - 2;
+      out += `<line x1="${x + w * 0.6}" y1="${4 + Math.abs(w)}" x2="${x - w * 0.4}" y2="${h - 4}"/>`;
+      x += gap;
+    }
+    if (inGate === 5) out += `<line x1="${x0 - 12}" y1="${h - 14}" x2="${x - gap + 12}" y2="14"/>`;
+    x += gateGap - gap;
+  }
+  svg.setAttribute('viewBox', `0 0 ${x} ${h}`);
+  svg.setAttribute('width', x);
+  svg.innerHTML = out;
+}
+
+function rail(r) {
+  const [a, b] = r.lit;
+  document.querySelector('.rail-wrap').style.setProperty('--n', r.chips.length);
+  $('rail').innerHTML = r.chips.map((c, i) => {
+    const lit = i >= a && i <= b ? 'lit' : '';
+    const text = c.kind === 'W' ? 'W' : c.kind === 'L' ? 'L' : '?';
+    return `<div class="chip ${c.kind} ${lit}">${text}</div>`;
+  }).join('');
+  $('ticks').innerHTML = r.chips.map((c, i) => {
+    const start = i === 0 || r.chips[i - 1].season !== c.season;
+    return `<div class="tick ${start ? 'start' : ''}">${start ? `S${c.season}` : ''}</div>`;
+  }).join('');
+}
+
+/** One side's set scores; the breaker prints small and high on the loser's games. */
+const setCell = (s) => `${esc(s.games)}${s.tiebreak ? `<span class="tb">${esc(s.tiebreak)}</span>` : ''}`;
+
+function renderCover(d) {
+  $('eyebrow').textContent = d.active ? 'Win streak · live' : 'Win streak';
+  $('c-status').textContent = d.status ?? '';
+  $('c-status').style.display = d.status ? '' : 'none';
+  $('c-big').textContent = d.streak;
+  $('c-kicker').innerHTML = 'Wins<br>in a row';
+  tally($('c-tally'), d.streak);
+  $('c-name').textContent = d.player;
+  $('c-facts').innerHTML = d.facts.map((f) =>
+    `<div class="fact"><div class="fact-v">${esc(f.value)}</div><div class="fact-l">${esc(f.label)}</div></div>`).join('');
+}
+
+function renderBefore(d) {
+  const m = d.match;
+  $('eyebrow').textContent = 'Where it started';
+  $('b-sub').textContent = `Season ${m.season} · ${m.round}`;
+  const row = (team, pairing, sets, other, self) => {
+    const won = self ? m.won : !m.won;
+    return `<div class="brow ${won ? 'won' : 'lost'} ${self ? 'self' : ''}" data-team="${esc(team)}">
+      <div class="bbar"></div>
+      <div class="bwho"><div class="bteam">${esc(team)}</div><div class="bpair">${esc(pairing)}</div></div>
+      <div class="bsets">${sets.map((s, i) => `<div class="bset ${Number(s.games) > Number(other[i].games) ? 'w' : 'l'}">${setCell(s)}</div>`).join('')}</div>
+      <div class="result-tag">L</div>
+    </div>`;
+  };
+  // Winner on top, the way a scoreboard reads.
+  const selfRow = row(m.team, m.pairing, m.sets, m.opponentSets, true);
+  const oppRow = row(m.opponent, m.opponentPairing, m.opponentSets, m.sets, false);
+  $('b-board').innerHTML = m.won ? selfRow + oppRow : oppRow + selfRow;
+  $('b-note').textContent = m.note ?? '';
+  $('b-note').style.display = m.note ? '' : 'none';
+  $('b-since').textContent = d.since;
+}
+
+function renderChapter(d) {
+  $('eyebrow').textContent = `${d.chapter} · Season ${d.season}`;
+  $('ch-team').dataset.team = d.team;
+  $('ch-title').textContent = d.team;
+  $('ch-sub').textContent = d.partners;
+  $('ch-rec').textContent = d.record;
+  const titles = d.matches.filter((m) => m.title).length;
+  $('ch-flag').innerHTML = titles ? `<span class="flag">Premiers</span>` : '';
+  $('ch-matches').innerHTML = d.matches.map((m) => `
+    <div class="m ${m.title ? 'title' : ''}">
+      <div class="m-n">W${m.n}</div>
+      <div class="m-round">${esc(m.round)}</div>
+      <div class="m-bar" data-team="${esc(m.opponent)}"></div>
+      <div class="m-opp"><span class="v">v</span>${esc(m.opponentPairing)}</div>
+      <div class="m-score">${m.sets.map((s, i) => {
+        const o = m.opponentSets[i];
+        return `<span class="set ${Number(s.games) < Number(o.games) ? 'lost' : ''}">${setCell(s)}–${setCell(o)}</span>`;
+      }).join('')}</div>
+    </div>`).join('');
+}
+
+function renderRecord(d) {
+  $('eyebrow').textContent = 'The record book';
+  const max = Math.max(...d.rows.map((r) => r.streak));
+  $('r-bars').innerHTML = d.rows.map((r) => `
+    <div class="bar-row ${r.self ? 'self' : ''}" ${r.team ? `data-team="${esc(r.team)}"` : ''}>
+      <div class="bar-pos">${r.rank}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${(100 * r.streak / max).toFixed(1)}%"></div>
+        <div class="bar-label"><div class="bar-name">${esc(r.player)}</div>${r.note ? `<div class="bar-note">${esc(r.note)}</div>` : ''}</div>
+      </div>
+      <div class="bar-val">${r.streak}${r.active ? '<span class="star">*</span>' : ''}</div>
+    </div>`).join('');
+  const self = d.rows.find((r) => r.self);
+  const n = d.next;
+  $('r-next').style.display = n ? '' : 'none';
+  if (n) {
+    const when = [n.round, n.date, n.time].filter(Boolean).join(' · ');
+    $('r-next').innerHTML = `
+      <div class="next-n">${(self?.streak ?? 0) + 1}?</div>
+      <div class="next-body">
+        <div class="next-k">Next up</div>
+        <div class="next-when">${esc(when)}</div>
+        <div class="next-opp"><div class="m-bar" data-team="${esc(n.opponent)}"></div><span class="v">v</span>${esc(n.opponent)} · ${esc(n.opponentPairing)}</div>
+      </div>`;
+  }
+}
+
+window.__render = function (d) {
+  const canvas = $('canvas');
+  canvas.dataset.slide = d.slide;
+  canvas.classList.toggle('has-photo', !!d.photo);
+  if (d.photo) $('photo').src = d.photo;
+  ({ cover: renderCover, before: renderBefore, chapter: renderChapter, record: renderRecord })[d.slide](d);
+  rail(d.rail);
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+const pick = new URLSearchParams(location.search).get('slide') ?? 'cover';
+window.__render(SAMPLES[pick] ?? SAMPLES.cover);
+</script>
+</body>
+</html>

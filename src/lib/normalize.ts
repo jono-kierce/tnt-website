@@ -133,8 +133,9 @@ export function normalizeRows(raw: Record<string, string>[]): StatRow[] {
 
       // Serve stats: Season 1 only, regardless of stray values elsewhere.
       const serveSeason = season === SITE.serveStatsSeason;
-      // Errors Forced: recorded from errorsForcedFromSeason onward.
-      const efTracked = season >= SITE.errorsForcedFromSeason;
+      // Errors Forced: recorded from errorsForcedFromSeason onward — and in
+      // the S1 finals, where the owner started counting them a season early.
+      const efTracked = season >= SITE.errorsForcedFromSeason || stage !== null;
 
       return {
         team: (r['Team'] ?? '').trim(),

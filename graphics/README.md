@@ -39,7 +39,7 @@ CSV — which is exactly the round you just added. PNGs land in `graphics/out/`
 |---|---|
 | `--season <n>` | Default `SITE.currentSeason`. |
 | `--round <r>` | A round number, or `QF` / `SF` / `F`. Default: the season's latest — except for `preview`, see below. |
-| `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `draft`, `preview`, `streaks`, `headline`, `predictions`, `pair`, `mvpsim` — comma-separated. Default `ladder,results,scoreboard,boards`; the rest are once-off posts, so they only render on request. |
+| `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `leaders`, `draft`, `preview`, `streaks`, `streakstory`, `headline`, `predictions`, `pair`, `mvpsim`, `pointsladder`, `pairsplit` — comma-separated. Default `ladder,results,scoreboard,boards`; the rest are once-off posts, so they only render on request. |
 | `--pair <a,b>` | The two players for `--only pair`, comma-separated. |
 | `--sim <path>` | The MVP projection summary CSV, for `--only mvpsim`. Required — there is no default, because the file lives outside this repo. |
 | `--runs <n>` | How many runs that projection was over, for the subtitle. Omitted, it reads "Simulated". |
@@ -89,7 +89,8 @@ rendered by accident: it's out of the default `--only` set and needs an explicit
 ## The one rule
 
 **No graphic computes a statistic.** Every number comes from
-`src/lib/stats.ts`, every data quirk from `src/lib/normalize.ts`, and every
+`src/lib/stats.ts` (or, for the points families, `src/lib/points.ts` — same
+rules: a tested library in `src/lib`, never the renderer), every data quirk from `src/lib/normalize.ts`, and every
 team colour from the `TEAMS` map in `src/config/site.ts`. `lib/payloads.ts`
 turns those into per-template data objects and is allowed to do exactly one
 thing beyond that: presentation — labels, ordering, rounding for print.
@@ -134,6 +135,8 @@ graphics/
     preview.html
     scoreboard.html
     mvp-sim-board.html
+    points-ladder.html
+    pair-split.html
     fonts/             vendored .woff2 (committed)
   out/                 rendered PNGs — gitignored
 ```
@@ -244,11 +247,31 @@ label, row count, season or career, per-set or total, and `polarity`.
   a partial total is never allowed to pass as a complete one.
 - **Rate boards** apply `SITE.perGameMinGames` and say so in the footnote.
 - **Fill-ins are excluded** by default, as on the site, and the footnote says so.
-- **The hero band** — the leader pictured — appears only if that player has a
-  photo in `content/photos/photos.yaml`, and the board drops to seven rows to
-  make room. Set `cutout: true` for a transparent PNG and it sits unframed;
-  an ordinary photo gets a frame rather than pretending to be a cut-out.
-  The photo is whatever `avatarPhoto()` picks, so it's as good as the manifest.
+- **The spotlight** — the leader pictured. Set `showPhoto` and #1 comes out
+  of the table: their photo bleeds off the top-right corner and dissolves into
+  the page (two intersected masks), their team colour glows behind it, and
+  the name and the number take the left column, with #2–#8 beneath. The number
+  is gold, or red on a `polarity: 'low'` board, because leading the unforced
+  errors isn't an honour. A shared lead prints "Joint No. 1" and `=1` on the
+  tied rows, judged on the printed value.
+- **A season board only pictures that season** (`leaderPhoto` in
+  `payloads.ts`): a solo photo tagged with the board's season, never an older
+  frame, since a 2026 leaderboard fronted by a 2023 kit reads as a mistake. If
+  there isn't one, the plain board renders and the CLI names the player whose
+  photo is missing. A career board takes `avatarPhoto()`, as the site does.
+  `photoIndex` picks a later frame so one player leading two consecutive
+  slides isn't shown twice in the same pose. `cutout: true` is for a
+  transparent PNG.
+
+**Leaders** (`--only leaders`) is a carousel of eight stat boards off the same
+template — winners, unforced errors, aces and errors forced, each as a season
+total and per match (`leaderBoards` in `lib/boards.ts`), all with the
+spotlight. Both halves are
+home-and-away only. "Per match" is the per-set rate on that scope, which is the
+same number because every Tuesday match is one set; a test pins sets == matches
+so the label fails loudly rather than lying if that ever changes. Widening the
+scope would let a three-set final count as one "match". On request only, like
+the once-off posts, so the weekly default stays at four boards.
 
 ### Scoreboard — `scoreboard.html`
 
@@ -343,6 +366,72 @@ applies instead:
   would be a different claim.
 - **Exempt from `sealedVoteSeasons`** — see the Sealed votes section above for
   why, and for what that exemption deliberately does *not* cover.
+
+### Streak story — `streak-story.html`
+
+One player's win streak as a swipeable carousel: a cover (the count, tally
+marks, the run's key facts), the loss it began after, one chapter per season
+and team the run passed through, then the record book and the next fixture.
+A rail of W chips runs along the foot of every slide, and each slide lights
+its own stretch of it, so swiping reads like a strip of film.
+
+```bash
+node graphics/render.mjs --only streakstory                         # longest live streak
+node graphics/render.mjs --only streakstory --player "Angus Hume"
+node graphics/render.mjs --only streakstory --photos "cover.jpg,,s5.jpg"
+```
+
+- **Every number comes from `winStreakRun` in `stats.ts`**, which a test holds
+  to `winStreaks`' count, edges and live flag. Same rules: finals count,
+  fill-in nights neither extend nor break a run.
+- **The one editorial input is `lib/streak-notes.ts`** — a line under a match
+  the CSV can't describe (the S3 semi that ran over two nights), keyed by match
+  and checkable against `content/seasons/`. Nothing numeric goes there.
+- Photos default to the manifest: the player's latest in the run's last season
+  for the cover, his first (solo preferred) in each chapter's season.
+  `--photos` overrides them slide by slide, cover first.
+
+### Points ladder — `points-ladder.html`
+
+```bash
+node graphics/render.mjs --only pointsladder
+```
+
+The season's teams ranked by **share of points won**, beside where the real
+ladder has them. Every point is rebuilt from the stat sheets by
+`src/lib/points.ts` — winners, aces, unforced errors and double faults once
+each, forced errors once per direction (the MAX of the errors-forced and
+forced-errors ledgers, because a scorer sometimes fills in only one side).
+
+- **Same field and window as the ladder**: declared teams, withdrawn teams
+  off, home and away up to `--round`. A test holds the shares to
+  `teamPoints()` and the ladder column to the site's own ladder.
+- **The diverging bar is on a fixed ±10-point scale**, not the season's
+  spread, so a runaway leader looks like one and a flat season looks flat.
+- **The ladder column's arrow is the two ranks compared, nothing more**: red
+  ▼ when the ladder has a team lower than its points would, green ▲ when
+  higher. No "luck" number is printed — that's for the caption.
+- **No footnote on either points board** — the definition of a point goes in
+  the caption, where there's room to explain it.
+
+### Pair split — `pair-split.html`
+
+```bash
+node graphics/render.mjs --only pairsplit
+```
+
+"Ball hogs": each active team's pair, split by their share of the
+point-ending shots between them (`pairSplit()` in `points.ts`) — winners, aces,
+errors forced, unforced errors, double faults and forced errors — most
+lopsided first, heavier hitter on the left.
+
+- **The pair is the season config's present-tense `pair`**, falling back to
+  the roster's core two, and only the matches the two played *together* count.
+- **A share is a per-match average**, so one long night can't outweigh a
+  season of Tuesdays.
+- **A thin sample owns up to it**: fewer than three matches together prints
+  the match count in pink, and the CLI warns. It isn't dropped — a board that
+  silently lost a team reads as a demotion.
 
 ### Preview — `preview.html`
 

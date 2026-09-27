@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Points Ladder (A / Broadsheet)</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  /* The ladder's sibling: same furniture, but ranked by share of points won,
+     with the real ladder position at the right so the two can argue. */
+  header { flex: none; }
+  .eyebrow { margin-top: -64px; }
+  .headline { font-size: 84px; margin-top: 16px; }
+  .sub { margin-top: 14px; }
+  .rule-gold {
+    height: 2px; margin-top: 26px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  .thead {
+    flex: none;
+    display: flex; align-items: flex-end; gap: 18px;
+    padding: 20px 8px 12px;
+    font-size: 19px; font-weight: 600;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: rgba(244, 241, 232, 0.4);
+  }
+  .c-pos { width: 52px; }
+  .c-bar { width: 10px; }
+  .c-team { flex: 1; }
+  .c-edge { width: 236px; text-align: center; }
+  .c-share { width: 128px; text-align: right; }
+  .c-lad { width: 108px; text-align: center; }
+
+  .rows { flex: 1; display: flex; flex-direction: column; }
+
+  .row {
+    flex: 1;
+    display: flex; align-items: center; gap: 18px;
+    padding: 0 8px;
+    border-top: 1px solid var(--rule);
+    position: relative;
+  }
+  .row:first-child { border-top: 0; }
+
+  .row.lead::before {
+    content: '';
+    position: absolute; inset: 0 -8px;
+    background: linear-gradient(90deg, rgba(217,185,106,0.20), rgba(217,185,106,0.02) 58%, transparent);
+    pointer-events: none;
+  }
+  .row.lead::after {
+    content: '';
+    position: absolute; left: -8px; top: 0; bottom: 0; width: 4px;
+    background: var(--gold);
+  }
+  .row.lead > * { position: relative; }
+
+  .pos {
+    width: 52px; text-align: center;
+    font-family: var(--display); font-weight: 600; font-size: 40px;
+    color: var(--gold);
+  }
+  .bar { width: 10px; height: 58px; border-radius: 5px; flex: none;
+         background: linear-gradient(180deg, var(--team), var(--team-2)); }
+
+  .who { flex: 1; min-width: 0; }
+  .team { font-size: 36px; font-weight: 500; letter-spacing: 0.015em; white-space: nowrap; }
+  .row.lead .team { font-weight: 600; }
+  .pts {
+    margin-top: 2px;
+    font-size: 19px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
+    color: rgba(244, 241, 232, 0.5);
+  }
+
+  /* Diverging bar: even at the centre tick, ±10 percentage points at the ends,
+     so a season with a runaway leader and one without read on the same scale. */
+  .edge { width: 236px; height: 22px; position: relative; flex: none; }
+  .edge::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 2px;
+    transform: translateY(-50%); background: var(--rule);
+  }
+  .edge::after {
+    content: ''; position: absolute; left: 50%; top: -6px; bottom: -6px; width: 2px;
+    transform: translateX(-50%); background: var(--rule-strong);
+  }
+  .edge .fill {
+    position: absolute; top: 0; bottom: 0; border-radius: 3px;
+    background: linear-gradient(90deg, var(--team), var(--team-2));
+    box-shadow: 0 0 0 1px rgba(244, 241, 232, 0.22);
+  }
+
+  .share { width: 128px; text-align: right; font-size: 43px; font-weight: 600; color: var(--gold-soft); }
+  .row.under .share { color: rgba(244, 241, 232, 0.72); }
+
+  .lad { width: 108px; text-align: center; line-height: 1; }
+  .lad .n { font-size: 32px; font-weight: 600; }
+  .lad .d {
+    display: block; margin-top: 5px;
+    font-size: 18px; font-weight: 700; letter-spacing: 0.1em;
+  }
+  /* The ladder has them lower than their points: hard done by. */
+  .lad .d.down { color: var(--tone-3); }
+  /* Higher than their points: the bounce of the ball. */
+  .lad .d.up { color: var(--tone-0); }
+  .lad .d.same { color: rgba(244, 241, 232, 0.35); }
+
+  footer {
+    flex: none; display: flex; justify-content: space-between; align-items: flex-end;
+    padding-top: 22px; margin-bottom: -74px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+    white-space: nowrap; flex: none;
+  }
+  .footnote { max-width: 420px; text-align: right; font-size: 17px; line-height: 1.35; }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette">
+  <div class="mark mark--crest watermark"></div>
+
+  <header>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="thead">
+    <div class="c-pos">#</div>
+    <div class="c-bar"></div>
+    <div class="c-team">Team</div>
+    <div class="c-edge">← Even →</div>
+    <div class="c-share">Points</div>
+    <div class="c-lad">Ladder</div>
+  </div>
+
+  <div class="rows" id="rows"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+    <div class="footnote" id="footnote"></div>
+  </footer>
+</div>
+
+<script type="module">
+/* Sample data, so this file opens straight in a browser and looks like the
+   real thing. `render.mjs` calls __render() again with the CSV's numbers. */
+const DATA = {
+  eyebrow: 'Season 5 · 2026',
+  title: 'The Points Ladder',
+  subtitle: 'After Round 6 · every point counted',
+  footnote: '',
+  rows: [
+    { rank: 1, team: 'Yellow',     pairing: 'L. Sharrock & J. Raines', won: 174, lost: 126, share: '58.0%', edge: 8,    ladder: '1st', gap: 0 },
+    { rank: 2, team: 'Brown',      pairing: 'A. Dickson & T. Angel',   won: 159, lost: 149, share: '51.6%', edge: 1.6,  ladder: '3rd', gap: 1 },
+    { rank: 3, team: 'Pink',       pairing: 'C. Simpson & D. Maurice', won: 175, lost: 170, share: '50.7%', edge: 0.7,  ladder: '6th', gap: 3 },
+    { rank: 4, team: 'Red',        pairing: 'L. Jenkin & J. Harris',   won: 183, lost: 179, share: '50.6%', edge: 0.6,  ladder: '2nd', gap: -2 },
+    { rank: 5, team: 'Light Blue', pairing: 'S. Inlander & E. Seamer', won: 183, lost: 181, share: '50.3%', edge: 0.3,  ladder: '4th', gap: -1 },
+    { rank: 6, team: 'Green',      pairing: 'Q. Feikema & A. Hume',    won: 154, lost: 157, share: '49.5%', edge: -0.5, ladder: '5th', gap: -1 },
+    { rank: 7, team: 'White',      pairing: 'J. Kierce & J. Virgona',  won: 125, lost: 137, share: '47.7%', edge: -2.3, ladder: '9th', gap: 2 },
+    { rank: 8, team: 'Orange',     pairing: 'J. Gorton & L. Godden',   won: 167, lost: 184, share: '47.6%', edge: -2.4, ladder: '8th', gap: 0 },
+    { rank: 9, team: 'Navy',       pairing: 'W. Mumme & E. Simpson',   won: 133, lost: 147, share: '47.5%', edge: -2.5, ladder: '7th', gap: -2 },
+  ],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/** Percentage points either side of even that fill half the bar. */
+const SCALE = 10;
+
+function edgeFill(edge) {
+  const half = Math.min(Math.abs(edge), SCALE) / SCALE * 50;
+  // A sliver still shows which side of even a team sits on.
+  const w = Math.max(half, edge === 0 ? 0 : 1.2);
+  return edge >= 0 ? `left:50%;width:${w}%` : `right:50%;width:${w}%`;
+}
+
+function ladderDelta(gap) {
+  if (gap > 0) return `<span class="d down">▼ ${gap}</span>`;
+  if (gap < 0) return `<span class="d up">▲ ${-gap}</span>`;
+  return `<span class="d same">=</span>`;
+}
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+  document.getElementById('subtitle').textContent = d.subtitle;
+  document.getElementById('footnote').textContent = d.footnote;
+
+  document.getElementById('rows').innerHTML = d.rows.map((r) => `
+    <div class="row ${r.rank === 1 ? 'lead' : ''} ${r.edge < 0 ? 'under' : ''}" data-team="${esc(r.team)}">
+      <div class="pos">${r.rank}</div>
+      <div class="bar"></div>
+      <div class="who">
+        <div class="team">${esc(r.pairing)}</div>
+        <div class="pts">${r.won} won · ${r.lost} lost</div>
+      </div>
+      <div class="edge"><div class="fill" style="${edgeFill(r.edge)}"></div></div>
+      <div class="share">${esc(r.share)}</div>
+      <div class="lad"><span class="n">${esc(r.ladder)}</span>${ladderDelta(r.gap)}</div>
+    </div>`).join('');
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

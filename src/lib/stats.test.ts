@@ -23,6 +23,7 @@ import {
   teamRoster,
   lineupPairingName,
   winStreaks,
+  winStreakRun,
 } from './stats.ts';
 import { canonicalName, shortName, stripFillIn } from '../config/aliases.ts';
 import { allSeasonConfigs } from '../config/seasons/index.ts';
@@ -1449,5 +1450,73 @@ describe('pairRecord — two players as team-mates', () => {
     );
     expect(drawn.seasons.find((s) => s.season === 5)!.wins + drawn.seasons.find((s) => s.season === 5)!.losses)
       .toBe(played.length);
+  });
+});
+
+describe('winStreakRun — one streak, match by match', () => {
+  const all = loadStatRows();
+
+  it('agrees with winStreaks on the count, the edges and whether it is live', () => {
+    for (const s of winStreaks(all).slice(0, 10)) {
+      const run = winStreakRun(s.player, all)!;
+      expect(run.streak).toBe(s.streak);
+      expect(run.matches).toHaveLength(s.streak);
+      expect(run.active).toBe(s.active);
+      const [first, last] = [run.matches[0].match, run.matches.at(-1)!.match];
+      expect([first.season, first.round]).toEqual([s.from!.season, s.from!.round]);
+      expect([last.season, last.round]).toEqual([s.to!.season, s.to!.round]);
+    }
+  });
+
+  it('is a run of wins bracketed by losses, off `win?`', () => {
+    for (const s of winStreaks(all).slice(0, 10)) {
+      const run = winStreakRun(s.player, all)!;
+      expect(run.matches.every((m) => m.side.win && m.match.winner === m.side.team)).toBe(true);
+      if (run.before) expect(run.before.side.win).toBe(false);
+      if (run.after) expect(run.after.side.win).toBe(false);
+      expect(run.active ? run.after : run.next).toBeNull();
+    }
+  });
+
+  it('adds up from the matches it lists', () => {
+    const run = winStreakRun(winStreaks(all)[0].player, all)!;
+    expect(run.gamesFor).toBe(run.matches.reduce((t, m) => t + m.side.gamesFor, 0));
+    expect(run.gamesAgainst).toBe(run.matches.reduce((t, m) => t + m.opposition.gamesFor, 0));
+    expect(run.partners.reduce((t, p) => t + p.matches, 0)).toBe(
+      run.matches.reduce((t, m) => t + m.partners.length, 0)
+    );
+    expect(new Set(run.opponentsBeaten).size).toBe(run.opponentsBeaten.length);
+    expect(run.opponentsBeaten).not.toContain(run.player);
+  });
+
+  it('only offers a next fixture that is drawn and unplayed, with him in it', () => {
+    for (const s of winStreaks(all).filter((x) => x.active)) {
+      const next = winStreakRun(s.player, all)!.next;
+      if (!next) continue;
+      expect(next.match.scheduled).toBe(true);
+      expect(next.side.players.map((p) => p.player)).toContain(s.player);
+    }
+  });
+
+  it('skips fill-in nights, same as winStreaks — they neither extend nor break a run', () => {
+    const rows = normalizeRows([
+      // `seasonMatches` needs both sides to call a match played.
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '1', Player: 'Hero', 'win?': 'TRUE' }),
+      raw({ Team: 'Red', Opponent: 'White', Season: '1', Round: '1', Player: 'Foe', 'win?': 'FALSE' }),
+      raw({ Team: 'Pink', Opponent: 'Navy', Season: '1', Round: '2', Player: 'Hero (Fill-in)', 'win?': 'FALSE' }),
+      raw({ Team: 'Navy', Opponent: 'Pink', Season: '1', Round: '2', Player: 'Foe', 'win?': 'TRUE' }),
+      raw({ Team: 'White', Opponent: 'Navy', Season: '1', Round: '3', Player: 'Hero', 'win?': 'TRUE' }),
+      raw({ Team: 'Navy', Opponent: 'White', Season: '1', Round: '3', Player: 'Foe', 'win?': 'FALSE' }),
+    ]);
+    expect(winStreakRun('Hero', rows)!.streak).toBe(2);
+    expect(winStreaks(rows).find((x) => x.player === 'Hero')!.streak).toBe(2);
+  });
+
+  it('is null for a player who has never won', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: '1', Player: 'Nope', 'win?': 'FALSE' }),
+      raw({ Team: 'Red', Opponent: 'White', Season: '1', Round: '1', Player: 'Foe', 'win?': 'TRUE' }),
+    ]);
+    expect(winStreakRun('Nope', rows)).toBeNull();
   });
 });

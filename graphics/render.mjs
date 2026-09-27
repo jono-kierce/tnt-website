@@ -20,7 +20,7 @@ import { basename, dirname, extname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { writeTokens, BRAND } from './lib/tokens.ts';
-import { seasonBoards, careerBoards } from './lib/boards.ts';
+import { seasonBoards, careerBoards, leaderBoards } from './lib/boards.ts';
 import {
   SealedVotesError,
   draftPayload,
@@ -35,9 +35,12 @@ import {
   rows as allRows,
   scoreboardPayload,
   pairBoardPayload,
+  pairSplitPayload,
+  pointsLadderPayload,
   mvpSimPayloads,
   statBoardPayload,
   streakBoardPayload,
+  streakStoryPayloads,
 } from './lib/payloads.ts';
 import { SITE } from '../src/config/site.ts';
 
@@ -62,6 +65,7 @@ const { values: argv } = parseArgs({
     subhead: { type: 'string' },
     eyebrow: { type: 'string' },
     pair: { type: 'string' },
+    player: { type: 'string' },
     sim: { type: 'string' },
     runs: { type: 'string' },
     career: { type: 'boolean', default: false },
@@ -77,7 +81,8 @@ TNT graphics renderer
   --round <r>      Round number, or QF / SF / F. Default: the season's latest
                    round in the CSV.
   --only <list>    Comma-separated: ladder, results, scoreboard, boards, draft,
-                   preview, streaks, headline, predictions, pair, mvpsim.
+                   preview, streaks, streakstory, headline, predictions,
+                   pair, mvpsim, leaders, pointsladder, pairsplit.
                    Default: ladder,results,scoreboard,boards
                    — draft, preview, streaks, headline, predictions and pair
                    are once-off posts, so they only render when asked.
@@ -87,6 +92,16 @@ TNT graphics renderer
                    pre-season picks); it needs no --round.
                    streaks is the all-time record book (longest win streaks);
                    it needs no --season or --round.
+                   streakstory is one player's streak as a carousel — see
+                   below.
+                   leaders is the season's winners, unforced errors, aces
+                   and errors forced — each as a total and per match, eight
+                   stat boards in all.
+                   pointsladder ranks the season's teams by share of points
+                   won (every point rebuilt from the stat sheets) beside
+                   their real ladder position.
+                   pairsplit is "ball hogs": each pair's share of
+                   their point-ending shots, most lopsided first.
                    pair is two players' record as team-mates; it needs --pair
                    and no --season or --round.
                    preview needs no --round: it defaults to the next round
@@ -122,6 +137,17 @@ MVP simulation (--only mvpsim) — the MVP race as a Monte Carlo projection:
                    vote-derived board it is NOT refused for a sealed season —
                    a projection is not the tally. See mvpSimPayloads().
 
+Streak story (--only streakstory) — one win streak as a swipeable carousel:
+
+  --player <name>  Whose streak. Default: the longest live streak in the CSV.
+  --photos <list>  Optional comma-separated overrides, cover first then one per
+                   chapter; blank entries keep the manifest's pick:
+                   --photos "cover.jpg,,s5.jpg". Default: from photos.yaml.
+
+                   Cover, the loss it began after, one chapter per season and
+                   team, then the record book and the next fixture — with a
+                   W-chip rail along the foot of every slide.
+
 Headline card (--only headline) — an ad-hoc news/banter post:
 
   --headline <s>   The big headline (required for the headline card).
@@ -143,7 +169,7 @@ if (!Number.isFinite(season)) {
 // `draft` and `preview` are deliberately not in the default set — a draft is a
 // once-a-season post, and a preview is a once-a-week one you ask for the day
 // before, not something every CI push should render.
-const KINDS = ['ladder', 'results', 'scoreboard', 'boards', 'draft', 'preview', 'streaks', 'headline', 'predictions', 'pair', 'mvpsim'];
+const KINDS = ['ladder', 'results', 'scoreboard', 'boards', 'draft', 'preview', 'streaks', 'streakstory', 'headline', 'predictions', 'pair', 'mvpsim', 'leaders', 'pointsladder', 'pairsplit'];
 const only = new Set(
   (argv.only ?? 'ladder,results,scoreboard,boards').split(',').map((s) => s.trim()).filter(Boolean)
 );
@@ -155,7 +181,7 @@ if (unknown.length) {
 
 // A draft happens before a ball is hit, so it needs no round — and a season
 // that has only been drafted has no rows to infer one from.
-const needsRound = ['ladder', 'results', 'scoreboard', 'boards'].some((k) => only.has(k));
+const needsRound = ['ladder', 'results', 'scoreboard', 'boards', 'leaders', 'pointsladder', 'pairsplit'].some((k) => only.has(k));
 const latest = latestRound(season);
 if (needsRound && !latest && argv.round === undefined) {
   // A season whose draw is in the CSV but whose first night hasn't happened is
@@ -331,6 +357,20 @@ if (only.has('streaks')) {
   await shoot('streak-board.html', streakBoardPayload(), 'longest-win-streaks.png');
 }
 
+if (only.has('streakstory')) {
+  // One player's streak, slide by slide — all-time like streaks, so no season
+  // and no round. `--photos` here is a list, not a folder: cover, then chapters.
+  const [cover, ...chapters] = (argv.photos ?? '').split(',').map((s) => s.trim() || undefined);
+  const slides = await streakStoryPayloads(argv.player, { cover, chapters });
+  const who = slides[0].player.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  for (const s of slides) {
+    if (s.slide !== 'before' && !s.photo && s.slide !== 'record') {
+      warnings.push(`streak story ${s.index} (${s.slide}): no photo for ${s.player} — rendered without one.`);
+    }
+    await shoot('streak-story.html', s, `streak-${who}-${s.index}-${s.slide}.png`);
+  }
+}
+
 if (only.has('pair')) {
   // A partnership, all-time — no season, no round, like streaks. The board
   // carries votes and BOG, so a pair who played together in a sealed season is
@@ -423,6 +463,28 @@ if (only.has('ladder')) {
   await shoot('ladder.html', await ladderPayload(season, round), `${stem}-ladder.png`);
 }
 
+if (only.has('pointsladder')) {
+  // Points won, not matches won — the ladder's sibling, from src/lib/points.ts.
+  const payload = await pointsLadderPayload(season, round);
+  if (!payload.rows.length) {
+    warnings.push(`No countable matches for season ${season} up to ${round.label} — points ladder skipped.`);
+  } else {
+    await shoot('points-ladder.html', payload, `${stem}-points-ladder.png`);
+  }
+}
+
+if (only.has('pairsplit')) {
+  const payload = await pairSplitPayload(season, round);
+  if (!payload.rows.length) {
+    warnings.push(`No pair has a countable match together in season ${season} — pair split skipped.`);
+  } else {
+    for (const r of payload.rows.filter((r) => r.matches < 3)) {
+      warnings.push(`pair split: ${r.players.map((p) => p.name).join(' & ')} (${r.team}) have only ${r.matches} match${r.matches === 1 ? '' : 'es'} together — flagged on the board.`);
+    }
+    await shoot('pair-split.html', payload, `${stem}-pair-split.png`);
+  }
+}
+
 if (only.has('results')) {
   const cards = await resultCardPayloads(season, round);
   if (!cards.length) {
@@ -463,8 +525,7 @@ if (only.has('scoreboard')) {
   }
 }
 
-if (only.has('boards')) {
-  const specs = [...seasonBoards(season), ...(argv.career ? careerBoards() : [])];
+async function shootBoards(specs) {
   for (const spec of specs) {
     let payload;
     try {
@@ -481,8 +542,23 @@ if (only.has('boards')) {
       warnings.push(`Skipped "${spec.title}" — no player qualifies yet.`);
       continue;
     }
+    if (spec.showPhoto && !payload.hero) {
+      warnings.push(
+        `"${spec.title}" (${spec.id}) has no ${spec.season ? `season ${spec.season} ` : ''}` +
+          `solo photo of ${payload.rows[0].player} in content/photos/photos.yaml — ` +
+          `rendered without the spotlight.`
+      );
+    }
     await shoot('stat-board.html', payload, `${stem}-stat-${spec.id}.png`);
   }
+}
+
+if (only.has('boards')) {
+  await shootBoards([...seasonBoards(season), ...(argv.career ? careerBoards() : [])]);
+}
+
+if (only.has('leaders')) {
+  await shootBoards(leaderBoards(season));
 }
 
 await browser.close();

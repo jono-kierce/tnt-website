@@ -77,35 +77,124 @@
     font-size: 42px; font-weight: 700; line-height: 1.05;
   }
 
-  /* ---- Hero band: the leader, pictured. Absent when there's no photo. ---- */
-  .hero {
-    flex: none; display: none; align-items: flex-end; gap: 32px;
-    height: 300px; margin-top: 18px; padding-top: 20px;
-    border-top: 2px solid var(--gold);
-  }
-  .canvas.has-hero .hero { display: flex; }
+  /* ==========================================================================
+     Spotlight — the leader, pictured. Only when the payload carries a photo;
+     without one the board above is the whole design.
 
-  .hero-text { flex: 1; padding-bottom: 12px; }
-  .hero-kicker {
-    font-family: var(--display); font-weight: 600; font-size: 22px;
+     The photo bleeds off the top-right corner and dissolves into the page on
+     its left and bottom edges (two masks, intersected), with the leader's team
+     colour glowing up out of the dark behind it. #1 leaves the table and
+     becomes the headline act; #2 onwards run beneath.
+     ========================================================================== */
+  .spot { display: none; }
+  .lead { display: none; }
+
+  .canvas.has-hero .spot {
+    display: block;
+    position: absolute; z-index: 1; top: 0; right: 0;
+    width: 640px; height: 690px;
+  }
+  /* The team glow, behind the photo — only visible where the mask lets the
+     page through, so it reads as light spilling out of the frame. */
+  .spot-glow {
+    position: absolute; inset: 40px -40px 60px -120px;
+    background:
+      radial-gradient(ellipse 55% 50% at 40% 58%,
+        color-mix(in srgb, var(--team) 26%, transparent), transparent 70%);
+  }
+  .spot-photo {
+    position: absolute; inset: 0;
+    -webkit-mask-image:
+      linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.3) 26%, #000 56%),
+      linear-gradient(0deg, transparent 0%, #000 36%);
+    -webkit-mask-composite: source-in;
+    mask-image:
+      linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.3) 26%, #000 56%),
+      linear-gradient(0deg, transparent 0%, #000 36%);
+    mask-composite: intersect;
+  }
+  .spot-photo img {
+    width: 100%; height: 100%; display: block;
+    object-fit: cover; object-position: 50% 40%;
+    filter: brightness(1.12) contrast(1.08) saturate(1.06);
+  }
+  /* Darken the top edge so the crest reads over whatever the photo has there. */
+  .spot-photo::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(5,11,7,0.7) 0%, rgba(5,11,7,0) 22%);
+  }
+  .canvas.cutout .spot-photo img { object-fit: contain; object-position: bottom center; filter: none; }
+
+  /* Header, re-set for the left column. The title stacks — "Unforced / Errors"
+     — rather than shrinking to fit a line it no longer has room for. */
+  .canvas.has-hero header .mark { top: -40px; width: 84px; }
+  .canvas.has-hero .headline { max-width: 540px; line-height: 0.92; }
+  .canvas.has-hero .sub { max-width: 470px; font-size: 24px; line-height: 1.35; margin-top: 16px; }
+  .canvas.has-hero .rule-gold { display: none; }
+  .canvas.has-hero .thead { display: none; }
+
+  .canvas.has-hero .lead {
+    display: block; flex: none;
+    margin-top: 40px; padding: 4px 0 6px 30px;
+    max-width: 600px; position: relative;
+  }
+  .lead::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 8px;
+    border-radius: 4px;
+    background: linear-gradient(180deg, var(--team), var(--team-2));
+    box-shadow: 0 0 24px color-mix(in srgb, var(--team) 50%, transparent);
+  }
+  .lead.no-team::before { background: rgba(244, 241, 232, 0.18); box-shadow: none; }
+  .lead-kicker {
+    display: flex; align-items: center; gap: 18px;
+    font-family: var(--display); font-weight: 700; font-size: 22px;
     letter-spacing: 0.34em; text-transform: uppercase; color: var(--gold);
   }
-  .hero-name {
-    font-family: var(--display); font-weight: 700; font-size: 62px;
-    line-height: 1.02; text-transform: uppercase; margin-top: 12px;
+  .lead-team {
+    font-family: var(--body); font-weight: 600; font-size: 20px; letter-spacing: 0.24em;
+    color: rgba(244, 241, 232, 0.55);
   }
-  .hero-value { font-size: 40px; font-weight: 600; color: var(--gold-soft); margin-top: 8px; }
+  .lead-team::before { content: '·'; margin-right: 18px; color: rgba(217, 185, 106, 0.6); }
+  .lead-first {
+    font-family: var(--display); font-weight: 600; font-size: 38px;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold-soft);
+    margin-top: 16px; line-height: 1;
+  }
+  .lead-last {
+    font-family: var(--display); font-weight: 700; font-size: 80px;
+    letter-spacing: 0.03em; text-transform: uppercase; line-height: 0.95;
+    white-space: nowrap; margin-top: 4px;
+    text-shadow: 0 4px 30px rgba(0, 0, 0, 0.55);
+  }
+  .lead-figure { display: flex; align-items: flex-end; gap: 22px; margin-top: 28px; }
+  .lead-num {
+    font-family: var(--display); font-weight: 700; font-size: 138px;
+    line-height: 0.78; letter-spacing: -0.01em; color: var(--gold);
+    text-shadow: 0 6px 36px rgba(0, 0, 0, 0.55);
+  }
+  /* Leading a board nobody wants to lead doesn't get the gold. */
+  .lead.bad .lead-num { color: var(--tone-3); }
+  .lead-unit {
+    padding-bottom: 4px;
+    font-size: 24px; font-weight: 600; letter-spacing: 0.2em; line-height: 1.25;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.62);
+  }
+  .lead-coverage { font-size: 19px; letter-spacing: 0.12em; text-transform: uppercase;
+                   color: rgba(244, 241, 232, 0.38); margin-top: 10px; }
 
-  .hero-photo { width: 300px; height: 100%; flex: none; position: relative; }
-  .hero-photo img { width: 100%; height: 100%; object-fit: cover; object-position: center 22%;
-                    border-radius: 10px; border: 1px solid var(--rule); }
-  /* A true cut-out (transparent PNG) stands on the baseline unframed; an
-     ordinary photo gets the frame, because pretending it's a cut-out just
-     looks like a mistake. */
-  .canvas.cutout .hero-photo img {
-    object-fit: contain; object-position: bottom center;
-    border: 0; border-radius: 0;
+  /* The chasing pack. A touch tighter than the plain board — seven rows where
+     it had ten, but less canvas to put them in. */
+  .canvas.has-hero .rows {
+    margin-top: 34px; border-top: 2px solid var(--rule-strong);
   }
+  .canvas.has-hero .row:first-child { border-top: 0; }
+  .canvas.has-hero .name { font-size: 38px; }
+  .canvas.has-hero .bar { height: 44px; }
+  .canvas.has-hero .pos { font-size: 34px; }
+  .canvas.has-hero .chip-value { font-size: 36px; min-width: 132px; padding: 6px 20px 8px; }
+  .canvas.has-hero .coverage { font-size: 17px; }
+  /* The podium is #2 and #3 now — #1 has the spotlight. */
+  .canvas.has-hero .row:nth-child(n+3) .pos { color: rgba(244, 241, 232, 0.45); }
 
   footer {
     flex: none; display: flex; justify-content: space-between; align-items: flex-end;
@@ -124,6 +213,10 @@
 </head>
 <body>
 <div class="canvas grain vignette" id="canvas">
+  <div class="spot" id="spot">
+    <div class="spot-glow"></div>
+    <div class="spot-photo"><img id="spot-img" alt=""></div>
+  </div>
   <header>
     <div class="mark mark--crest"></div>
     <div class="eyebrow" id="eyebrow"></div>
@@ -131,6 +224,17 @@
     <div class="sub" id="subtitle"></div>
     <div class="rule-gold"></div>
   </header>
+
+  <div class="lead" id="lead">
+    <div class="lead-kicker"><span id="lead-rank">No. 1</span><span class="lead-team" id="lead-team"></span></div>
+    <div class="lead-first" id="lead-first"></div>
+    <div class="lead-last" id="lead-last"></div>
+    <div class="lead-figure">
+      <div class="lead-num" id="lead-num"></div>
+      <div class="lead-unit" id="lead-unit"></div>
+    </div>
+    <div class="lead-coverage" id="lead-coverage"></div>
+  </div>
 
   <div class="thead">
     <div class="c-pos">#</div>
@@ -141,15 +245,6 @@
 
   <div class="rows" id="rows"></div>
 
-  <div class="hero">
-    <div class="hero-text">
-      <div class="hero-kicker">Leading the way</div>
-      <div class="hero-name" id="hero-name"></div>
-      <div class="hero-value" id="hero-value"></div>
-    </div>
-    <div class="hero-photo"><img id="hero-photo" alt=""></div>
-  </div>
-
   <footer>
     <div class="wordmark">Tuesday Night Tennis</div>
     <div class="footnote" id="footnote"></div>
@@ -158,21 +253,30 @@
 
 <script type="module">
 const DATA = {
-  eyebrow: 'All time',
-  title: 'Winners Per Set',
-  subtitle: 'Every season · finals included',
-  metricLabel: 'Winners / set',
+  eyebrow: 'Season 5 · 2026',
+  title: 'Unforced Errors',
+  subtitle: 'Per match · home & away',
+  metricLabel: 'Per match',
   footnote: 'Fill-in matches excluded · Min. 4 matches',
   rows: [
-    { rank: 1, player: 'Charlie Simpson',  team: 'Navy',       value: '5.64', tone: 0.00, coverage: '11 of 15 matches' },
-    { rank: 2, player: 'Jonathan Kierce',  team: 'White',      value: '5.44', tone: 0.11, coverage: '32 of 43 matches' },
-    { rank: 3, player: 'Adam Dickson',     team: 'Green',      value: '4.70', tone: 0.52, coverage: '10 of 11 matches' },
-    { rank: 4, player: 'Ethan Seamer',     team: 'Light Blue', value: '4.57', tone: 0.59, coverage: '30 of 36 matches' },
-    { rank: 5, player: 'Lachlan Jenkin',   team: 'Navy',       value: '4.53', tone: 0.61, coverage: '15 of 19 matches' },
-    { rank: 6, player: 'Jimmy Gorton',     team: 'Orange',     value: '4.36', tone: 0.71, coverage: '28 of 37 matches' },
-    { rank: 7, player: 'Will Mumme',       team: 'Yellow',     value: '4.26', tone: 1.00, coverage: '27 of 30 matches' },
+    { rank: 1, player: 'Ed Simpson',      team: 'Navy',       value: '10.40', tone: 1.00, coverage: null },
+    { rank: 2, player: 'Ted Angel',       team: 'Brown',      value: '9.80',  tone: 0.76, coverage: null },
+    { rank: 3, player: 'Ethan Seamer',    team: 'Light Blue', value: '9.17',  tone: 0.52, coverage: null },
+    { rank: 4, player: 'Jimmy Gorton',    team: 'Orange',     value: '9.00',  tone: 0.46, coverage: null },
+    { rank: 5, player: 'Lachy Godden',    team: 'Orange',     value: '8.80',  tone: 0.38, coverage: null },
+    { rank: 6, player: 'Charlie Simpson', team: 'Pink',       value: '8.50',  tone: 0.27, coverage: null },
+    { rank: 7, player: 'Shayl Inlander',  team: 'Light Blue', value: '8.50',  tone: 0.27, coverage: '4 of 5 matches' },
+    { rank: 8, player: 'Adam Dickson',    team: 'Brown',      value: '8.40',  tone: 0.00, coverage: null },
   ],
-  hero: null,
+  // Relative to this file, so the sample renders straight off disk. Set
+  // `hero: null` to design the plain board.
+  hero: {
+    player: 'Ed Simpson',
+    value: '10.40',
+    unit: 'Unforced Errors / match',
+    photo: '../../content/photos/season-5/ed-backhand.JPG',
+    cutout: false,
+  },
 };
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -228,33 +332,90 @@ function fitHeadline(el, max = 88, min = 52) {
   el.style.whiteSpace = 'normal';
 }
 
-window.__render = function (d) {
-  document.getElementById('eyebrow').textContent = d.eyebrow;
-  document.getElementById('title').textContent = d.title;
-  fitHeadline(document.getElementById('title'));
-  document.getElementById('subtitle').textContent = d.subtitle;
-  document.getElementById('metric-label').textContent = d.metricLabel;
-  document.getElementById('footnote').textContent = d.footnote;
+/**
+ * The spotlight's title stacks onto two lines in a narrow column, so it fits
+ * by the longest *word* rather than the whole string: as big as it goes with
+ * no word overflowing and no third line.
+ */
+function fitStacked(el, max = 96, min = 56) {
+  el.style.whiteSpace = 'normal';
+  for (let size = max; size >= min; size -= 2) {
+    el.style.fontSize = `${size}px`;
+    const lines = Math.round(el.scrollHeight / (size * 0.92));
+    if (el.scrollWidth <= el.clientWidth && lines <= 2) return;
+  }
+}
 
-  document.getElementById('rows').innerHTML = d.rows.map((r) => `
+/** One line, shrunk until it's no wider than `width`. */
+function fitWidth(el, width, max, min) {
+  for (let size = max; size >= min; size -= 2) {
+    el.style.fontSize = `${size}px`;
+    if (el.scrollWidth <= width) return;
+  }
+}
+
+const rowHtml = (r, rank = r.rank) => `
     <div class="row ${r.team ? '' : 'no-team'}" ${r.team ? `data-team="${esc(r.team)}"` : ''}
          style="--chip: ${toneColor(r.tone)}">
-      <div class="pos">${r.rank}</div>
+      <div class="pos">${rank}</div>
       <div class="bar"></div>
       <div class="who">
         <div class="name">${esc(r.player)}</div>
         ${r.coverage ? `<div class="coverage">${esc(r.coverage)}</div>` : ''}
       </div>
       <div class="chip-wrap"><div class="chip-value">${esc(r.value)}</div></div>
-    </div>`).join('');
+    </div>`;
 
+window.__render = function (d) {
   const canvas = document.getElementById('canvas');
-  canvas.classList.toggle('has-hero', !!d.hero);
-  canvas.classList.toggle('cutout', !!d.hero?.cutout);
-  if (d.hero) {
-    document.getElementById('hero-name').textContent = d.hero.player;
-    document.getElementById('hero-value').textContent = `${d.hero.value} ${d.metricLabel}`;
-    document.getElementById('hero-photo').src = d.hero.photo;
+  const hero = d.hero && d.rows.length ? d.hero : null;
+  canvas.classList.toggle('has-hero', !!hero);
+  canvas.classList.toggle('cutout', !!hero?.cutout);
+
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  const title = document.getElementById('title');
+  title.textContent = d.title;
+  title.style.whiteSpace = '';
+  if (hero) fitStacked(title); else fitHeadline(title);
+  document.getElementById('subtitle').textContent = d.subtitle;
+  document.getElementById('metric-label').textContent = d.metricLabel;
+  document.getElementById('footnote').textContent = d.footnote;
+
+  // With a spotlight, #1 is up top and the table starts at #2 — unless #2 has
+  // the same number, in which case the spotlight is only half the story: the
+  // kicker says "Joint" and the players level with the leader print as =1.
+  // Equal printed values are the test, since that's what the reader compares.
+  const tied = (r) => hero && r.value === d.rows[0].value;
+  document.getElementById('rows').innerHTML = (hero ? d.rows.slice(1) : d.rows)
+    .map((r) => rowHtml(r, tied(r) ? '=1' : r.rank)).join('');
+
+  if (hero) {
+    const top = d.rows[0];
+    const lead = document.getElementById('lead');
+    const spot = document.getElementById('spot');
+    for (const el of [lead, spot]) {
+      if (top.team) el.dataset.team = top.team; else delete el.dataset.team;
+    }
+    lead.classList.toggle('no-team', !top.team);
+    // Tone 1 is the bad end: leading the unforced errors takes red, not gold.
+    lead.classList.toggle('bad', top.tone >= 0.5);
+
+    const words = hero.player.trim().split(/\s+/);
+    const last = words.length > 1 ? words.pop() : words[0];
+    document.getElementById('lead-first').textContent = words.length && words[0] !== last ? words.join(' ') : '';
+    const lastEl = document.getElementById('lead-last');
+    lastEl.textContent = last;
+    fitWidth(lastEl, 560, 80, 48);
+
+    document.getElementById('lead-team').textContent = top.team ?? '';
+    document.getElementById('lead-rank').textContent =
+      d.rows.length > 1 && tied(d.rows[1]) ? 'Joint No. 1' : 'No. 1';
+    const num = document.getElementById('lead-num');
+    num.textContent = hero.value;
+    fitWidth(num, 420, 138, 80);
+    document.getElementById('lead-unit').innerHTML = esc(hero.unit ?? d.metricLabel).replace(/ \/ /, '<br>per ');
+    document.getElementById('lead-coverage').textContent = top.coverage ?? '';
+    document.getElementById('spot-img').src = hero.photo;
   }
 };
 

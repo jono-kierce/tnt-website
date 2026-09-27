@@ -81,7 +81,7 @@ export const SITE = {
 
   /** Serve stats were only recorded in Season 1. */
   serveStatsSeason: 1,
-  /** Errors Forced was recorded from this season onward. */
+  /** Errors Forced was recorded from this season onward (plus the S1 finals). */
   errorsForcedFromSeason: 2,
 
   /** Minimum games for a player to qualify on per-game leaderboards. */

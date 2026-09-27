@@ -16,19 +16,28 @@ import {
   scoreboardPayload,
   seasonRounds,
   pairBoardPayload,
+  pairSplitPayload,
+  pointsLadderPayload,
   mvpSimPayloads,
   statBoardPayload,
   streakBoardPayload,
+  streakStoryPayloads,
+  leaderPhoto,
 } from './payloads.ts';
 import { ANALYSTS } from './predictions.ts';
+import { leaderBoards } from './boards.ts';
 import {
   ladderWithPairings,
   winStreaks,
+  winStreakRun,
   pairRecord,
+  playerAgg,
+  allPlayers,
   seasonRounds as matchRounds,
 } from '../../src/lib/stats.ts';
 import { SITE, TEAMS } from '../../src/config/site.ts';
 import { getSeasonConfig } from './season-configs.ts';
+import { pairSplit, teamPoints } from '../../src/lib/points.ts';
 
 /** Compact "6 7" / "4 6³" for asserting on a whole side at once. */
 const line = (sets: { games: string; tiebreak: string | null }[]) =>
@@ -420,6 +429,57 @@ describe('stat boards', () => {
   });
 });
 
+describe('leader boards', () => {
+  it('prints a per-match rate that really is per match', () => {
+    // The "per match" boards are per-set rates over the home-and-away season,
+    // which is only the same number while every Tuesday match is one set. If a
+    // season ever plays H&A over more, this fails before the label lies.
+    for (const season of [2, 3, 4, 5]) {
+      for (const p of allPlayers(rows)) {
+        const agg = playerAgg(p, rows, { season, scope: 'regular' });
+        for (const stat of ['winners', 'unforcedErrors', 'aces', 'errorsForced'] as const) {
+          expect(agg.tally[stat].sets, `${p} S${season} ${stat}`).toBe(agg.tally[stat].games);
+        }
+      }
+    }
+  });
+
+  it('pairs a total with a per-match board for each stat, home and away only', () => {
+    const specs = leaderBoards(5);
+    expect(specs).toHaveLength(8);
+    for (const spec of specs) expect(spec.scope).toBe('regular');
+    const perMatch = specs.filter((s) => s.perSet);
+    expect(perMatch.map((s) => s.stat)).toEqual(
+      specs.filter((s) => !s.perSet).map((s) => s.stat)
+    );
+    // Only unforced errors wear the flipped ramp.
+    expect(specs.filter((s) => s.polarity === 'low').map((s) => s.stat)).toEqual([
+      'unforcedErrors',
+      'unforcedErrors',
+    ]);
+    for (const spec of specs) expect(statBoardPayload(spec).rows.length).toBeGreaterThan(0);
+  });
+
+  it('pictures the leader only with a solo photo from the board\'s own season', () => {
+    for (const spec of leaderBoards(5)) {
+      const b = statBoardPayload(spec);
+      if (!b.hero) continue;
+      const photo = leaderPhoto(b.rows[0].slug, 5, spec.photoIndex)!;
+      expect(photo.season).toBe(5);
+      expect(photo.players).toEqual([b.rows[0].slug]);
+      expect(b.hero.photo).toContain(encodeURI(photo.file));
+      // #1 is the spotlight and #2–#8 sit beneath it.
+      expect(b.rows).toHaveLength(8);
+    }
+    // No photo from the board's season means no spotlight, never an older
+    // frame: Charlie has photos from S1 and S5, and none from S2.
+    expect(leaderPhoto('charlie-simpson', 5)?.season).toBe(5);
+    expect(leaderPhoto('charlie-simpson', 2)).toBeNull();
+    // A career board takes the avatar, same as the site.
+    expect(leaderPhoto('charlie-simpson')).not.toBeNull();
+  });
+});
+
 describe('streak board', () => {
   it('mirrors the site’s winStreaks: same order and counts', () => {
     const p = streakBoardPayload();
@@ -712,5 +772,108 @@ describe('MVP simulation board', () => {
     // And a run count is optional — the model may not report one.
     const bare = await mvpSimPayloads(write('i.csv', SAMPLE), 5, resolveRound('5'));
     expect(bare.slides[0].subtitle).toBe('Simulated · After Round 5');
+  });
+});
+
+describe('streak story', () => {
+  it('tells the longest live streak by default, and every slide agrees on it', async () => {
+    const live = winStreaks(rows).find((s) => s.active)!;
+    const run = winStreakRun(live.player, rows)!;
+    const slides = await streakStoryPayloads();
+    expect(slides.every((s) => s.player === live.player)).toBe(true);
+    expect(slides.map((s) => s.index)).toEqual(slides.map((_, i) => i + 1));
+    expect(slides.every((s) => s.total === slides.length)).toBe(true);
+
+    const cover = slides.find((s) => s.slide === 'cover')!;
+    expect(cover.slide === 'cover' && cover.streak).toBe(run.streak);
+  });
+
+  it('shares one rail, and lights each chapter\'s own wins', async () => {
+    const slides = await streakStoryPayloads();
+    const chips = slides[0].rail.chips;
+    expect(slides.every((s) => JSON.stringify(s.rail.chips) === JSON.stringify(chips))).toBe(true);
+    for (const s of slides) {
+      if (s.slide !== 'chapter') continue;
+      const [a, b] = s.rail.lit;
+      expect(chips.slice(a, b + 1).map((c) => c.n)).toEqual(s.matches.map((m) => m.n));
+    }
+  });
+
+  it('chapters add back up to the whole streak, all wins', async () => {
+    const slides = await streakStoryPayloads();
+    const matches = slides.flatMap((s) => (s.slide === 'chapter' ? s.matches : []));
+    const cover = slides[0];
+    expect(cover.slide === 'cover' && matches.length).toBe(cover.slide === 'cover' && cover.streak);
+    expect(matches.every((m) => m.won)).toBe(true);
+    expect(matches.map((m) => m.n)).toEqual(matches.map((_, i) => i + 1));
+  });
+
+  it('puts the record book in the same order as the site', async () => {
+    const slides = await streakStoryPayloads();
+    const rec = slides.at(-1)!;
+    expect(rec.slide).toBe('record');
+    if (rec.slide !== 'record') return;
+    expect(rec.rows.map((r) => [r.player, r.streak])).toEqual(
+      winStreaks(rows).slice(0, 5).map((s) => [s.player, s.streak])
+    );
+  });
+});
+
+describe('points ladder', () => {
+  it('prints the shares points.ts computed, best first, beside the site ladder', async () => {
+    const p = await pointsLadderPayload(4, resolveRound('9'));
+    const table = teamPoints(rows, 4);
+    expect(p.rows.map((r) => r.team)).toEqual(table.map((t) => t.team));
+    expect(p.rows.map((r) => r.share)).toEqual(table.map((t) => `${(t.share * 100).toFixed(1)}%`));
+    expect(p.rows.map((r) => [r.won, r.lost])).toEqual(table.map((t) => [t.won, t.lost]));
+
+    // The ladder column is the real ladder, and the gap is just the two ranks.
+    const site = ladderWithPairings(4, rows, () => undefined);
+    for (const r of p.rows) {
+      const l = site.find((s) => s.team === r.team)!;
+      expect(r.gap).toBe(l.rank - r.rank);
+    }
+    // S4's 8-0 champions were second on points, behind Green.
+    expect(p.rows.slice(0, 2).map((r) => r.team)).toEqual(['Green', 'Pink']);
+  });
+
+  it('leaves a withdrawn team off, as the ladder does', async () => {
+    const p = await pointsLadderPayload(5, resolveRound('6'));
+    expect(p.rows.map((r) => r.team)).not.toContain('Black');
+    expect(p.rows).toHaveLength(9);
+  });
+
+  it('counts only the rounds played by then', async () => {
+    const early = await pointsLadderPayload(5, resolveRound('2'));
+    expect(early.rows.map((r) => [r.team, r.won, r.lost])).toEqual(
+      teamPoints(rows.filter((r) => r.round <= 2), 5)
+        .filter((t) => t.team !== 'Black')
+        .map((t) => [t.team, t.won, t.lost])
+    );
+  });
+});
+
+describe('pair split', () => {
+  it('prints what pairSplit returned, heavier hitter first, most lopsided first', async () => {
+    const p = await pairSplitPayload(5, resolveRound('6'));
+    const pink = p.rows.find((r) => r.team === 'Pink')!;
+    const split = pairSplit(rows, 'Charlie Simpson', 'Damon Maurice', { season: 5, scope: 'regular' })!;
+    expect(pink.matches).toBe(split.matches);
+    expect(pink.players.map((x) => x.name)).toEqual(['C. Simpson', 'D. Maurice']);
+    expect(pink.players[0].pct).toBeCloseTo(split.shares[0] * 100);
+
+    const tops = p.rows.map((r) => r.players[0].pct);
+    expect(tops).toEqual([...tops].sort((a, b) => b - a));
+    for (const r of p.rows) expect(r.players[0].pct).toBeGreaterThanOrEqual(r.players[1].pct);
+  });
+
+  it('takes the present-tense pair, and drops a withdrawn team', async () => {
+    const p = await pairSplitPayload(5, resolveRound('6'));
+    expect(p.rows.map((r) => r.team)).not.toContain('Black');
+    // Green read Feikema & Hume from round five, not the drafted Mossman.
+    expect(p.rows.find((r) => r.team === 'Green')!.players.map((x) => x.name).sort()).toEqual([
+      'A. Hume',
+      'Q. Feikema',
+    ]);
   });
 });

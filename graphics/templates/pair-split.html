@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Ball Hogs (A / Broadsheet)</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  /* One split bar per pair: the heavier hitter's share in the team colour from
+     the left, the partner's in paper from the right, a gold tick at even. */
+  header { flex: none; }
+  .eyebrow { margin-top: -64px; }
+  .headline { font-size: 88px; margin-top: 16px; }
+  .sub { margin-top: 14px; font-size: 24px; }
+  .rule-gold {
+    height: 2px; margin-top: 26px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  .rows { flex: 1; display: flex; flex-direction: column; padding-top: 12px; }
+
+  .row {
+    flex: 1;
+    display: flex; flex-direction: column; justify-content: center; gap: 9px;
+    padding: 0 8px;
+    border-top: 1px solid var(--rule);
+  }
+  .row:first-child { border-top: 0; }
+
+  .names {
+    display: flex; align-items: baseline; gap: 14px;
+    font-size: 30px; font-weight: 500; letter-spacing: 0.015em;
+  }
+  .names .pct { font-weight: 700; font-size: 34px; }
+  .names .left .pct { color: var(--gold-soft); margin-right: 10px; }
+  .names .right { margin-left: auto; color: rgba(244, 241, 232, 0.72); }
+  .names .right .pct { margin-left: 10px; color: rgba(244, 241, 232, 0.72); }
+  .names .n {
+    font-size: 17px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase;
+    color: rgba(244, 241, 232, 0.4);
+  }
+  /* A pair that has barely shared a court: say so, don't hide it. */
+  .row.thin .n { color: var(--tone-2); }
+
+  .split {
+    position: relative; height: 24px; border-radius: 12px; overflow: hidden;
+    background: rgba(244, 241, 232, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(244, 241, 232, 0.2);
+  }
+  .split .fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: linear-gradient(90deg, var(--team-2), var(--team));
+  }
+  .split .even {
+    position: absolute; left: 50%; top: -2px; bottom: -2px; width: 3px;
+    transform: translateX(-50%); background: var(--gold);
+  }
+
+  footer {
+    flex: none; display: flex; justify-content: space-between; align-items: flex-end;
+    padding-top: 22px; margin-bottom: -74px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+    white-space: nowrap; flex: none;
+  }
+  .footnote { max-width: 420px; text-align: right; font-size: 17px; line-height: 1.35; }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette">
+  <div class="mark mark--crest watermark"></div>
+
+  <header>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="rows" id="rows"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+    <div class="footnote" id="footnote"></div>
+  </footer>
+</div>
+
+<script type="module">
+/* Sample data, so this file opens straight in a browser and looks like the
+   real thing. `render.mjs` calls __render() again with the CSV's numbers. */
+const DATA = {
+  eyebrow: 'Season 5 · 2026',
+  title: 'Ball Hogs',
+  subtitle: 'Matches played together',
+  footnote: '',
+  rows: [
+    { team: 'Pink',       matches: 5, players: [{ name: 'C. Simpson', share: '75%', pct: 74.9 }, { name: 'D. Maurice', share: '25%', pct: 25.1 }] },
+    { team: 'White',      matches: 3, players: [{ name: 'J. Kierce', share: '62%', pct: 61.8 }, { name: 'J. Virgona', share: '38%', pct: 38.2 }] },
+    { team: 'Brown',      matches: 5, players: [{ name: 'A. Dickson', share: '58%', pct: 57.6 }, { name: 'T. Angel', share: '42%', pct: 42.4 }] },
+    { team: 'Light Blue', matches: 6, players: [{ name: 'E. Seamer', share: '58%', pct: 57.5 }, { name: 'S. Inlander', share: '42%', pct: 42.5 }] },
+    { team: 'Orange',     matches: 5, players: [{ name: 'J. Gorton', share: '57%', pct: 56.7 }, { name: 'L. Godden', share: '43%', pct: 43.3 }] },
+    { team: 'Yellow',     matches: 5, players: [{ name: 'L. Sharrock', share: '53%', pct: 52.7 }, { name: 'J. Raines', share: '47%', pct: 47.3 }] },
+    { team: 'Green',      matches: 2, players: [{ name: 'Q. Feikema', share: '53%', pct: 52.6 }, { name: 'A. Hume', share: '47%', pct: 47.4 }] },
+    { team: 'Navy',       matches: 5, players: [{ name: 'W. Mumme', share: '50%', pct: 50.3 }, { name: 'E. Simpson', share: '50%', pct: 49.7 }] },
+    { team: 'Red',        matches: 2, players: [{ name: 'L. Jenkin', share: '50%', pct: 50 }, { name: 'J. Harris', share: '50%', pct: 50 }] },
+  ],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/** Fewer matches together than this and the row owns up to a thin sample. */
+const THIN = 3;
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+  document.getElementById('subtitle').textContent = d.subtitle;
+  document.getElementById('footnote').textContent = d.footnote;
+
+  document.getElementById('rows').innerHTML = d.rows.map((r) => {
+    const [a, b] = r.players;
+    return `
+    <div class="row ${r.matches < THIN ? 'thin' : ''}" data-team="${esc(r.team)}">
+      <div class="names">
+        <span class="left"><span class="pct">${esc(a.share)}</span>${esc(a.name)}</span>
+        <span class="n">${r.matches} match${r.matches === 1 ? '' : 'es'}</span>
+        <span class="right">${esc(b.name)}<span class="pct">${esc(b.share)}</span></span>
+      </div>
+      <div class="split">
+        <div class="fill" style="width:${a.pct}%"></div>
+        <div class="even"></div>
+      </div>
+    </div>`;
+  }).join('');
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>
