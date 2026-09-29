@@ -94,7 +94,7 @@ export function siteSeasons(): number[] {
 }
 
 /** Teams that appear in a season, drawn or played. */
-export function seasonTeams(season: number): string[] {
+function seasonTeams(season: number): string[] {
   return [...new Set(allRows.filter((r) => r.season === season).map((r) => r.team))];
 }
 
@@ -150,11 +150,6 @@ export function defaultScheduleRound(season: number): SeasonRound | null {
   );
 }
 
-/** The next round with fixtures still to play, or null once a season is done. */
-export function nextRound(season: number): SeasonRound | null {
-  return nextScheduledRound(allRows, season);
-}
-
 /** Heading for the round, e.g. "Round 7", "Qualifying Finals", "The Final". */
 const ROUND_HEADING: Record<string, string> = {
   QF: 'Qualifying Finals',
@@ -163,7 +158,7 @@ const ROUND_HEADING: Record<string, string> = {
 };
 
 /** The display heading for a round, finals spelled out. */
-export function roundHeading(round: SeasonRound): string {
+function roundHeading(round: SeasonRound): string {
   return round.stage ? ROUND_HEADING[round.stage] : `Round ${round.roundLabel}`;
 }
 
@@ -186,7 +181,7 @@ export function headlineRound(season: number): {
 export interface FunStat { kicker: string; headline: string; detail: string; }
 
 /** Tabloid-voiced fun facts derived from the data, for the home rotator. */
-export function funStats(): FunStat[] {
+function funStats(): FunStat[] {
   const rec = records(rows);
   const out: FunStat[] = [];
 

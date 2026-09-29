@@ -216,7 +216,7 @@ function adjustVotes(
  * the `votes !== null` filter anyway, but a match nobody has played can't have
  * a best on ground, and that's worth saying rather than relying on.
  */
-export function deriveBog(rows: StatRow[]): void {
+function deriveBog(rows: StatRow[]): void {
   const groups = new Map<string, StatRow[]>();
   for (const r of rows) {
     if (r.scheduled) continue;

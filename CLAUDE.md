@@ -30,6 +30,7 @@ on push to `main`.
 npm run dev          # local dev at /tnt-website/
 npm run build        # static build -> dist/
 npm test             # vitest (stats + normalization unit tests)
+npm run typecheck    # tsc --noEmit over the .ts files (not .astro)
 npm run check-data   # validate the CSV: coverage, out-of-range votes, ambiguous rows, missing bios
 npm run ladder       # print derived ladders + pairings per season (sanity check)
 npm run optimize-photos          # downsize new photos for the web (add `-- --dry-run` first)
@@ -37,13 +38,14 @@ npm run build-logo   # logos/ -> public/logo/ (crest mask, favicon, share card)
 npm run graphics     # render this round's Instagram PNGs -> graphics/out/ (needs Node 22.18+)
 ```
 
-Node 20+, except `npm run graphics` which needs **Node 22.18+**: the renderer
-imports the site's `.ts` libraries directly and relies on built-in type
-stripping. `--experimental-strip-types` is used to run the `.ts` scripts
-directly; season configs use `import.meta.glob`, so they only load under Vite
-(Astro), not plain Node — `ladder`/`check-data` deliberately avoid importing
-them, and `graphics/lib/season-configs.ts` is a Node-safe re-implementation of
-that auto-discovery for the renderer.
+**Node 22.18+** (CI runs 24): `ladder`, `check-data` and the renderer import
+the site's `.ts` libraries directly and rely on Node's built-in type stripping,
+which Node 20 doesn't have. CI gates the deploy on `check-data`, `typecheck`
+and `test`, in that order. Season configs have two loaders over the same files:
+`src/config/seasons/index.ts` uses `import.meta.glob`, so it only loads under
+Vite (Astro), and `src/config/seasons/node.ts` discovers them with `readdir` +
+dynamic import for plain Node — `ladder`, `check-data` and the renderer (via
+the `graphics/lib/season-configs.ts` re-export) all use that one.
 
 ## Architecture
 
@@ -67,12 +69,16 @@ src/lib/ranks.ts         where a player sits in the field — the stat-panel bad
 src/lib/site-data.ts     page-facing helpers (season ladder, MVP tally, fun stats)
 src/lib/datetime.ts      formats the Start column for display — string in, string
                          out, never a Date (see Data conventions)
+src/lib/score.ts         scoreline display helpers (tiebreak formatting)
+src/lib/csv.ts           minimal CSV parser; content.ts renders owner markdown;
+                         url.ts builds base-path-aware links
 src/lib/photos.ts        photo manifest loader (content/photos/photos.yaml): tags,
                          captions, seasons, avatar pick. Node-safe — no import.meta.env
 src/lib/stats.test.ts    unit tests — keep these green
 src/config/site.ts       currentSeason, sealedVoteSeasons, seasonYears, team colours, thresholds
 src/config/aliases.ts    name alias map + slug/short-name helpers
 src/config/seasons/*.ts  per-season honours, captains, pairing order, finals bracket
+                         (index.ts = Vite loader, node.ts = plain-Node loader)
 src/pages, src/components  UI (Astro)
 content/                 bios, photos, recaps (owner-edited)
 scripts/copy-assets.mjs  copies CSV + photos into public/ at build (pre-dev/build);
@@ -466,13 +472,15 @@ share only a colour), and a label that's nearly always true says nothing.
   set as 5-5 for exactly that reason. A level set is a
   `check-data` warning, never an error: `win?` settles the match.
 - Most team **captains** are blank except S4 and Kierce's teams.
-- `npm run check-data` flags 2 ambiguous S1 R8 rows (Hume, Dickson — two
-  non-fill-in rows in one round); pre-existing data, left as-is.
+- A team can play twice in one round (S1 R8 Red, S5 R7 Pink). `check-data`
+  only calls a player's rows ambiguous when they duplicate within one match or
+  put him on two teams in one night.
 
 ### Deliberately not built (hooks left, nothing wired)
 
 - **Model accuracy tracker UI.** `backtest()` already returns every match with
   its pre-match call, so a "how the model is doing" page is a component away.
-- **Finals odds / Monte Carlo ladder.** `replay()` is deterministic and cheap,
-  so simulating the run home is tractable — but it needs a story about how to
+- **Finals odds / Monte Carlo ladder.** One `fitModel()` plus
+  `predictPair()` per remaining fixture is deterministic and cheap, so
+  simulating the run home is tractable — but it needs a story about how to
   present uncertainty, not just the numbers.

@@ -118,7 +118,7 @@ graphics/
     mvp-sim.ts         the external MVP projection CSV -> typed rows (the one
                        input that isn't data/alltimestats.csv)
     tokens.ts          TEAMS + brand constants -> templates/_tokens.css
-    season-configs.ts  season-N.ts under plain Node (the site's loader is Vite-only)
+    season-configs.ts  re-exports src/config/seasons/node.ts (season-N.ts under plain Node)
     payloads.test.ts   score parsing + payload building
   scripts/
     fetch-fonts.mjs    vendors the webfonts (run when a family changes)

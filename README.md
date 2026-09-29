@@ -32,7 +32,7 @@ npm run ladder     # print derived ladders + pairings for every season (sanity c
 npm run build-logo # regenerate public/logo/ from the artwork in logos/
 ```
 
-Requires Node 20+.
+Requires Node 22.18+.
 
 ---
 

@@ -242,15 +242,6 @@ export function seasonMatches(
   return [...out.values()].sort(byPlayingOrder);
 }
 
-/** The matches in one round of one season, played or scheduled. */
-export function roundMatches(
-  rows: StatRow[],
-  season: number,
-  round: number
-): MatchRecord[] {
-  return seasonMatches(rows, season).filter((m) => m.round === round);
-}
-
 export interface SeasonRound {
   round: number;
   stage: FinalsStage | null;
@@ -1280,7 +1271,7 @@ export type LeaderStat =
  * The Finals MVP is the exception in both directions — it only exists in
  * September, so its board is finals-only whichever mode you're in.
  */
-export const defaultScope = (stat: LeaderStat, perSet: boolean): StatScope =>
+const defaultScope = (stat: LeaderStat, perSet: boolean): StatScope =>
   stat === 'finalsVotes' ? 'finals'
   // Bagels want the quarter-finals in — a QF is one set, same as a Tuesday,
   // so it can end 6-0 the same way. `isBagelFor` drops the multi-set rounds

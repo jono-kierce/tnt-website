@@ -804,7 +804,7 @@ export function siteModel(): Model {
 }
 
 /** A played match's reconstructed pre-match prediction, by `MatchRecord.key`. */
-export function matchPrediction(key: string): MatchPrediction | undefined {
+function matchPrediction(key: string): MatchPrediction | undefined {
   return siteModel().byKey.get(key);
 }
 
@@ -819,9 +819,4 @@ export function predictionFor(m: MatchRecord): MatchPrediction {
   const known = matchPrediction(m.key);
   if (known) return known;
   return predictMatch(m, siteModel());
-}
-
-/** The model's final ratings, for a caller that wants the raw map. */
-export function ratingsFor(model: Model = siteModel()): Map<string, number> {
-  return model.skills;
 }

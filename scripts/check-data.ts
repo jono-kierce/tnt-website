@@ -3,8 +3,8 @@
  *   npm run check-data
  *
  * Reports coverage and flags likely mistakes (out-of-range votes, duplicate
- * player-rounds, missing bios). Exits non-zero on hard errors so it can gate CI
- * if you ever want it to.
+ * player rows, missing bios). Exits non-zero on hard errors, which is what
+ * gates the deploy in CI.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -42,19 +42,27 @@ for (const r of rows) {
   }
 }
 
-// 2. A player with TWO+ non-fill-in rows in one round is ambiguous (a real game
-//    plus a fill-in is normal in TNT and not flagged).
-const byPR = new Map<string, { total: number; nonFill: number }>();
+// 2. Non-fill-in rows that can't all be right. A team can play twice in one
+//    round (S1 R8 Red, S5 R7 Pink), so two rows a round is fine on its own;
+//    what's ambiguous is the same player twice in one match (a duplicated row),
+//    or a regular for two different teams on one night (which team is his?).
+//    A real game plus a fill-in is normal in TNT and not flagged.
+const byMatch = new Map<string, number>();
+const byRound = new Map<string, Set<string>>();
 for (const r of rows) {
-  if (r.isSingles) continue;
-  const k = `${r.season}|${r.round}|${r.player}`;
-  const e = byPR.get(k) ?? { total: 0, nonFill: 0 };
-  e.total += 1;
-  if (!r.isFillIn) e.nonFill += 1;
-  byPR.set(k, e);
+  if (r.isSingles || r.isFillIn) continue;
+  const mk = `${r.season}|${r.round}|${r.team}|${r.opponent}|${r.player}`;
+  byMatch.set(mk, (byMatch.get(mk) ?? 0) + 1);
+  const rk = `${r.season}|${r.round}|${r.player}`;
+  byRound.set(rk, (byRound.get(rk) ?? new Set()).add(r.team));
 }
-for (const [k, e] of byPR) {
-  if (e.nonFill > 1) warnings.push(`Player has ${e.nonFill} non-fill-in rows in one round (ambiguous): ${k}`);
+for (const [k, n] of byMatch) {
+  if (n > 1) warnings.push(`Player appears ${n} times in one match (duplicate row?): ${k}`);
+}
+for (const [k, teams] of byRound) {
+  if (teams.size > 1) {
+    warnings.push(`Player is a regular for ${[...teams].join(' and ')} in one round (ambiguous): ${k}`);
+  }
 }
 
 // 2b. Finals rows. The scoreline is the source of truth for how many sets were
