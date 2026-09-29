@@ -141,10 +141,16 @@ for (const r of rows) {
     errors.push(`Unreadable Score "${r.score}": ${where(r)}`);
     continue;
   }
-  const games = r.setScores.reduce(
-    (acc, s) => ({ f: acc.f + s.for, a: acc.a + s.against }),
-    { f: 0, a: 0 }
-  );
+  // A home-and-away set goes to a breaker at 5-5 and is written `6-5(x)`, but
+  // the game columns keep it at 5-5: the breaker isn't a game on the ladder,
+  // and every season before the scores were back-filled recorded it that way.
+  // Finals count it (`7-6(x)` is 7 games to 6), so they're summed as written.
+  const games = r.setScores.reduce((acc, s) => {
+    const breaker = !r.isFinals && Math.min(s.for, s.against) === 5 && Math.max(s.for, s.against) === 6;
+    return breaker
+      ? { f: acc.f + 5, a: acc.a + 5 }
+      : { f: acc.f + s.for, a: acc.a + s.against };
+  }, { f: 0, a: 0 });
   if (games.f !== r.teamScore || games.a !== r.opponentScore) {
     errors.push(
       `Score "${r.score}" sums to ${games.f}-${games.a} but the game columns ` +

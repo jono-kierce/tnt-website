@@ -3,6 +3,7 @@ import { loadStatRows, normalizeRows } from './normalize.ts';
 import { seasonMatches } from './stats.ts';
 import {
   allMatchPoints,
+  longestMatches,
   matchPoints,
   pairSplit,
   playerPoints,
@@ -151,8 +152,8 @@ describe('points across the CSV', () => {
   it('splits a pair over only the matches they played together', () => {
     const rows = loadStatRows();
     const split = pairSplit(rows, 'Charlie Simpson', 'Damon Maurice', { season: 5 })!;
-    // Six Pink matches, but Ted Angel filled in for Maurice in R6.
-    expect(split.matches).toBe(5);
+    // Eight Pink matches (two in R7), but Ted Angel filled in for Maurice in R6.
+    expect(split.matches).toBe(7);
     expect(split.shares[0] + split.shares[1]).toBeCloseTo(1);
     expect(split.shares[0]).toBeGreaterThan(split.shares[1]);
     // Opposite sides of the net, never partners.
@@ -172,7 +173,7 @@ describe('points across the CSV', () => {
       won += mp.sides[i].won;
       lost += mp.sides[1 - i].won;
     }
-    expect(kierce).toMatchObject({ pointsWon: won, pointsLost: lost, wins: 2 });
+    expect(kierce).toMatchObject({ pointsWon: won, pointsLost: lost, wins: 3 });
     expect(kierce.onCourtShare).toBeCloseTo(won / (won + lost));
     // Partners who never missed a night together share the same number.
     const [a, b] = ['Luke Sharrock', 'Jack Raines'].map(
@@ -188,5 +189,35 @@ describe('points across the CSV', () => {
       (p) => p.player === 'Ted Angel'
     )!;
     expect(withFi.matches).toBe(without.matches + 1);
+  });
+});
+
+describe('longestMatches', () => {
+  const ranked = longestMatches(loadStatRows());
+
+  it('ranks home-and-away matches by points played, ties sharing a rank', () => {
+    expect(ranked.every((mp) => !mp.match.isFinals)).toBe(true);
+    for (let i = 1; i < ranked.length; i++) {
+      expect(ranked[i].total).toBeLessThanOrEqual(ranked[i - 1].total);
+      expect(ranked[i].rank).toBe(
+        ranked[i].total === ranked[i - 1].total ? ranked[i - 1].rank : i + 1
+      );
+    }
+  });
+
+  it('puts the 10-8 breaker third all-time (S5 R6, Light Blue 6-5 Green)', () => {
+    // Two 98-point nights share first; this one is next.
+    expect(ranked.slice(0, 2).map((mp) => [mp.rank, mp.total])).toEqual([[1, 98], [1, 98]]);
+    const lb = ranked.find(
+      (mp) => mp.match.season === 5 && mp.match.round === 6 && mp.match.winner === 'Light Blue'
+    )!;
+    expect(lb).toMatchObject({ rank: 3, total: 93 });
+    expect(lb.sides.map((s) => [s.team, s.won])).toEqual([['Green', 44], ['Light Blue', 49]]);
+  });
+
+  it('ranks finals only when asked', () => {
+    const all = longestMatches(loadStatRows(), { scope: 'all' });
+    expect(all.length).toBeGreaterThan(ranked.length);
+    expect(all[0].match.isFinals).toBe(true);
   });
 });

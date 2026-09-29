@@ -21,6 +21,7 @@ import {
   winStreakRun,
   streakEndLabel,
   pairRecord,
+  strikeWithdrawnVotes,
   teamRoster,
   type CountingStat,
   type LeaderStat,
@@ -29,12 +30,14 @@ import {
   type StreakRunMatch,
 } from '../../src/lib/stats.ts';
 import { STREAK_NOTES } from './streak-notes.ts';
+import { withdrawnTeams as withdrawnOf } from '../../src/config/seasons/schema.ts';
 import { insightsFor } from '../../src/lib/insights.ts';
 import { formatDate, formatDateLong, formatTime } from '../../src/lib/datetime.ts';
 import type { MatchSide, SetScore, StatRow } from '../../src/lib/types.ts';
 import { SITE, isVotesSealed } from '../../src/config/site.ts';
 import { PHOTOS_DIR, avatarPhoto, playerPhotos, type Photo } from '../../src/lib/photos.ts';
 import {
+  allSeasonConfigs,
   getSeasonConfig,
   seasonTeamConfigs,
   declaredTeams,
@@ -44,11 +47,19 @@ import {
 import { shortName, slugify } from '../../src/config/aliases.ts';
 import { ANALYSTS, type AnalystPredictions } from './predictions.ts';
 import { loadMvpSim } from './mvp-sim.ts';
-import { pairSplit, teamPoints } from '../../src/lib/points.ts';
+import { longestMatches, pairSplit, teamPoints } from '../../src/lib/points.ts';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const rows: StatRow[] = loadStatRows();
+// Votes earned against a withdrawn team come pre-struck, as on the site — see
+// `strikeWithdrawnVotes`. The Node config loader is async, hence the await.
+const withdrawnBySeason = new Map(
+  (await allSeasonConfigs()).map((c) => [c.season, withdrawnOf(c)] as const)
+);
+export const rows: StatRow[] = strikeWithdrawnVotes(
+  loadStatRows(),
+  (season) => withdrawnBySeason.get(season) ?? []
+);
 
 /**
  * "Season 4 · 2025". `seasonLabel` in site.ts sets the year in brackets, which
@@ -1799,6 +1810,95 @@ export async function pairSplitPayload(
     title: 'Ball Hogs',
     subtitle: 'Matches played together',
     footnote: '',
+    rows: out,
+  };
+}
+
+export interface LongestSidePayload {
+  team: string;
+  pairing: string;
+  sets: SetPayload[];
+  /** From the CSV's `win?`. */
+  won: boolean;
+  /** Points this side won. */
+  points: number;
+}
+
+export interface LongestRowPayload {
+  rank: number;
+  /** "S3 · R9" */
+  when: string;
+  /** Winner first. */
+  sides: [LongestSidePayload, LongestSidePayload];
+  total: number;
+  games: number;
+  /** The round's own longest match, the one the post is about. */
+  featured: boolean;
+  /** Printed below a break because it sits outside the top rows. */
+  detached: boolean;
+}
+
+export interface LongestMatchesPayload {
+  kind: 'longest-matches';
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  footnote: string;
+  /** "Round 6" — the tag on the featured row. Null when the round has no countable match. */
+  featuredTag: string | null;
+  rows: LongestRowPayload[];
+}
+
+/**
+ * The longest home-and-away matches on record, by points played
+ * (`longestMatches()` in points.ts), with `round`'s own longest match lit —
+ * and appended below the table if it didn't make it, so the post it was
+ * rendered for always has its match on the slide.
+ */
+export async function longestMatchesPayload(
+  season: number,
+  round: RoundRef,
+  opts: { limit?: number } = {}
+): Promise<LongestMatchesPayload> {
+  const limit = opts.limit ?? 8;
+  const ranked = longestMatches(rows);
+  const featured = ranked.find(
+    (mp) => mp.match.season === season && mp.match.round === round.round
+  );
+  const picked = ranked.slice(0, limit);
+  const detached = featured && !picked.includes(featured);
+  if (detached) picked.push(featured);
+
+  const out: LongestRowPayload[] = [];
+  for (const mp of picked) {
+    const m = mp.match;
+    const config = await seasonTeamConfigs(m.season);
+    const side = (i: 0 | 1): LongestSidePayload => ({
+      team: m.sides[i].team,
+      pairing: lineupPairingName(m.sides[i].players, config(m.sides[i].team)),
+      sets: setsFor(m.sides[i]),
+      won: m.sides[i].win,
+      points: mp.sides[i].won,
+    });
+    const [a, b] = [side(0), side(1)];
+    out.push({
+      rank: mp.rank,
+      when: `S${m.season} · R${m.round}`,
+      sides: b.won ? [b, a] : [a, b],
+      total: mp.total,
+      games: mp.games,
+      featured: mp === featured,
+      detached: mp === featured && !!detached,
+    });
+  }
+
+  return {
+    kind: 'longest-matches',
+    eyebrow: 'All-time · Home & away',
+    title: 'The Long Nights',
+    subtitle: `Most points in a match · ${ranked.length} matches counted`,
+    footnote: '',
+    featuredTag: featured ? (round.stage ? ROUND_TITLE[round.stage] : `Round ${round.round}`) : null,
     rows: out,
   };
 }

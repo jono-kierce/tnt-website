@@ -18,6 +18,7 @@ import {
   pairBoardPayload,
   pairSplitPayload,
   pointsLadderPayload,
+  longestMatchesPayload,
   mvpSimPayloads,
   statBoardPayload,
   streakBoardPayload,
@@ -37,7 +38,7 @@ import {
 } from '../../src/lib/stats.ts';
 import { SITE, TEAMS } from '../../src/config/site.ts';
 import { getSeasonConfig } from './season-configs.ts';
-import { pairSplit, teamPoints } from '../../src/lib/points.ts';
+import { longestMatches, pairSplit, teamPoints } from '../../src/lib/points.ts';
 
 /** Compact "6 7" / "4 6³" for asserting on a whole side at once. */
 const line = (sets: { games: string; tiebreak: string | null }[]) =>
@@ -857,7 +858,8 @@ describe('pair split', () => {
   it('prints what pairSplit returned, heavier hitter first, most lopsided first', async () => {
     const p = await pairSplitPayload(5, resolveRound('6'));
     const pink = p.rows.find((r) => r.team === 'Pink')!;
-    const split = pairSplit(rows, 'Charlie Simpson', 'Damon Maurice', { season: 5, scope: 'regular' })!;
+    const byR6 = rows.filter((r) => r.round <= 6);
+    const split = pairSplit(byR6, 'Charlie Simpson', 'Damon Maurice', { season: 5, scope: 'regular' })!;
     expect(pink.matches).toBe(split.matches);
     expect(pink.players.map((x) => x.name)).toEqual(['C. Simpson', 'D. Maurice']);
     expect(pink.players[0].pct).toBeCloseTo(split.shares[0] * 100);
@@ -875,5 +877,33 @@ describe('pair split', () => {
       'A. Hume',
       'Q. Feikema',
     ]);
+  });
+});
+
+describe('longest matches', () => {
+  it('prints longestMatches() in order, and lights the round being posted', async () => {
+    const p = await longestMatchesPayload(5, resolveRound('6'));
+    const ranked = longestMatches(rows);
+    expect(p.rows.map((r) => [r.rank, r.total])).toEqual(
+      ranked.slice(0, 8).map((mp) => [mp.rank, mp.total])
+    );
+    const lit = p.rows.filter((r) => r.featured);
+    expect(lit).toHaveLength(1);
+    expect(lit[0]).toMatchObject({ rank: 3, total: 93, when: 'S5 · R6', detached: false });
+    // Winner first, off `win?`, with each side's own points.
+    expect(lit[0].sides.map((s) => [s.team, s.won, s.points])).toEqual([
+      ['Light Blue', true, 49],
+      ['Green', false, 44],
+    ]);
+    expect(lit[0].sides[1].sets[0]).toMatchObject({ games: '5', tiebreak: '8' });
+    expect(p.featuredTag).toBe('Round 6');
+  });
+
+  it("appends the round's longest match below the table when it misses the cut", async () => {
+    const p = await longestMatchesPayload(5, resolveRound('2'));
+    expect(p.rows).toHaveLength(9);
+    const last = p.rows.at(-1)!;
+    expect(last).toMatchObject({ featured: true, detached: true });
+    expect(last.rank).toBeGreaterThan(8);
   });
 });

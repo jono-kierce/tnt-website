@@ -94,7 +94,9 @@ photographed — played fixtures only, winner's row first off `win?`). Plus the
 once-off posts, asked for by `--only`: draft, streaks, headline, predictions,
 pair, **pointsladder** and **pairsplit** (teams by share of points won beside
 the real ladder, and each pair's share of its point-ending shots — both read
-`src/lib/points.ts`), **leaders** (eight stat boards: winners/UE/aces/errors forced as a
+`src/lib/points.ts`), **longest** (the all-time
+home-and-away matches by points played, `--round`'s longest lit — also
+`points.ts`), **leaders** (eight stat boards: winners/UE/aces/errors forced as a
 season total and per match — per-set on the H&A scope, where a match is one
 set) and **mvpsim** (the MVP race as a Monte Carlo projection — the one family
 whose numbers come from outside this repo; see below). **Read
@@ -158,10 +160,19 @@ whose numbers come from outside this repo; see below). **Read
   byes and never warns about an uneven round; the one thing it errors on is a
   team drawn twice in the same round.
 - **A team can withdraw mid-season, and that is not a bye.** `TeamConfig.withdrawn`
-  marks it (Black, S5, after round four). Its played rows stand — opponents keep
-  the results they earned, its players keep those matches on their career pages
-  — but it comes off the ladder and out of the field the byes are computed
-  against. It has to be **named** to be dropped: both `ladder` and `seasonRounds`
+  marks it (Black, S5, after round four). It comes off the ladder and out of the
+  field the byes are computed against, and **its matches are struck from its
+  opponents' season** (owner's ruling, 29 Sep 2026): `ladder` drops every side
+  whose opponent withdrew, results and games alike, and the votes those
+  opponents earned against it don't count toward MVP. `strikeWithdrawnVotes`
+  in `stats.ts` flags those rows `votesStruck` — applied once to the site's
+  rows (`site-data.ts`) and the renderer's (`payloads.ts`), so every tally
+  (MVP, the Votes boards, a player's vote tiles) skips them without asking;
+  `votes` itself keeps the value as cast, so match pages and BOG are
+  unchanged. **The withdrawn team's own players keep their votes** — they
+  played those nights and can't be made to lose them. Nothing else is
+  struck: career win-loss, H2H, streaks, the points ladder and the model
+  all still count the matches. It has to be **named** to be dropped: both `ladder` and `seasonRounds`
   build their field by *unioning* the declared teams with whoever appears in the
   CSV, so a team that played four rounds walks straight back in however the
   config is edited. Hence a separate `withdrawnTeams` argument rather than a
@@ -423,9 +434,9 @@ share only a colour), and a label that's nearly always true says nothing.
 
 - **S4 (2025) is complete** — full results, honours filled, votes loaded and
   unsealed.
-- **Season 5 (2026) is LIVE, six rounds played.** `currentSeason` is 5 and
+- **Season 5 (2026) is LIVE, seven rounds played.** `currentSeason` is 5 and
   `sealedVoteSeasons` is `[5]`. Ten Tuesdays, 18 Aug to 20 Oct 2026; the whole
-  draw is in the CSV and rounds 1–6 have results. **Remove 5 from
+  draw is in the CSV and rounds 1–7 have results. R7 ran five matches (Pink twice; Green v Pink and Brown v Yellow pulled forward from R8/R10, Green v Brown pushed to R8). **Remove 5 from
   `sealedVoteSeasons`** on awards night.
 - **S5 was drafted as ten teams and is being played by nine.** It was the first
   **ten-team** season — **Brown** joined the original nine in `TEAMS` — and was
@@ -436,8 +447,8 @@ share only a colour), and a label that's nearly always true says nothing.
   and rounds five to ten run three or four matches a night. Black is
   `withdrawn: true` in `season-5.ts` — off the ladder, never on a bye, still
   carrying its `pair` so its four rounds print a pairing, and still in
-  `draftOrder` because it was drafted. Its results stand for everyone who
-  played it. Finals take eight of nine now, not eight of ten; the bracket is
+  `draftOrder` because it was drafted. Its matches are struck from its
+  opponents' ladder and MVP tallies; everywhere else they stand. Finals take eight of nine now, not eight of ten; the bracket is
   unchanged and the `finals` shape still declares seeds 1–8.
 - All four brackets have full results. Finals **player stats**: S3 has finals
   MVP votes in the CSV (28/28 rows; the derived 4-3-2-1 tally matches the
@@ -449,8 +460,11 @@ share only a colour), and a label that's nearly always true says nothing.
 - **Tiebreak sets:** the owner's sheet records them level (`6-6`, `5-5`); the
   brackets normalise to `7-6(4)` etc. where the breaker score is known. Both
   live in the repo — S1 F, S3 QF4 and S3 SF1 use the normalised form; the S2
-  final keeps `6-6`/`3-3` because nobody recorded those two breakers. A level
-  set is a `check-data` warning, never an error: `win?` settles the match.
+  final reads `2-6 7-6 6-3`, its breaker score unrecorded. Home-and-away
+  breakers are being back-filled from Instagram as `6-5(x)` (S1 and S2 done)
+  with the game columns left at 5-5 — `check-data` sums a home-and-away 6-5
+  set as 5-5 for exactly that reason. A level set is a
+  `check-data` warning, never an error: `win?` settles the match.
 - Most team **captains** are blank except S4 and Kierce's teams.
 - `npm run check-data` flags 2 ambiguous S1 R8 rows (Hume, Dickson — two
   non-fill-in rows in one round); pre-existing data, left as-is.

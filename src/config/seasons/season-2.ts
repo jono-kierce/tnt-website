@@ -87,13 +87,12 @@ const season2: SeasonConfig = {
           id: 'F',
           home: { winnerOf: 'SF1' }, // Light Blue
           away: { winnerOf: 'SF2' }, // Orange
-          // Recorded level at 6-6 and 3-3: Orange took both on breakers, and
-          // the sheet doesn't say by how much. TODO: fill in the two tiebreak
-          // scores and the sets will read the tennis way.
+          // Orange took the second set on a breaker nobody recorded the score
+          // of, so it reads 7-6 with no bracketed points.
           result: {
             winner: 'away',
             homeScore: ['6', '6', '3'],
-            awayScore: ['2', '6', '3'],
+            awayScore: ['2', '7', '6'],
           },
         },
       ],

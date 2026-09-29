@@ -180,6 +180,8 @@ export function normalizeRows(raw: Record<string, string>[]): StatRow[] {
         adjustedVotes: adjustVotes(season, stage !== null, numOrNull(r['votes'])),
         // BOG is not stored — it's derived from votes below.
         bog: false,
+        // Set later from the season config, which this file can't read.
+        votesStruck: false,
       };
     });
 

@@ -8,6 +8,7 @@ import {
   scheduledRows,
   seasonMatches,
   seasonRounds,
+  strikeWithdrawnVotes,
   teamRoster,
   records,
   leaderboard,
@@ -27,9 +28,10 @@ import { seasonLabel } from '../config/site.ts';
 
 /**
  * Everything in the CSV, fixtures included. Only the schedule, the match pages
- * and the prediction model want this — see `rows` below.
+ * and the prediction model want this — see `rows` below. Votes earned against
+ * a withdrawn team come pre-struck, so no tally has to remember.
  */
-export const allRows: StatRow[] = loadStatRows();
+export const allRows: StatRow[] = strikeWithdrawnVotes(loadStatRows(), withdrawnTeams);
 
 /**
  * The rows the site's statistics are built from: played matches only.
@@ -268,12 +270,13 @@ export interface MvpRow { player: string; slug: string; team: string; votes: num
 
 /**
  * Season MVP vote tally (sum of votes), highest first. Home-and-away only.
- * Fill-in nights are excluded — those votes were earned for another team.
+ * Fill-in nights are excluded — those votes were earned for another team — and
+ * so are votes earned against a withdrawn team (`votesStruck`).
  */
 export function seasonMvp(season: number): MvpRow[] {
   const byPlayer = new Map<string, { votes: number; games: number; team: string }>();
   for (const r of rows) {
-    if (r.season !== season || r.isSingles || r.isFinals || r.isFillIn || r.votes === null) continue;
+    if (r.season !== season || r.isSingles || r.isFinals || r.isFillIn || r.votesStruck || r.votes === null) continue;
     const e = byPlayer.get(r.player) ?? { votes: 0, games: 0, team: r.team };
     e.votes += r.votes;
     e.games += 1;

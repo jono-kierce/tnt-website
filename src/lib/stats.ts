@@ -471,9 +471,11 @@ export function lineupPairingName(
  * read off the CSV: a team whose first fixture is round three has no rows at
  * all yet. `site-data.ts` takes it from the season config.
  *
- * `withdrawnTeams` drops a team that pulled out mid-season off the table
- * without touching anybody else's numbers: the results its opponents earned
- * against it stand, because those are their own sides of those matches.
+ * `withdrawnTeams` drops a team that pulled out mid-season off the table, and
+ * strikes its matches from everyone else's record too: a win over a team that
+ * didn't finish the season isn't a win the rest of the field could also have
+ * had, so opponents neither keep it nor wear the loss. Only the ladder does
+ * this — career pages, H2H and streaks still count those matches as played.
  */
 export function ladder(
   season: number,
@@ -495,9 +497,9 @@ export function ladder(
   }
 
   for (const s of sides) {
-    // A withdrawn team's matches still count for the side that played it —
-    // that's a different `s` — but the team itself is off the table.
-    if (gone.has(s.team)) continue;
+    // Both halves of a withdrawn team's matches go: its own row is off the
+    // table, and its opponents' results against it are struck.
+    if (gone.has(s.team) || gone.has(s.opponent)) continue;
     const t = teams.get(s.team) ?? {
       matchesPlayed: 0,
       wins: 0,
@@ -709,6 +711,32 @@ const emptyTallies = (): StatTallies =>
     COUNTING_STATS.map((s) => [s, { total: 0, games: 0, sets: 0 }])
   ) as StatTallies;
 
+/**
+ * Mark the votes a team's opponents earned against it as struck, for every
+ * team that withdrew mid-season. `withdrawnFor` is the season config's
+ * `withdrawnTeams` — passed in because this file can't import the configs
+ * (`import.meta.glob` doesn't exist in the renderer's Node process).
+ *
+ * The withdrawn team's own players keep their votes from those nights: they
+ * played the matches and can't be made to lose them. Their opponents can't
+ * have them, for the same reason the ladder strikes those results. The rows
+ * are copied, not mutated, and `votes` is left as cast — a match page still
+ * shows who polled what; only the tallies (MVP, the Votes boards, a player's
+ * vote tiles) skip a struck row.
+ */
+export function strikeWithdrawnVotes(
+  rows: StatRow[],
+  withdrawnFor: (season: number) => string[]
+): StatRow[] {
+  const bySeason = new Map<number, Set<string>>();
+  const gone = (season: number) => {
+    let set = bySeason.get(season);
+    if (!set) bySeason.set(season, (set = new Set(withdrawnFor(season))));
+    return set;
+  };
+  return rows.map((r) => (gone(r.season).has(r.opponent) ? { ...r, votesStruck: true } : r));
+}
+
 /** Aggregate a set of already-filtered rows for one player into a PlayerAgg. */
 function aggregateRows(
   player: string,
@@ -746,6 +774,9 @@ function aggregateRows(
       // the Finals MVP) that shares the `votes` column. They never join the
       // season MVP tally — only a finals-scoped aggregate counts them.
       if (stat === 'votes' && r.isFinals && scope !== 'finals') continue;
+      // Votes earned against a withdrawn team are struck — see
+      // `strikeWithdrawnVotes`.
+      if (stat === 'votes' && r.votesStruck) continue;
       if (stat === 'votes' && v !== r.votes) votesEraAdjusted = true;
       const t = tally[stat];
       t.total += v;

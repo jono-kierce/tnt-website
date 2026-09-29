@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Longest Matches (A / Broadsheet)</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  /* The all-time points table, one match a row: both sides and the scoreline
+     on the left, the points total on the right. The round the post is about
+     takes the gold spine and wash; everything else eases back so it reads as
+     the context around that one row. */
+  header { flex: none; }
+  .eyebrow { margin-top: -64px; }
+  .headline { font-size: 88px; margin-top: 16px; }
+  .sub { margin-top: 14px; }
+  .rule-gold {
+    height: 2px; margin-top: 26px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  .rows { flex: 1; display: flex; flex-direction: column; padding: 14px 0 0; }
+
+  .row {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 104px 1fr 150px;
+    align-items: center;
+    gap: 0 18px;
+    border-top: 1px solid var(--rule);
+    position: relative;
+  }
+  .row:first-child { border-top: 0; }
+  .row > * { position: relative; z-index: 1; }
+
+  .row.featured { border-top-color: transparent; }
+  .row.featured + .row { border-top-color: transparent; }
+  .row.featured::before {
+    content: '';
+    position: absolute; inset: 0 calc(var(--safe) * -1) 0 -18px;
+    background: linear-gradient(90deg, rgba(217,185,106,0.24), rgba(217,185,106,0.06) 64%, rgba(217,185,106,0.02));
+    pointer-events: none;
+  }
+  .row.featured::after {
+    content: '';
+    position: absolute; left: -18px; top: 0; bottom: 0; width: 6px;
+    background: var(--gold);
+  }
+
+  /* Outside the top rows: a break, so the table doesn't read as continuous. */
+  .row.detached { margin-top: 26px; border-top: 0; }
+  .row.detached .gapmark {
+    position: absolute; left: 0; right: 0; top: -22px; z-index: 1;
+    text-align: center; font-size: 22px; letter-spacing: 0.5em;
+    color: rgba(244, 241, 232, 0.35);
+  }
+
+  .rank { text-align: center; line-height: 1; }
+  .rank .n {
+    font-family: var(--display); font-weight: 600; font-size: 44px;
+    color: rgba(244, 241, 232, 0.55);
+  }
+  .rank .when {
+    display: block; margin-top: 8px;
+    font-size: 16px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    color: rgba(244, 241, 232, 0.42); white-space: nowrap;
+  }
+  .row.featured .rank .n { color: var(--gold); font-size: 54px; }
+  .row.featured .rank .when { color: var(--gold-soft); }
+
+  .sides { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .side {
+    display: grid;
+    grid-template-columns: 7px 150px 1fr auto;
+    align-items: center;
+    gap: 14px;
+  }
+  .bar { width: 7px; height: 32px; border-radius: 4px;
+         background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  .team-name { font-size: 26px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pair { font-size: 21px; color: rgba(244, 241, 232, 0.5);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pair b { font-weight: 600; color: rgba(244, 241, 232, 0.72); }
+  .side.lost .team-name { font-weight: 500; color: rgba(244, 241, 232, 0.66); }
+  .sets { display: flex; gap: 12px; }
+  .set { min-width: 30px; text-align: center; font-size: 30px; font-weight: 700; line-height: 1; }
+  .set.lost { color: rgba(244, 241, 232, 0.42); }
+  .side.won .set { color: rgba(244, 241, 232, 0.88); }
+  /* The breaker is half the story on this board, so it prints larger than
+     the house 0.42em — at 30px that would be a speck on a phone. */
+  .set .tb { font-size: 0.58em; }
+
+  .row.featured .team-name { font-size: 30px; }
+  .row.featured .pair { color: rgba(244, 241, 232, 0.74); }
+  .row.featured .pair b { color: var(--gold-soft); }
+  .row.featured .side.won .set { color: var(--gold-soft); }
+  .row.featured .set.lost { color: rgba(239, 217, 163, 0.5); }
+
+  .total { text-align: right; line-height: 1; }
+  .total .n { font-size: 58px; font-weight: 700; color: rgba(244, 241, 232, 0.86); letter-spacing: -0.01em; }
+  .total .l {
+    display: block; margin-top: 6px;
+    font-size: 16px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    color: rgba(244, 241, 232, 0.4);
+  }
+  .row.featured .total .n { font-size: 76px; color: var(--gold); }
+  .row.featured .total .l { color: var(--gold-soft); }
+
+  .tag {
+    display: inline-block; margin-top: 10px;
+    padding: 5px 10px 4px; border-radius: 3px;
+    background: var(--gold); color: #10231b;
+    font-size: 14px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  footer {
+    flex: none; display: flex; justify-content: space-between; align-items: flex-end;
+    padding-top: 22px; margin-bottom: -74px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+    white-space: nowrap; flex: none;
+  }
+  .footnote { max-width: 460px; text-align: right; font-size: 17px; line-height: 1.35; }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette">
+  <div class="mark mark--crest watermark"></div>
+
+  <header>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="rows" id="rows"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+    <div class="footnote" id="footnote"></div>
+  </footer>
+</div>
+
+<script type="module">
+/* Sample data, so this file opens straight in a browser and looks like the
+   real thing. `render.mjs` calls __render() again with the CSV's numbers. */
+const set = (games, won, tiebreak = null) => ({ games, won, tiebreak, level: false });
+const side = (team, pairing, won, points, sets) => ({ team, pairing, won, points, sets });
+const DATA = {
+  eyebrow: 'All-time · Home & away',
+  title: 'The Long Nights',
+  subtitle: 'Most points in a match · 163 matches counted',
+  footnote: '',
+  featuredTag: 'Round 6',
+  rows: [
+    { rank: 1, when: 'S3 · R9', total: 98, games: 11, featured: false, detached: false, sides: [
+      side('Black', 'L. Jenkin & J. Papa', true, 52, [set('6', true)]),
+      side('Light Blue', 'W. Mumme & Q. Feikema', false, 46, [set('5', false)])] },
+    { rank: 1, when: 'S4 · R8', total: 98, games: 11, featured: false, detached: false, sides: [
+      side('Light Blue', 'S. Inlander & E. Seamer', true, 50, [set('6', true)]),
+      side('White', 'J. Kierce & L. Godden', false, 48, [set('5', false)])] },
+    { rank: 3, when: 'S5 · R6', total: 93, games: 11, featured: true, detached: false, sides: [
+      side('Light Blue', 'S. Inlander & E. Seamer', true, 49, [set('6', true)]),
+      side('Green', 'Q. Feikema & A. Hume', false, 44, [set('5', false, '8')])] },
+    { rank: 4, when: 'S5 · R1', total: 88, games: 11, featured: false, detached: false, sides: [
+      side('Red', 'L. Jenkin & J. Harris', true, 45, [set('6', true)]),
+      side('Yellow', 'L. Sharrock & J. Raines', false, 43, [set('5', false, '3')])] },
+  ],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const setHtml = (s) =>
+  `<div class="set ${s.won ? 'won' : s.level ? 'level' : 'lost'}">${esc(s.games)}${
+    s.tiebreak ? `<span class="tb">${esc(s.tiebreak)}</span>` : ''
+  }</div>`;
+
+const sideHtml = (s) => `
+  <div class="side ${s.won ? 'won' : 'lost'}" data-team="${esc(s.team)}">
+    <div class="bar"></div>
+    <div class="team-name">${esc(s.team)}</div>
+    <div class="pair">${esc(s.pairing)} · <b>${s.points}</b> won</div>
+    <div class="sets">${s.sets.map(setHtml).join('')}</div>
+  </div>`;
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+  document.getElementById('subtitle').textContent = d.subtitle;
+  document.getElementById('footnote').textContent = d.footnote;
+
+  document.getElementById('rows').innerHTML = d.rows.map((r) => `
+    <div class="row ${r.featured ? 'featured' : ''} ${r.detached ? 'detached' : ''}">
+      ${r.detached ? '<div class="gapmark">· · ·</div>' : ''}
+      <div class="rank">
+        <span class="n">${r.rank}</span>
+        <span class="when">${esc(r.when)}</span>
+        ${r.featured && d.featuredTag ? `<span class="tag">${esc(d.featuredTag)}</span>` : ''}
+      </div>
+      <div class="sides">${sideHtml(r.sides[0])}${sideHtml(r.sides[1])}</div>
+      <div class="total">
+        <span class="n">${r.total}</span>
+        <span class="l">Points</span>
+      </div>
+    </div>`).join('');
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

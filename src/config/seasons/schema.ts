@@ -77,11 +77,13 @@ export interface TeamConfig {
   /**
    * The team pulled out mid-season and plays no further rounds.
    *
-   * The rows it did play stand: its opponents keep the results they earned and
-   * its players keep those matches on their career pages. What changes is the
-   * season's *field* — a withdrawn team drops off the ladder, and it is not on
-   * a bye for the rounds it isn't drawn in, because it isn't resting, it's
-   * gone. It keeps its entry here, and its place in `draftOrder`, so the
+   * Its matches are struck from its opponents' records where the season is
+   * scored: they come off the ladder (results and games alike) and the votes
+   * earned in them don't count toward MVP. Its own players keep their votes
+   * from those nights, and every player keeps the matches on their career
+   * page, H2H and streaks — they were played. The season's *field* changes
+   * too: a withdrawn team drops off the ladder, and it is not on a bye for the
+   * rounds it isn't drawn in, because it isn't resting, it's gone. It keeps its entry here, and its place in `draftOrder`, so the
    * rounds it did play still print a pairing label instead of a bare colour.
    */
   withdrawn?: boolean;

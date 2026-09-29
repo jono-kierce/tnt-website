@@ -112,6 +112,14 @@ export interface StatRow {
    */
   adjustedVotes: number | null;
   bog: boolean;
+  /**
+   * The row's votes don't count toward any tally, because the match was
+   * against a team that withdrew mid-season and has been struck from the
+   * record for its opponents (see `strikeWithdrawnVotes` in `stats.ts`).
+   * `votes` keeps the value as cast, so the match itself still reads true;
+   * only the counting skips it. The withdrawn team's own players keep theirs.
+   */
+  votesStruck: boolean;
 }
 
 /** One side of one match (rows collapsed to the team result). Played only. */

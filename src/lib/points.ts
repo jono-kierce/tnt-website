@@ -339,3 +339,22 @@ export function playerPointsAgg(
       wins: a.wins,
     }));
 }
+
+/** A match's place in the length table. */
+export interface RankedMatchPoints extends MatchPoints {
+  /** 1 = the most points. Ties share a rank (1, 1, 3). */
+  rank: number;
+}
+
+/**
+ * Every countable match ranked by points played, longest first; ties share a
+ * rank and keep playing order. Home and away by default: a final runs to three
+ * sets, so ranking one beside a one-set Tuesday measures the format, not the
+ * night. Pass `scope: 'all'` to rank them anyway.
+ */
+export function longestMatches(rows: StatRow[], opts: PointsOptions = {}): RankedMatchPoints[] {
+  const sorted = allMatchPoints(rows, { ...opts, scope: opts.scope ?? 'regular' }).sort(
+    (a, b) => b.total - a.total
+  );
+  return sorted.map((mp) => ({ ...mp, rank: 1 + sorted.filter((o) => o.total > mp.total).length }));
+}

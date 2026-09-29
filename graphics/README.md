@@ -39,7 +39,7 @@ CSV — which is exactly the round you just added. PNGs land in `graphics/out/`
 |---|---|
 | `--season <n>` | Default `SITE.currentSeason`. |
 | `--round <r>` | A round number, or `QF` / `SF` / `F`. Default: the season's latest — except for `preview`, see below. |
-| `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `leaders`, `draft`, `preview`, `streaks`, `streakstory`, `headline`, `predictions`, `pair`, `mvpsim`, `pointsladder`, `pairsplit` — comma-separated. Default `ladder,results,scoreboard,boards`; the rest are once-off posts, so they only render on request. |
+| `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `leaders`, `draft`, `preview`, `streaks`, `streakstory`, `headline`, `predictions`, `pair`, `mvpsim`, `pointsladder`, `pairsplit`, `longest` — comma-separated. Default `ladder,results,scoreboard,boards`; the rest are once-off posts, so they only render on request. |
 | `--pair <a,b>` | The two players for `--only pair`, comma-separated. |
 | `--sim <path>` | The MVP projection summary CSV, for `--only mvpsim`. Required — there is no default, because the file lives outside this repo. |
 | `--runs <n>` | How many runs that projection was over, for the subtitle. Omitted, it reads "Simulated". |
@@ -137,6 +137,7 @@ graphics/
     mvp-sim-board.html
     points-ladder.html
     pair-split.html
+    longest-matches.html
     fonts/             vendored .woff2 (committed)
   out/                 rendered PNGs — gitignored
 ```
@@ -432,6 +433,25 @@ lopsided first, heavier hitter on the left.
 - **A thin sample owns up to it**: fewer than three matches together prints
   the match count in pink, and the CLI warns. It isn't dropped — a board that
   silently lost a team reads as a demotion.
+
+### Longest matches — `longest-matches.html`
+
+```bash
+node graphics/render.mjs --season 5 --round 6 --only longest
+```
+
+"The Long Nights": the eight home-and-away matches with the most points
+played, all-time (`longestMatches()` in `points.ts`), with `--round`'s own
+longest match lit in gold and tagged with the round. If that match isn't in
+the top eight it's appended below a break with its real rank, so the slide
+always carries the match the post is about.
+
+- **Home and away only.** A final runs to three sets, so it would win on
+  format, not on the night. Ties share a rank (1, 1, 3).
+- **Winner first, off `win?`**, each side with the points it won — a match
+  can be won on fewer points (S4 R3, Light Blue 40–45 Black).
+- **Unrecorded breakers print level** (`5` over `5`) until the score is
+  back-filled; nothing is guessed.
 
 ### Preview — `preview.html`
 

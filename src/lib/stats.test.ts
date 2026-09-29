@@ -24,6 +24,7 @@ import {
   lineupPairingName,
   winStreaks,
   winStreakRun,
+  strikeWithdrawnVotes,
 } from './stats.ts';
 import { canonicalName, shortName, stripFillIn } from '../config/aliases.ts';
 import { allSeasonConfigs } from '../config/seasons/index.ts';
@@ -227,18 +228,44 @@ describe('a team that withdraws mid-season', () => {
     );
   });
 
-  it('leaves the results it handed out standing', () => {
+  it('strikes its matches from its opponents\' ladder records', () => {
     const t = ladder(5, rows, undefined, field, ['Pink']);
     const navy = t.find((r) => r.team === 'Navy')!;
-    // Navy lost to Pink in round one and beat Red in round two: two matches,
-    // one win, and the 2-6 still on its games record.
+    // Navy lost to Pink in round one and beat Red in round two. The Pink
+    // match is struck, loss and 2-6 alike: one match, one win, 6-3.
     expect(navy).toMatchObject({
-      matchesPlayed: 2,
+      matchesPlayed: 1,
       wins: 1,
-      losses: 1,
-      gamesFor: 8,
-      gamesAgainst: 9,
+      losses: 0,
+      gamesFor: 6,
+      gamesAgainst: 3,
     });
+    // Without the withdrawal the same match counts.
+    expect(ladder(5, rows, undefined, field).find((r) => r.team === 'Navy')).toMatchObject({
+      matchesPlayed: 2,
+      gamesFor: 8,
+    });
+  });
+
+  it('strikes the votes its opponents earned against it, and only those', () => {
+    const voted = normalizeRows([
+      raw({ Team: 'Pink', Opponent: 'Navy', Season: '5', Round: '1', Player: 'P1', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '2', votes: '6' }),
+      raw({ Team: 'Navy', Opponent: 'Pink', Season: '5', Round: '1', Player: 'N1', 'win?': 'FALSE', 'Team Score': '2', 'Opponent Score': '6', votes: '3' }),
+      raw({ Team: 'Red', Opponent: 'Navy', Season: '5', Round: '2', Player: 'R1', 'win?': 'FALSE', 'Team Score': '3', 'Opponent Score': '6', votes: '1' }),
+      raw({ Team: 'Navy', Opponent: 'Red', Season: '5', Round: '2', Player: 'N1', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '3', votes: '5' }),
+    ]);
+    const struck = strikeWithdrawnVotes(voted, (season) => (season === 5 ? ['Pink'] : []));
+    expect(struck.map((r) => r.votesStruck)).toEqual([false, true, false, false]);
+    // As cast on the row itself, so a match page still reads true, and BOG
+    // (derived from the votes) is untouched.
+    expect(struck[1].votes).toBe(3);
+    expect(struck[0].bog).toBe(true);
+    // Navy's round-one votes are gone from the tally; Pink's player keeps his.
+    expect(playerAgg('N1', struck, { season: 5, scope: 'regular' }).votes).toBe(5);
+    expect(playerAgg('N1', struck).votes).toBe(5);
+    expect(playerAgg('P1', struck, { season: 5, scope: 'regular' }).votes).toBe(6);
+    // The input isn't mutated.
+    expect(voted[1].votesStruck).toBe(false);
   });
 
   it('is not on a bye for the rounds after it leaves', () => {
@@ -1382,12 +1409,11 @@ describe('pairRecord — two players as team-mates', () => {
   });
 
   it('takes the winner from `win?`, never from counting sets', () => {
-    // S2's final is 2-6 6-6 3-3 — two sets nobody recorded a breaker for. A
-    // pair record that counted sets would not have them as champions.
+    // S2's final: Orange came from a set down to win 2-6 7-6 6-3.
     const s2 = SG.seasons.find((s) => s.season === 2)!;
     const final = seasonMatches(all).find((m) => m.season === 2 && m.stage === 'F')!;
     expect(final.winner).toBe('Orange');
-    expect(final.sides.find((s) => s.team === 'Orange')!.score).toBe('2-6 6-6 3-3');
+    expect(final.sides.find((s) => s.team === 'Orange')!.score).toBe('2-6 7-6 6-3');
     expect(s2.team).toBe('Orange');
     expect(s2.wins).toBeGreaterThan(0);
   });

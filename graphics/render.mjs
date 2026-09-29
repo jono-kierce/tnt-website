@@ -37,6 +37,7 @@ import {
   pairBoardPayload,
   pairSplitPayload,
   pointsLadderPayload,
+  longestMatchesPayload,
   mvpSimPayloads,
   statBoardPayload,
   streakBoardPayload,
@@ -82,7 +83,7 @@ TNT graphics renderer
                    round in the CSV.
   --only <list>    Comma-separated: ladder, results, scoreboard, boards, draft,
                    preview, streaks, streakstory, headline, predictions,
-                   pair, mvpsim, leaders, pointsladder, pairsplit.
+                   pair, mvpsim, leaders, pointsladder, pairsplit, longest.
                    Default: ladder,results,scoreboard,boards
                    — draft, preview, streaks, headline, predictions and pair
                    are once-off posts, so they only render when asked.
@@ -102,6 +103,9 @@ TNT graphics renderer
                    their real ladder position.
                    pairsplit is "ball hogs": each pair's share of
                    their point-ending shots, most lopsided first.
+                   longest is the all-time home-and-away matches with the
+                   most points played, --round's longest match lit in gold
+                   (and added below the table if it didn't make the top 8).
                    pair is two players' record as team-mates; it needs --pair
                    and no --season or --round.
                    preview needs no --round: it defaults to the next round
@@ -169,7 +173,7 @@ if (!Number.isFinite(season)) {
 // `draft` and `preview` are deliberately not in the default set — a draft is a
 // once-a-season post, and a preview is a once-a-week one you ask for the day
 // before, not something every CI push should render.
-const KINDS = ['ladder', 'results', 'scoreboard', 'boards', 'draft', 'preview', 'streaks', 'streakstory', 'headline', 'predictions', 'pair', 'mvpsim', 'leaders', 'pointsladder', 'pairsplit'];
+const KINDS = ['ladder', 'results', 'scoreboard', 'boards', 'draft', 'preview', 'streaks', 'streakstory', 'headline', 'predictions', 'pair', 'mvpsim', 'leaders', 'pointsladder', 'pairsplit', 'longest'];
 const only = new Set(
   (argv.only ?? 'ladder,results,scoreboard,boards').split(',').map((s) => s.trim()).filter(Boolean)
 );
@@ -181,7 +185,7 @@ if (unknown.length) {
 
 // A draft happens before a ball is hit, so it needs no round — and a season
 // that has only been drafted has no rows to infer one from.
-const needsRound = ['ladder', 'results', 'scoreboard', 'boards', 'leaders', 'pointsladder', 'pairsplit'].some((k) => only.has(k));
+const needsRound = ['ladder', 'results', 'scoreboard', 'boards', 'leaders', 'pointsladder', 'pairsplit', 'longest'].some((k) => only.has(k));
 const latest = latestRound(season);
 if (needsRound && !latest && argv.round === undefined) {
   // A season whose draw is in the CSV but whose first night hasn't happened is
@@ -471,6 +475,15 @@ if (only.has('pointsladder')) {
   } else {
     await shoot('points-ladder.html', payload, `${stem}-points-ladder.png`);
   }
+}
+
+if (only.has('longest')) {
+  // All-time, but rendered for a round: that round's longest match is the one lit.
+  const payload = await longestMatchesPayload(season, round);
+  if (!payload.featuredTag) {
+    warnings.push(`longest: no countable home-and-away match in season ${season}, ${round.label} — nothing is highlighted.`);
+  }
+  await shoot('longest-matches.html', payload, `${stem}-longest-matches.png`);
 }
 
 if (only.has('pairsplit')) {
