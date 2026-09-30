@@ -49,3 +49,13 @@ export function matchHref(
 }
 
 export const scheduleHref = (): string => withBase('/schedule/');
+
+/**
+ * A leaderboard opened on one stat and season, as season totals — the board a
+ * cabinet's stat-leader shield was won on. The page reads these on load.
+ */
+export function leaderboardHref(stat: string, season?: number): string {
+  const q = new URLSearchParams({ stat, mode: 'total' });
+  if (season !== undefined) q.set('season', String(season));
+  return withBase(`/leaderboards/?${q}`);
+}

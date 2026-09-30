@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { loadStatRows } from './normalize.ts';
-import { allPlayers, mvpTally, playedRows, strikeWithdrawnVotes } from './stats.ts';
-import { homeAndAwayComplete, playerHonours, seasonHonours, type Honour } from './honours.ts';
+import { allPlayers, leaderboard, mvpTally, playedRows, strikeWithdrawnVotes } from './stats.ts';
+import { homeAndAwayComplete, playerAwards, seasonAwards, type Award } from './honours.ts';
 import { allSeasonConfigs, getSeasonConfig } from '../config/seasons/index.ts';
 import { withdrawnTeams } from '../config/seasons/schema.ts';
 import { isVotesSealed } from '../config/site.ts';
+import { shortName } from '../config/aliases.ts';
 import type { StatRow } from './types.ts';
 
 const rows = strikeWithdrawnVotes(loadStatRows(), (s) => withdrawnTeams(getSeasonConfig(s)));
 
-function honoursOf(season: number, over: { sealed?: boolean; rows?: StatRow[] } = {}): Honour[] {
+function honoursOf(season: number, over: { sealed?: boolean; rows?: StatRow[] } = {}): Award[] {
   const config = getSeasonConfig(season);
-  return seasonHonours(season, {
+  return seasonAwards(season, {
     rows: over.rows ?? rows,
     config,
     declaredTeams: Object.keys(config?.teams ?? {}),
@@ -20,9 +21,9 @@ function honoursOf(season: number, over: { sealed?: boolean; rows?: StatRow[] } 
   });
 }
 
-const who = (hs: Honour[], kind: Honour['kind']) =>
+const who = (hs: Award[], kind: Award['kind']) =>
   hs.filter((h) => h.kind === kind).map((h) => h.player).sort();
-const teamOf = (hs: Honour[], kind: Honour['kind']) =>
+const teamOf = (hs: Award[], kind: Award['kind']) =>
   [...new Set(hs.filter((h) => h.kind === kind).map((h) => h.team))];
 
 const everything = [1, 2, 3, 4, 5].flatMap((s) => honoursOf(s));
@@ -34,8 +35,39 @@ describe('trophy cabinet honours', () => {
       const ru = cfg.honours.find((h) => /runners-up/i.test(h.title));
       if (!champ || !ru) continue;
       const hs = honoursOf(cfg.season);
-      expect(teamOf(hs, 'premiers'), `S${cfg.season} premiers`).toEqual([champ.team]);
-      expect(teamOf(hs, 'runnersUp'), `S${cfg.season} runners-up`).toEqual([ru.team]);
+      expect(teamOf(hs, 'champions'), `S${cfg.season} champions`).toEqual([champ.team]);
+      expect(teamOf(hs, 'runnerUp'), `S${cfg.season} runners-up`).toEqual([ru.team]);
+    }
+  });
+
+  it('names the same winners in a config honour as its display text', () => {
+    // `players` and `detail` say the same thing twice, so they can drift:
+    // every name listed has to appear, shortened, in the text on the page.
+    for (const cfg of allSeasonConfigs()) {
+      for (const h of cfg.honours) {
+        for (const name of h.players ?? []) {
+          expect(h.detail, `S${cfg.season} ${h.title}`).toContain(shortName(name));
+        }
+      }
+    }
+  });
+
+  it('strikes matches against a withdrawn team from the stat-leader count', () => {
+    // S5's Green, Navy and White each played Black; struck, they're back to
+    // the eight matches the rest of the field played.
+    const finished = rows.map((r) => (r.season === 5 && r.scheduled ? { ...r, scheduled: false } : r));
+    const s5 = playedRows(finished).filter((r) => r.season === 5 && !r.isSingles);
+    const struck = s5.filter((r) => r.opponent !== 'Black');
+    const leader = (rs: StatRow[]) =>
+      leaderboard('winners', rs, { season: 5, scope: 'regular', includeFillIns: false })[0];
+    const award = honoursOf(5, { rows: finished, sealed: false }).find(
+      (h) => h.kind === 'statLeader' && h.stat === 'winners'
+    );
+    expect(award?.value).toBe(leader(struck).value);
+    // And the strike is real: Green, Navy and White each lose a night of rows.
+    for (const team of ['Green', 'Navy', 'White']) {
+      const nights = (rs: StatRow[]) => new Set(rs.filter((r) => r.team === team && !r.isFinals).map((r) => r.round)).size;
+      expect(nights(s5) - nights(struck), team).toBe(1);
     }
   });
 
@@ -92,7 +124,7 @@ describe('trophy cabinet honours', () => {
     // S5 is live — rounds still drawn, not played.
     expect(homeAndAwayComplete(5, rows)).toBe(false);
     const hs = honoursOf(5, { sealed: false });
-    expect(hs.filter((h) => ['minorPremiers', 'woodenSpoon', 'statTitle'].includes(h.kind))).toEqual([]);
+    expect(hs.filter((h) => ['minorPremiers', 'woodenSpoon', 'statLeader'].includes(h.kind))).toEqual([]);
     for (const season of [1, 2, 3, 4]) expect(homeAndAwayComplete(season, rows)).toBe(true);
   });
 
@@ -110,20 +142,20 @@ describe('trophy cabinet honours', () => {
   });
 
   it("builds Kierce's cabinet in prestige order", () => {
-    const cab = playerHonours('Jonathan Kierce', everything).map((h) => `${h.kind} S${h.season}`);
+    const cab = playerAwards('Jonathan Kierce', everything).map((h) => `${h.kind} S${h.season}`);
     expect(cab).toEqual([
-      'premiers S1', 'premiers S3',
+      'champions S1', 'champions S3',
       'minorPremiers S1', 'minorPremiers S3',
-      'runnersUp S4',
+      'runnerUp S4',
       'seasonMvp S1', 'seasonMvp S3',
       'finalsMvp S3', 'finalsMvp S4',
-      'statTitle S1', 'statTitle S2', 'statTitle S3', 'statTitle S3', 'statTitle S4',
+      'statLeader S1', 'statLeader S2', 'statLeader S3', 'statLeader S3', 'statLeader S4',
     ]);
   });
 
   it('awards stat leaders on home-and-away season totals, own team only', () => {
     const winners = (season: number) =>
-      honoursOf(season).filter((h) => h.kind === 'statTitle' && h.stat === 'winners');
+      honoursOf(season).filter((h) => h.kind === 'statLeader' && h.stat === 'winners');
     // Kierce 43, 48, 45 across S2–S4 — full attendance wins a season award,
     // where a per-set rate would hand it to whoever missed a night or two.
     for (const season of [2, 3, 4]) {

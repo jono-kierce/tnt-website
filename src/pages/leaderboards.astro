@@ -260,6 +260,15 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
 
   [seasonSel, statSel, modeSel, fillChk].forEach((el) => el.addEventListener('change', render));
   document.getElementById('lbCsv')!.addEventListener('click', downloadCsv);
+
+  // A link can open the board on a stat, season and mode — a player's trophy
+  // cabinet sends its stat-leader shields here. Anything the selects don't
+  // offer is ignored, so a stale link falls back to the default board.
+  const params = new URLSearchParams(location.search);
+  for (const [key, sel] of [['season', seasonSel], ['stat', statSel], ['mode', modeSel]] as const) {
+    const v = params.get(key);
+    if (v && [...sel.options].some((o) => o.value === v)) sel.value = v;
+  }
   render();
 </script>
 

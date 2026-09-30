@@ -103,10 +103,10 @@ const roundCell = (r: (typeof log)[number]) => r.stage ?? r.roundLabel;
 const scoreLines = (r: (typeof log)[number]) =>
   r.score ? r.score.split(/\s+/) : [`${r.teamScore}–${r.opponentScore}`];
 // The Final is the one match where the letter undersells the result: a win is a
-// premiership, a loss is a runner-up. Every other round keeps its W/L.
+// championship, a loss is a runner-up. Every other round keeps its W/L.
 const resultMark = (r: (typeof log)[number]) =>
   r.stage === 'F'
-    ? { text: r.win ? '🏆' : '🥈', label: r.win ? 'Premiers' : 'Runners-up' }
+    ? { text: r.win ? '🏆' : '🥈', label: r.win ? 'Champions' : 'Runner-up' }
     : { text: r.win ? 'W' : 'L', label: r.win ? 'Win' : 'Loss' };
 
 const bio = bioHtml(slug);
@@ -135,7 +135,7 @@ const cabinet = playerCabinet(name);
     <section class="section container">
       <p class="eyebrow">Honours</p>
       <h2 class="serif-title" style="margin-bottom:14px">Trophy Cabinet</h2>
-      <TrophyCabinet honours={cabinet} />
+      <TrophyCabinet awards={cabinet} />
     </section>
   )}
 

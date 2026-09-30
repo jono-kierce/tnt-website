@@ -68,7 +68,8 @@ src/lib/insights.ts      rule-based "worth knowing" lines for a match page
 src/lib/ranks.ts         where a player sits in the field — the stat-panel badges
 src/lib/honours.ts       the trophy cabinet: premiers/runners-up off the Final's
                          win?, minor premiers/spoon off the completed ladder, stat
-                         leaders off H&A season totals (own team, no fill-ins);
+                         leaders off H&A season totals (own team, no fill-ins,
+                         matches v a withdrawn team struck);
                          Season/Finals MVP from the
                          config honour's `players` (S1's award isn't the tally).
                          Nothing vote-derived for a sealed season

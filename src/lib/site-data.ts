@@ -27,7 +27,7 @@ import {
 } from '../config/seasons/index.ts';
 import { withdrawnTeams as withdrawnOf } from '../config/seasons/schema.ts';
 import { isVotesSealed, seasonLabel } from '../config/site.ts';
-import { playerHonours, seasonHonours, type Honour } from './honours.ts';
+import { playerAwards, seasonAwards, type Award } from './honours.ts';
 
 /**
  * Everything in the CSV, fixtures included. Only the schedule, the match pages
@@ -275,25 +275,25 @@ export function seasonMvp(season: number): MvpRow[] {
 // Trophy cabinet
 // ---------------------------------------------------------------------------
 
-const honoursBySeason = new Map<number, Honour[]>();
+const awardsBySeason = new Map<number, Award[]>();
 
-/** Every honour awarded in a season, computed once per build. */
-export function honoursFor(season: number): Honour[] {
-  let out = honoursBySeason.get(season);
+/** Every award handed out in a season, computed once per build. */
+export function awardsFor(season: number): Award[] {
+  let out = awardsBySeason.get(season);
   if (!out) {
-    out = seasonHonours(season, {
+    out = seasonAwards(season, {
       rows: allRows,
       config: getSeasonConfig(season),
       declaredTeams: declaredTeams(season),
       withdrawnTeams: withdrawnTeams(season),
       sealed: isVotesSealed(season),
     });
-    honoursBySeason.set(season, out);
+    awardsBySeason.set(season, out);
   }
   return out;
 }
 
 /** A player's trophy cabinet, across every season on record. */
-export function playerCabinet(player: string): Honour[] {
-  return playerHonours(player, siteSeasons().flatMap(honoursFor));
+export function playerCabinet(player: string): Award[] {
+  return playerAwards(player, siteSeasons().flatMap(awardsFor));
 }

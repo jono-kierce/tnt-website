@@ -7,100 +7,147 @@
  * shelf with identical shields. The page leaves the cabinet out entirely for a
  * player with nothing to put in it.
  *
+ * Hover, focus or tap a piece for its card: who it was won with, the Final's
+ * scoreline, the record or the count that won it, and links onward. Same
+ * pattern as the Easiest/Hardest Opponent tiles — the piece takes focus, so a
+ * tap on a phone opens the card and a tap anywhere else closes it.
+ *
  * Presentation only — what goes in it comes from `src/lib/honours.ts`. Team
  * silverware on the top shelf, individual awards below, and the wooden spoon
- * on a ledge of its own at the end, unlabelled beyond its plate.
+ * on a ledge of its own at the end.
  */
 import TrophyIcon from './TrophyIcon.astro';
-import type { Honour, HonourKind, TitleStat } from '../lib/honours.ts';
+import SetScore from './SetScore.astro';
+import type { Award, AwardKind, LeaderStat } from '../lib/honours.ts';
 import { SITE } from '../config/site.ts';
 import { shortName } from '../config/aliases.ts';
-import { seasonHref } from '../lib/url.ts';
+import { leaderboardHref, matchHref, seasonHref } from '../lib/url.ts';
 
-interface Props { honours: Honour[] }
-const { honours } = Astro.props;
+interface Props { awards: Award[] }
+const { awards } = Astro.props;
 
 type Metal = 'gold' | 'silver' | 'bronze' | 'wood';
 interface Kind {
   one: string;
   many: string;
   shape: 'cup' | 'salver' | 'medal' | 'wreath' | 'shield' | 'spoon';
-  metal: (h: Honour) => Metal;
+  metal: (a: Award) => Metal;
   /** Height on the shelf, in px — prestige reads as size. */
   size: number;
 }
-const KINDS: Record<HonourKind, Kind> = {
-  premiers: { one: 'Championship', many: 'Championships', shape: 'cup', metal: () => 'gold', size: 92 },
+const KINDS: Record<AwardKind, Kind> = {
+  champions: { one: 'Championship', many: 'Championships', shape: 'cup', metal: () => 'gold', size: 92 },
   minorPremiers: { one: 'Minor premiership', many: 'Minor premierships', shape: 'salver', metal: () => 'gold', size: 74 },
-  runnersUp: { one: 'Finalist', many: 'Finalist', shape: 'cup', metal: () => 'silver', size: 70 },
+  runnerUp: { one: 'Runner-up', many: 'Runner-up', shape: 'cup', metal: () => 'silver', size: 70 },
   seasonMvp: { one: 'Season MVP', many: 'Season MVPs', shape: 'medal', metal: () => 'gold', size: 72 },
   finalsMvp: { one: 'Finals MVP', many: 'Finals MVPs', shape: 'wreath', metal: () => 'gold', size: 72 },
-  mvpPodium: { one: 'MVP podium', many: 'MVP podiums', shape: 'medal', metal: (h) => (h.place === 2 ? 'silver' : 'bronze'), size: 60 },
-  statTitle: { one: 'Stat leader', many: 'Stat leader', shape: 'shield', metal: () => 'gold', size: 52 },
+  mvpPodium: { one: 'MVP podium', many: 'MVP podiums', shape: 'medal', metal: (a) => (a.place === 2 ? 'silver' : 'bronze'), size: 60 },
+  statLeader: { one: 'Stat leader', many: 'Stat leader', shape: 'shield', metal: () => 'gold', size: 52 },
   woodenSpoon: { one: 'Wooden spoon', many: 'Wooden spoons', shape: 'spoon', metal: () => 'wood', size: 20 },
 };
 
-const SHELVES: { name: string; kinds: HonourKind[] }[] = [
-  { name: 'Silverware', kinds: ['premiers', 'minorPremiers', 'runnersUp'] },
-  { name: 'Individual', kinds: ['seasonMvp', 'finalsMvp', 'mvpPodium', 'statTitle', 'woodenSpoon'] },
+const SHELVES: { name: string; kinds: AwardKind[] }[] = [
+  { name: 'Silverware', kinds: ['champions', 'minorPremiers', 'runnerUp'] },
+  { name: 'Individual', kinds: ['seasonMvp', 'finalsMvp', 'mvpPodium', 'statLeader', 'woodenSpoon'] },
 ];
 
-const STAT: Record<TitleStat, { mark: string; label: string }> = {
-  winners: { mark: 'W', label: 'Led the league in winners' },
-  aces: { mark: 'A', label: 'Led the league in aces' },
-  errorsForced: { mark: 'EF', label: 'Led the league in errors forced' },
+const STAT: Record<LeaderStat, { mark: string; noun: string }> = {
+  winners: { mark: 'W', noun: 'winners' },
+  aces: { mark: 'A', noun: 'aces' },
+  errorsForced: { mark: 'EF', noun: 'errors forced' },
 };
 
 const year = (s: number) => SITE.seasonYears[s];
 const plate = (s: number) => String(year(s) ?? `S${s}`);
-/** One plate, several years: '23 · '24 · '25 — the full year only when alone. */
+/** One plate, several years: ’23 · ’24 · ’25 — the full year only when alone. */
 const plateFor = (seasons: number[]) =>
   seasons.length === 1
     ? plate(seasons[0])
     : seasons.map((s) => (year(s) ? `’${String(year(s)).slice(2)}` : `S${s}`)).join(' · ');
-const names = (ps: string[]) =>
-  ps.map(shortName).join(' & ');
-const side = (h: Honour) =>
-  [h.team, h.partners?.length ? `with ${names(h.partners)}` : ''].filter(Boolean).join(', ');
+const when = (s: number) => (year(s) ? `Season ${s} · ${year(s)}` : `Season ${s}`);
+const names = (ps: string[]) => ps.map(shortName).join(' & ');
+const ordinal = (n: number) => (n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`);
 
-/** The plate's full inscription — the link's accessible name and its tooltip. */
-function inscription(h: Honour): string {
-  const when = year(h.season) ? `Season ${h.season} (${year(h.season)})` : `Season ${h.season}`;
-  const title =
-    h.kind === 'mvpPodium' ? `${h.place === 2 ? '2nd' : '3rd'} in the MVP count`
-    : KINDS[h.kind].one;
-  const extra =
-    h.kind === 'seasonMvp' ? (h.partners?.length ? `shared with ${names(h.partners)}` : '')
-    : h.kind === 'finalsMvp' || h.kind === 'mvpPodium' ? ''
-    : side(h);
-  return [title, when, extra, h.asFillIn ? 'as a fill-in' : ''].filter(Boolean).join(' · ');
+/** A line on the card: text, optionally a scoreline, optionally a link. */
+interface Line { text: string; score?: string; href?: string; muted?: boolean }
+interface Piece {
+  kind: AwardKind;
+  metal: Metal;
+  mark?: string;
+  plate: string;
+  /** The card's gold heading and its serif title. */
+  head: string;
+  title: string;
+  lines: Line[];
+  /** One sentence for a screen reader, since the card is a description. */
+  label: string;
 }
 
-interface Piece { kind: HonourKind; metal: Metal; mark?: string; plate: string; label: string; href: string }
-
-function pieces(kind: HonourKind): Piece[] {
-  const hs = honours.filter((h) => h.kind === kind);
-  if (kind !== 'statTitle') {
-    return hs.map((h) => ({
-      kind,
-      metal: KINDS[kind].metal(h),
-      mark: h.kind === 'mvpPodium' ? String(h.place) : undefined,
-      plate: plate(h.season),
-      label: inscription(h),
-      href: seasonHref(h.season),
-    }));
+function piece(a: Award): Piece {
+  const lines: Line[] = [];
+  const withSide = a.team ? `${a.team}${a.partners?.length ? `, with ${names(a.partners)}` : ''}` : '';
+  switch (a.kind) {
+    case 'champions':
+    case 'runnerUp':
+      if (withSide) lines.push({ text: withSide });
+      if (a.final) {
+        lines.push({
+          text: `${a.kind === 'champions' ? 'Won' : 'Lost'} the Final v ${a.final.opponent}`,
+          score: a.final.score,
+          href: matchHref(a.season, a.final.round, 'F', a.team!, a.final.opponent),
+        });
+      }
+      break;
+    case 'minorPremiers':
+    case 'woodenSpoon':
+      if (withSide) lines.push({ text: withSide });
+      if (a.record) lines.push({ text: `${a.record} home and away` });
+      break;
+    case 'seasonMvp':
+      if (a.partners?.length) lines.push({ text: `Shared with ${names(a.partners)}` });
+      if (a.value !== undefined) lines.push({ text: `${a.value} votes` });
+      break;
+    case 'mvpPodium':
+      lines.push({ text: `${ordinal(a.place!)} in the MVP count${a.value !== undefined ? ` · ${a.value} votes` : ''}` });
+      break;
+    case 'finalsMvp':
+      if (a.team) lines.push({ text: a.team });
+      break;
   }
-  // One shield per stat, however many seasons it was led.
-  return [...new Set(hs.map((h) => h.stat!))].map((stat) => {
-    const won = hs.filter((h) => h.stat === stat).sort((a, b) => a.season - b.season);
-    const years = won.map((h) => `${year(h.season) ?? `S${h.season}`} (${h.value})`);
+  if (a.asFillIn) lines.push({ text: 'As a fill-in', muted: true });
+  lines.push({ text: `${when(a.season)} →`, href: seasonHref(a.season) });
+
+  const head = a.kind === 'mvpPodium' ? `MVP podium · ${ordinal(a.place!)}` : KINDS[a.kind].one;
+  return {
+    kind: a.kind,
+    metal: KINDS[a.kind].metal(a),
+    mark: a.kind === 'mvpPodium' ? String(a.place) : undefined,
+    plate: plate(a.season),
+    head,
+    title: when(a.season),
+    lines,
+    label: [head, when(a.season), ...lines.slice(0, -1).map((l) => (l.score ? `${l.text} ${l.score}` : l.text))].join('. '),
+  };
+}
+
+/** One shield per stat, however many seasons it was led; a board link a year. */
+function statPieces(list: Award[]): Piece[] {
+  return [...new Set(list.map((a) => a.stat!))].map((stat) => {
+    const won = list.filter((a) => a.stat === stat).sort((a, b) => a.season - b.season);
+    const lines = won.map((a) => ({
+      text: `${plate(a.season)} · ${a.value} ${STAT[stat].noun} →`,
+      href: leaderboardHref(stat, a.season),
+    }));
+    const title = `Most ${STAT[stat].noun}`;
     return {
-      kind,
+      kind: 'statLeader' as const,
       metal: 'gold' as const,
       mark: STAT[stat].mark,
-      plate: plateFor(won.map((h) => h.season)),
-      label: `${STAT[stat].label} · ${years.join(', ')}`,
-      href: seasonHref(won[won.length - 1].season),
+      plate: plateFor(won.map((a) => a.season)),
+      head: 'Stat leader',
+      title,
+      lines,
+      label: `Stat leader. ${title} in the season: ${won.map((a) => `${plate(a.season)}, ${a.value}`).join('; ')}`,
     };
   });
 }
@@ -108,9 +155,15 @@ function pieces(kind: HonourKind): Piece[] {
 const shelves = SHELVES.map((sh) => ({
   ...sh,
   groups: sh.kinds
-    .map((kind) => ({ kind, items: pieces(kind) }))
+    .map((kind) => {
+      const list = awards.filter((a) => a.kind === kind);
+      return { kind, items: kind === 'statLeader' ? statPieces(list) : list.map(piece) };
+    })
     .filter((g) => g.items.length),
 })).filter((sh) => sh.groups.length);
+
+let n = 0;
+const nextId = () => `award-${++n}`;
 ---
 {shelves.length > 0 && (
   <div class="cabinet">
@@ -119,16 +172,40 @@ const shelves = SHELVES.map((sh) => ({
         {sh.groups.map((g) => (
           <div class:list={['bay', { 'bay--ledge': g.kind === 'woodenSpoon' }]}>
             <ul class="items">
-              {g.items.map((p) => (
-                <li>
-                  <a class="piece" href={p.href} title={p.label} aria-label={p.label} data-metal={p.metal}>
-                    <span class="art" style={`--h:${KINDS[p.kind].size}px`}>
-                      <TrophyIcon shape={KINDS[p.kind].shape} mark={p.mark} />
-                    </span>
-                    <span class="plate">{p.plate}</span>
-                  </a>
-                </li>
-              ))}
+              {g.items.map((p) => {
+                const id = nextId();
+                return (
+                  <li class="slot">
+                    <div class="piece" tabindex="0" data-metal={p.metal} aria-label={p.label} aria-describedby={id}>
+                      <span class="art" style={`--h:${KINDS[p.kind].size}px`}>
+                        <TrophyIcon shape={KINDS[p.kind].shape} mark={p.mark} />
+                      </span>
+                      <span class="plate" aria-hidden="true">{p.plate}</span>
+                    </div>
+                    <div class="card-pop" id={id} role="note">
+                      <p class="pop-head">{p.head}</p>
+                      <p class="pop-title">{p.title}</p>
+                      <ul class="pop-lines">
+                        {p.lines.map((l) => (
+                          <li class:list={{ muted: l.muted }}>
+                            {l.href ? (
+                              <a href={l.href}>
+                                {l.text}
+                                {l.score && <span class="pop-score"><SetScore score={l.score} /></span>}
+                              </a>
+                            ) : (
+                              <>
+                                {l.text}
+                                {l.score && <span class="pop-score"><SetScore score={l.score} /></span>}
+                              </>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
             <p class="bay-name">{g.items.length === 1 ? KINDS[g.kind].one : KINDS[g.kind].many}</p>
           </div>
@@ -138,13 +215,41 @@ const shelves = SHELVES.map((sh) => ({
   </div>
 )}
 
+<script>
+  // The card is CSS-only (hover and focus-within); this only keeps it on
+  // screen. A piece at either end of a shelf would centre its card half off a
+  // phone, so nudge it back inside the viewport before it shows — and let
+  // Escape put it away.
+  const GUTTER = 12;
+  function place(slot: HTMLElement) {
+    const card = slot.querySelector<HTMLElement>('.card-pop');
+    if (!card) return;
+    card.style.setProperty('--nudge', '0px');
+    const r = card.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const shift =
+      r.left < GUTTER ? GUTTER - r.left
+      : r.right > vw - GUTTER ? vw - GUTTER - r.right
+      : 0;
+    card.style.setProperty('--nudge', `${Math.round(shift)}px`);
+  }
+  document.querySelectorAll<HTMLElement>('.cabinet .slot').forEach((slot) => {
+    slot.addEventListener('mouseenter', () => place(slot));
+    slot.addEventListener('focusin', () => place(slot));
+    slot.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') (document.activeElement as HTMLElement | null)?.blur();
+    });
+  });
+</script>
+
 <style>
   /* The case: near-black glass under a gold frame, lit from above, with one
-     faint diagonal sheen across the front pane. */
+     faint diagonal sheen across the front pane. Not overflow-hidden: a card
+     opened on the top shelf has to be free to rise out of the case. */
   .cabinet {
     --shelf-h: 96px; /* the tallest piece stands in this; everything sits on its floor */
-    position: relative; overflow: hidden;
     --wall: 20px;
+    position: relative;
     padding: 26px var(--wall) 8px;
     border-radius: var(--radius);
     border: 1px solid rgba(200, 162, 74, 0.38);
@@ -158,19 +263,22 @@ const shelves = SHELVES.map((sh) => ({
       var(--shadow);
   }
   .cabinet::after {
-    content: ''; position: absolute; inset: 0; pointer-events: none;
+    content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
     background: linear-gradient(115deg, transparent 32%, rgba(255, 250, 235, 0.045) 40%, transparent 48%,
       transparent 56%, rgba(255, 250, 235, 0.025) 60%, transparent 64%);
   }
 
   /* A shelf is a row of bays. Bays grow to fill the row and sit edge to edge,
      so their rail segments read as one continuous shelf — and when a phone
-     wraps them, each new row gets a whole rail of its own. */
-  /* Negative margins run the rails into the case walls: shelves are fixed to
-     the cabinet, not floating in it. */
+     wraps them, each new row gets a whole rail of its own. Negative margins
+     run the rails into the case walls: shelves are fixed to the cabinet, not
+     floating in it. */
   .shelf { display: flex; flex-wrap: wrap; margin: 0 calc(-1 * var(--wall)) 18px; }
   .shelf:last-child { margin-bottom: 0; }
   .bay { flex: 1 1 auto; position: relative; padding: 0 14px 12px; }
+  /* A bay with an open card is lifted over its neighbours and the shelf
+     below, so the card is never painted underneath another trophy. */
+  .bay:hover, .bay:focus-within { z-index: 5; }
   /* The rail: a gold edge with the shadow it throws on the back wall, and a
      pool of light on the shelf above it. */
   .bay::before {
@@ -187,15 +295,16 @@ const shelves = SHELVES.map((sh) => ({
     list-style: none; margin: 0; padding: 0;
     display: flex; justify-content: center; gap: 10px; position: relative; z-index: 1;
   }
-  .items li { display: flex; }
+  .slot { display: flex; position: relative; }
 
   /* A piece: the silverware standing on the rail, its plate fixed to the
-     shelf edge below. The link covers both. */
+     shelf edge below. */
   .piece {
     display: flex; flex-direction: column; align-items: center;
-    color: var(--metal); text-decoration: none; border-radius: 6px;
+    color: var(--metal); border-radius: 6px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
-  .piece:hover { text-decoration: none; }
+  .piece:focus { outline: none; }
   .piece:focus-visible { outline: 1px solid var(--gold-soft); outline-offset: 4px; }
   .piece[data-metal='gold'] { --metal: #d7b560; }
   .piece[data-metal='silver'] { --metal: #c3c8cf; }
@@ -207,7 +316,7 @@ const shelves = SHELVES.map((sh) => ({
     transition: transform 0.25s ease, filter 0.25s ease;
   }
   .art :global(.ti) { height: var(--h); width: auto; }
-  .piece:hover .art, .piece:focus-visible .art {
+  .slot:hover .art, .slot:focus-within .art {
     transform: translateY(-3px);
     filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--metal) 35%, transparent));
   }
@@ -225,6 +334,48 @@ const shelves = SHELVES.map((sh) => ({
     font-family: var(--serif); font-variant: small-caps; letter-spacing: 0.14em;
     font-size: 0.95rem; color: var(--ivory-dim);
   }
+
+  /* --- The card ------------------------------------------------------------
+     Rises above the piece, so a finger on a phone doesn't cover it. */
+  .card-pop {
+    --nudge: 0px;
+    position: absolute; z-index: 10; bottom: calc(100% + 10px); left: 50%;
+    width: max-content; max-width: min(270px, calc(100vw - 24px)); min-width: 180px;
+    background: #0d0d0b; border: 1px solid var(--gold);
+    border-radius: 12px; padding: 11px 14px 10px; box-shadow: var(--shadow);
+    text-align: left; color: var(--ivory);
+    /* Out of layout while closed, not just invisible: a hidden card centred
+       on the last piece of a shelf would still widen the page by half its
+       width and let a phone scroll sideways. */
+    display: none;
+    transform: translateX(calc(-50% + var(--nudge)));
+  }
+  /* A bridge over the gap, so the pointer can travel from the piece up into
+     the card to reach a link without the card closing on the way. */
+  .card-pop::after {
+    content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 12px;
+  }
+  .slot:hover .card-pop, .slot:focus-within .card-pop {
+    display: block; animation: card-in 0.14s ease;
+  }
+  @keyframes card-in {
+    from { opacity: 0; translate: 0 4px; }
+    to { opacity: 1; translate: 0 0; }
+  }
+  .pop-head {
+    font-family: var(--serif); text-transform: uppercase; letter-spacing: 0.12em;
+    font-size: 0.66rem; color: var(--gold); margin: 0;
+  }
+  .pop-title {
+    font-family: var(--serif); font-weight: 600; font-size: 1.1rem;
+    letter-spacing: 0.03em; margin: 2px 0 6px; line-height: 1.2;
+  }
+  .pop-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.8rem; color: var(--ivory-dim); }
+  .pop-lines li { border-top: 1px solid var(--line-soft); padding-top: 4px; }
+  .pop-lines li:first-child { border-top: 0; padding-top: 0; }
+  .pop-lines .muted { color: var(--muted); font-style: italic; }
+  .pop-lines a { color: var(--gold-soft); }
+  .pop-score { margin-left: 6px; color: var(--ivory); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
   /* The spoon: laid flat on a plain wooden ledge at the end. Deadpan — same
      plate, no fanfare. */
@@ -248,6 +399,7 @@ const shelves = SHELVES.map((sh) => ({
   }
   @media (prefers-reduced-motion: reduce) {
     .art { transition: none; }
-    .piece:hover .art, .piece:focus-visible .art { transform: none; }
+    .slot:hover .card-pop, .slot:focus-within .card-pop { animation: none; }
+    .slot:hover .art, .slot:focus-within .art { transform: none; }
   }
 </style>
