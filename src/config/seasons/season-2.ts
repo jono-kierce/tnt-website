@@ -20,8 +20,8 @@ const season2: SeasonConfig = {
   honours: [
     { title: 'Champions', team: 'Orange', detail: 'J. Gorton & E. Simpson' },
     { title: 'Runners-up', team: 'Light Blue', detail: 'E. Wise & A. Hume' },
-    { title: 'Season MVP', detail: 'L. Sharrock' },
-    { title: 'Finals MVP', detail: 'J. Gorton' },
+    { title: 'Season MVP', detail: 'L. Sharrock', players: ['Luke Sharrock'] },
+    { title: 'Finals MVP', detail: 'J. Gorton', players: ['Jimmy Gorton'] },
   ],
   finals: [
     {

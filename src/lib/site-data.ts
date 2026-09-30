@@ -12,8 +12,10 @@ import {
   teamRoster,
   records,
   leaderboard,
+  mvpTally,
   winStreaks,
   type MatchRecord,
+  type MvpRow,
   type SeasonRound,
   type TeamRoster,
 } from './stats.ts';
@@ -24,7 +26,8 @@ import {
   seasonTeamConfig,
 } from '../config/seasons/index.ts';
 import { withdrawnTeams as withdrawnOf } from '../config/seasons/schema.ts';
-import { seasonLabel } from '../config/site.ts';
+import { isVotesSealed, seasonLabel } from '../config/site.ts';
+import { playerHonours, seasonHonours, type Honour } from './honours.ts';
 
 /**
  * Everything in the CSV, fixtures included. Only the schedule, the match pages
@@ -261,23 +264,36 @@ export function playerSeasons(player: string): number[] {
   return [...new Set(rows.filter((r) => !r.isSingles && r.player === player).map((r) => r.season))].sort((a, b) => a - b);
 }
 
-export interface MvpRow { player: string; slug: string; team: string; votes: number; games: number }
+export type { MvpRow } from './stats.ts';
 
-/**
- * Season MVP vote tally (sum of votes), highest first. Home-and-away only.
- * Fill-in nights are excluded — those votes were earned for another team — and
- * so are votes earned against a withdrawn team (`votesStruck`).
- */
+/** Season MVP vote tally, highest first — `mvpTally` over the site's rows. */
 export function seasonMvp(season: number): MvpRow[] {
-  const byPlayer = new Map<string, { votes: number; games: number; team: string }>();
-  for (const r of rows) {
-    if (r.season !== season || r.isSingles || r.isFinals || r.isFillIn || r.votesStruck || r.votes === null) continue;
-    const e = byPlayer.get(r.player) ?? { votes: 0, games: 0, team: r.team };
-    e.votes += r.votes;
-    e.games += 1;
-    byPlayer.set(r.player, e);
+  return mvpTally(season, rows);
+}
+
+// ---------------------------------------------------------------------------
+// Trophy cabinet
+// ---------------------------------------------------------------------------
+
+const honoursBySeason = new Map<number, Honour[]>();
+
+/** Every honour awarded in a season, computed once per build. */
+export function honoursFor(season: number): Honour[] {
+  let out = honoursBySeason.get(season);
+  if (!out) {
+    out = seasonHonours(season, {
+      rows: allRows,
+      config: getSeasonConfig(season),
+      declaredTeams: declaredTeams(season),
+      withdrawnTeams: withdrawnTeams(season),
+      sealed: isVotesSealed(season),
+    });
+    honoursBySeason.set(season, out);
   }
-  return [...byPlayer.entries()]
-    .map(([player, e]) => ({ player, slug: rows.find((r) => r.player === player)!.slug, ...e }))
-    .sort((a, b) => b.votes - a.votes || b.games - a.games);
+  return out;
+}
+
+/** A player's trophy cabinet, across every season on record. */
+export function playerCabinet(player: string): Honour[] {
+  return playerHonours(player, siteSeasons().flatMap(honoursFor));
 }

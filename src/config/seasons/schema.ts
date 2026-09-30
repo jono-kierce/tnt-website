@@ -57,6 +57,16 @@ export interface Honour {
   team?: string;
   /** Free text — pairing name, player name, vote tally, etc. */
   detail: string;
+  /**
+   * Who won it, as canonical names — what puts the honour in a player's
+   * trophy cabinet. Needed only for the awards the CSV can't prove: the Season
+   * MVP (S1's was a three-way tie that counted Player-of-the-Round, not the
+   * tally) and the Finals MVP (most finals carry no votes). Premierships,
+   * runners-up, minor premierships and the spoon are derived — see
+   * `src/lib/honours.ts` — and a test holds these names to the tally wherever
+   * the CSV has one.
+   */
+  players?: string[];
 }
 
 export interface TeamConfig {

@@ -18,8 +18,8 @@ const season3: SeasonConfig = {
   honours: [
     { title: 'Champions', team: 'White', detail: 'J. Kierce & D. Maurice' },
     { title: 'Runners-up', team: 'Orange', detail: 'J. Gorton & L. Mossman' },
-    { title: 'Season MVP', detail: 'J. Kierce' },
-    { title: 'Finals MVP', detail: 'J. Kierce' },
+    { title: 'Season MVP', detail: 'J. Kierce', players: ['Jonathan Kierce'] },
+    { title: 'Finals MVP', detail: 'J. Kierce', players: ['Jonathan Kierce'] },
   ],
 
   // Seeds off the final ladder: 1 White, 2 Orange, 3 Red, 4 Navy, 5 Black,

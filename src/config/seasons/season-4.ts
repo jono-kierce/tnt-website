@@ -26,8 +26,8 @@ const season4: SeasonConfig = {
   honours: [
     { title: 'Champions', team: 'Pink', detail: 'L. Sharrock & A. Hume' },
     { title: 'Runners-up', team: 'White', detail: 'J. Kierce & L. Godden' },
-    { title: 'Season MVP', detail: 'A. Dickson — 41 votes (from J. Gorton 40 & L. Sharrock 40)' },
-    { title: 'Finals MVP', detail: 'J. Kierce' },
+    { title: 'Season MVP', detail: 'A. Dickson — 41 votes (from J. Gorton 40 & L. Sharrock 40)', players: ['Adam Dickson'] },
+    { title: 'Finals MVP', detail: 'J. Kierce', players: ['Jonathan Kierce'] },
   ],
 
   // Top 8 seeds off the final ladder (1 Pink, 2 Green, 3 Orange, 4 Red,

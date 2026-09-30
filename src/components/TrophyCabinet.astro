@@ -1,0 +1,253 @@
+---
+/**
+ * The trophy cabinet on a player page: a glass case, gold shelves, one piece
+ * of silverware per honour, each on a brass plate engraved with its year.
+ * Stat leaderships are the exception — one shield per stat, every year it was
+ * won engraved on the one plate — so a player who owns a board doesn't fill a
+ * shelf with identical shields. The page leaves the cabinet out entirely for a
+ * player with nothing to put in it.
+ *
+ * Presentation only — what goes in it comes from `src/lib/honours.ts`. Team
+ * silverware on the top shelf, individual awards below, and the wooden spoon
+ * on a ledge of its own at the end, unlabelled beyond its plate.
+ */
+import TrophyIcon from './TrophyIcon.astro';
+import type { Honour, HonourKind, TitleStat } from '../lib/honours.ts';
+import { SITE } from '../config/site.ts';
+import { shortName } from '../config/aliases.ts';
+import { seasonHref } from '../lib/url.ts';
+
+interface Props { honours: Honour[] }
+const { honours } = Astro.props;
+
+type Metal = 'gold' | 'silver' | 'bronze' | 'wood';
+interface Kind {
+  one: string;
+  many: string;
+  shape: 'cup' | 'salver' | 'medal' | 'wreath' | 'shield' | 'spoon';
+  metal: (h: Honour) => Metal;
+  /** Height on the shelf, in px — prestige reads as size. */
+  size: number;
+}
+const KINDS: Record<HonourKind, Kind> = {
+  premiers: { one: 'Championship', many: 'Championships', shape: 'cup', metal: () => 'gold', size: 92 },
+  minorPremiers: { one: 'Minor premiership', many: 'Minor premierships', shape: 'salver', metal: () => 'gold', size: 74 },
+  runnersUp: { one: 'Finalist', many: 'Finalist', shape: 'cup', metal: () => 'silver', size: 70 },
+  seasonMvp: { one: 'Season MVP', many: 'Season MVPs', shape: 'medal', metal: () => 'gold', size: 72 },
+  finalsMvp: { one: 'Finals MVP', many: 'Finals MVPs', shape: 'wreath', metal: () => 'gold', size: 72 },
+  mvpPodium: { one: 'MVP podium', many: 'MVP podiums', shape: 'medal', metal: (h) => (h.place === 2 ? 'silver' : 'bronze'), size: 60 },
+  statTitle: { one: 'Stat leader', many: 'Stat leader', shape: 'shield', metal: () => 'gold', size: 52 },
+  woodenSpoon: { one: 'Wooden spoon', many: 'Wooden spoons', shape: 'spoon', metal: () => 'wood', size: 20 },
+};
+
+const SHELVES: { name: string; kinds: HonourKind[] }[] = [
+  { name: 'Silverware', kinds: ['premiers', 'minorPremiers', 'runnersUp'] },
+  { name: 'Individual', kinds: ['seasonMvp', 'finalsMvp', 'mvpPodium', 'statTitle', 'woodenSpoon'] },
+];
+
+const STAT: Record<TitleStat, { mark: string; label: string }> = {
+  winners: { mark: 'W', label: 'Led the league in winners' },
+  aces: { mark: 'A', label: 'Led the league in aces' },
+  errorsForced: { mark: 'EF', label: 'Led the league in errors forced' },
+};
+
+const year = (s: number) => SITE.seasonYears[s];
+const plate = (s: number) => String(year(s) ?? `S${s}`);
+/** One plate, several years: '23 · '24 · '25 — the full year only when alone. */
+const plateFor = (seasons: number[]) =>
+  seasons.length === 1
+    ? plate(seasons[0])
+    : seasons.map((s) => (year(s) ? `’${String(year(s)).slice(2)}` : `S${s}`)).join(' · ');
+const names = (ps: string[]) =>
+  ps.map(shortName).join(' & ');
+const side = (h: Honour) =>
+  [h.team, h.partners?.length ? `with ${names(h.partners)}` : ''].filter(Boolean).join(', ');
+
+/** The plate's full inscription — the link's accessible name and its tooltip. */
+function inscription(h: Honour): string {
+  const when = year(h.season) ? `Season ${h.season} (${year(h.season)})` : `Season ${h.season}`;
+  const title =
+    h.kind === 'mvpPodium' ? `${h.place === 2 ? '2nd' : '3rd'} in the MVP count`
+    : KINDS[h.kind].one;
+  const extra =
+    h.kind === 'seasonMvp' ? (h.partners?.length ? `shared with ${names(h.partners)}` : '')
+    : h.kind === 'finalsMvp' || h.kind === 'mvpPodium' ? ''
+    : side(h);
+  return [title, when, extra, h.asFillIn ? 'as a fill-in' : ''].filter(Boolean).join(' · ');
+}
+
+interface Piece { kind: HonourKind; metal: Metal; mark?: string; plate: string; label: string; href: string }
+
+function pieces(kind: HonourKind): Piece[] {
+  const hs = honours.filter((h) => h.kind === kind);
+  if (kind !== 'statTitle') {
+    return hs.map((h) => ({
+      kind,
+      metal: KINDS[kind].metal(h),
+      mark: h.kind === 'mvpPodium' ? String(h.place) : undefined,
+      plate: plate(h.season),
+      label: inscription(h),
+      href: seasonHref(h.season),
+    }));
+  }
+  // One shield per stat, however many seasons it was led.
+  return [...new Set(hs.map((h) => h.stat!))].map((stat) => {
+    const won = hs.filter((h) => h.stat === stat).sort((a, b) => a.season - b.season);
+    const years = won.map((h) => `${year(h.season) ?? `S${h.season}`} (${h.value})`);
+    return {
+      kind,
+      metal: 'gold' as const,
+      mark: STAT[stat].mark,
+      plate: plateFor(won.map((h) => h.season)),
+      label: `${STAT[stat].label} · ${years.join(', ')}`,
+      href: seasonHref(won[won.length - 1].season),
+    };
+  });
+}
+
+const shelves = SHELVES.map((sh) => ({
+  ...sh,
+  groups: sh.kinds
+    .map((kind) => ({ kind, items: pieces(kind) }))
+    .filter((g) => g.items.length),
+})).filter((sh) => sh.groups.length);
+---
+{shelves.length > 0 && (
+  <div class="cabinet">
+    {shelves.map((sh) => (
+      <div class="shelf" aria-label={sh.name} role="group">
+        {sh.groups.map((g) => (
+          <div class:list={['bay', { 'bay--ledge': g.kind === 'woodenSpoon' }]}>
+            <ul class="items">
+              {g.items.map((p) => (
+                <li>
+                  <a class="piece" href={p.href} title={p.label} aria-label={p.label} data-metal={p.metal}>
+                    <span class="art" style={`--h:${KINDS[p.kind].size}px`}>
+                      <TrophyIcon shape={KINDS[p.kind].shape} mark={p.mark} />
+                    </span>
+                    <span class="plate">{p.plate}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <p class="bay-name">{g.items.length === 1 ? KINDS[g.kind].one : KINDS[g.kind].many}</p>
+          </div>
+        ))}
+      </div>
+    ))}
+  </div>
+)}
+
+<style>
+  /* The case: near-black glass under a gold frame, lit from above, with one
+     faint diagonal sheen across the front pane. */
+  .cabinet {
+    --shelf-h: 96px; /* the tallest piece stands in this; everything sits on its floor */
+    position: relative; overflow: hidden;
+    --wall: 20px;
+    padding: 26px var(--wall) 8px;
+    border-radius: var(--radius);
+    border: 1px solid rgba(200, 162, 74, 0.38);
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 0%, rgba(224, 201, 135, 0.09), transparent 70%),
+      linear-gradient(180deg, #11130e, #0a0b08);
+    box-shadow:
+      inset 0 0 0 4px rgba(10, 11, 8, 0.9),
+      inset 0 0 0 5px rgba(200, 162, 74, 0.14),
+      inset 0 40px 80px rgba(0, 0, 0, 0.45),
+      var(--shadow);
+  }
+  .cabinet::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(115deg, transparent 32%, rgba(255, 250, 235, 0.045) 40%, transparent 48%,
+      transparent 56%, rgba(255, 250, 235, 0.025) 60%, transparent 64%);
+  }
+
+  /* A shelf is a row of bays. Bays grow to fill the row and sit edge to edge,
+     so their rail segments read as one continuous shelf — and when a phone
+     wraps them, each new row gets a whole rail of its own. */
+  /* Negative margins run the rails into the case walls: shelves are fixed to
+     the cabinet, not floating in it. */
+  .shelf { display: flex; flex-wrap: wrap; margin: 0 calc(-1 * var(--wall)) 18px; }
+  .shelf:last-child { margin-bottom: 0; }
+  .bay { flex: 1 1 auto; position: relative; padding: 0 14px 12px; }
+  /* The rail: a gold edge with the shadow it throws on the back wall, and a
+     pool of light on the shelf above it. */
+  .bay::before {
+    content: ''; position: absolute; left: 0; right: 0; top: var(--shelf-h); height: 5px;
+    background: linear-gradient(180deg, #e8d49a 0%, #c8a24a 45%, #7d6326 100%);
+    box-shadow: 0 7px 14px rgba(0, 0, 0, 0.7);
+  }
+  .bay::after {
+    content: ''; position: absolute; left: 8%; right: 8%; top: calc(var(--shelf-h) - 34px); height: 34px;
+    background: radial-gradient(ellipse 60% 100% at 50% 100%, rgba(224, 201, 135, 0.1), transparent 70%);
+    pointer-events: none;
+  }
+  .items {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; justify-content: center; gap: 10px; position: relative; z-index: 1;
+  }
+  .items li { display: flex; }
+
+  /* A piece: the silverware standing on the rail, its plate fixed to the
+     shelf edge below. The link covers both. */
+  .piece {
+    display: flex; flex-direction: column; align-items: center;
+    color: var(--metal); text-decoration: none; border-radius: 6px;
+  }
+  .piece:hover { text-decoration: none; }
+  .piece:focus-visible { outline: 1px solid var(--gold-soft); outline-offset: 4px; }
+  .piece[data-metal='gold'] { --metal: #d7b560; }
+  .piece[data-metal='silver'] { --metal: #c3c8cf; }
+  .piece[data-metal='bronze'] { --metal: #c28a5a; }
+  .piece[data-metal='wood'] { --metal: #b07a45; }
+  .art {
+    height: var(--shelf-h); display: flex; align-items: flex-end;
+    filter: drop-shadow(0 0 0 transparent);
+    transition: transform 0.25s ease, filter 0.25s ease;
+  }
+  .art :global(.ti) { height: var(--h); width: auto; }
+  .piece:hover .art, .piece:focus-visible .art {
+    transform: translateY(-3px);
+    filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--metal) 35%, transparent));
+  }
+  .plate {
+    margin-top: 9px; /* clears the rail */
+    font-family: var(--serif); font-weight: 700; font-size: 0.7rem;
+    letter-spacing: 0.14em; line-height: 1; color: #241a08;
+    padding: 3px 6px 2px 7px; border-radius: 2px;
+    background: linear-gradient(180deg, #e6cf8c, #b08c3a);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 1px 2px rgba(0, 0, 0, 0.6);
+    font-variant-numeric: lining-nums tabular-nums;
+  }
+  .bay-name {
+    margin: 10px 0 0; text-align: center;
+    font-family: var(--serif); font-variant: small-caps; letter-spacing: 0.14em;
+    font-size: 0.95rem; color: var(--ivory-dim);
+  }
+
+  /* The spoon: laid flat on a plain wooden ledge at the end. Deadpan — same
+     plate, no fanfare. */
+  .bay--ledge { flex: 0 0 auto; }
+  .bay--ledge::before {
+    background: linear-gradient(180deg, #8a5d33, #5b3a1e);
+    left: 10px; right: 0;
+  }
+  .bay--ledge::after { display: none; }
+  .bay--ledge .art :global(.ti) { height: var(--h); width: calc(var(--h) * 3.2); }
+  .bay--ledge .bay-name { color: var(--muted); font-size: 0.85rem; }
+
+  @media (max-width: 520px) {
+    .cabinet { --shelf-h: 76px; --wall: 10px; }
+    .bay { padding: 0 8px 10px; }
+    .items { gap: 6px; }
+    .art :global(.ti) { height: calc(var(--h) * 0.78); }
+    .bay--ledge .art :global(.ti) { height: calc(var(--h) * 0.78); width: calc(var(--h) * 2.5); }
+    .plate { font-size: 0.62rem; letter-spacing: 0.1em; }
+    .bay-name { font-size: 0.85rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .art { transition: none; }
+    .piece:hover .art, .piece:focus-visible .art { transform: none; }
+  }
+</style>

@@ -66,6 +66,12 @@ src/lib/predict.ts       the rating model: regularised global skill fit, win
 src/lib/linalg.ts        dependency-free Cholesky SPD solve, for the fit's Newton steps
 src/lib/insights.ts      rule-based "worth knowing" lines for a match page
 src/lib/ranks.ts         where a player sits in the field — the stat-panel badges
+src/lib/honours.ts       the trophy cabinet: premiers/runners-up off the Final's
+                         win?, minor premiers/spoon off the completed ladder, stat
+                         leaders off H&A season totals (own team, no fill-ins);
+                         Season/Finals MVP from the
+                         config honour's `players` (S1's award isn't the tally).
+                         Nothing vote-derived for a sealed season
 src/lib/site-data.ts     page-facing helpers (season ladder, MVP tally, fun stats)
 src/lib/datetime.ts      formats the Start column for display — string in, string
                          out, never a Date (see Data conventions)

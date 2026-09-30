@@ -915,6 +915,30 @@ export function allPlayers(rows: StatRow[] = loadStatRows()): string[] {
   ].sort((a, b) => a.localeCompare(b));
 }
 
+export interface MvpRow { player: string; slug: string; team: string; votes: number; games: number }
+
+/**
+ * A season's MVP vote tally (sum of votes as cast), highest first.
+ * Home-and-away only. Fill-in nights are excluded — those votes were earned
+ * for another team — and so are votes earned against a withdrawn team
+ * (`votesStruck`). Says nothing about whether the season is sealed: that's
+ * the caller's call, because only the caller knows who's about to see it.
+ */
+export function mvpTally(season: number, rows: StatRow[]): MvpRow[] {
+  const byPlayer = new Map<string, { votes: number; games: number; team: string; slug: string }>();
+  for (const r of rows) {
+    if (!isPlayed(r) || r.season !== season || r.isSingles || r.isFinals || r.isFillIn) continue;
+    if (r.votesStruck || r.votes === null) continue;
+    const e = byPlayer.get(r.player) ?? { votes: 0, games: 0, team: r.team, slug: r.slug };
+    e.votes += r.votes;
+    e.games += 1;
+    byPlayer.set(r.player, e);
+  }
+  return [...byPlayer.entries()]
+    .map(([player, e]) => ({ player, ...e }))
+    .sort((a, b) => b.votes - a.votes || b.games - a.games);
+}
+
 // ---------------------------------------------------------------------------
 // Head to head (the "easiest" / "hardest" opponent tiles)
 // ---------------------------------------------------------------------------

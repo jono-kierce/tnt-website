@@ -15,8 +15,8 @@ const season1: SeasonConfig = {
   honours: [
     { title: 'Champions', team: 'White', detail: 'J. Kierce & E. Seamer' },
     { title: 'Runners-up', team: 'Red', detail: 'C. Simpson & A. Hume' },
-    { title: 'Season MVP', detail: 'A. Littlejohn, J. Kierce & L. Sharrock' },
-    { title: 'Finals MVP', detail: 'C. Simpson' },
+    { title: 'Season MVP', detail: 'A. Littlejohn, J. Kierce & L. Sharrock', players: ['Archie Littlejohn', 'Jonathan Kierce', 'Luke Sharrock'] },
+    { title: 'Finals MVP', detail: 'C. Simpson', players: ['Charlie Simpson'] },
   ],
 
   // Top 8 seeds off the final ladder (1 White, 2 Red, 3 Orange, 4 Navy,

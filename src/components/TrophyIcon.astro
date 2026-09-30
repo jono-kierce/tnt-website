@@ -1,0 +1,130 @@
+---
+/**
+ * One piece of silverware for the trophy cabinet, drawn inline.
+ *
+ * Every shape is stroked and tinted in `currentColor`, so the cabinet decides
+ * the metal (gold, silver, bronze, wood) with a single `color` and one drawing
+ * serves the premiership cup and the runners-up cup alike. No gradients with
+ * ids: sixty-odd player pages each carrying the same `<defs>` would be
+ * duplicate ids the moment two icons share a page.
+ */
+type Shape = 'cup' | 'salver' | 'medal' | 'wreath' | 'shield' | 'spoon';
+interface Props {
+  shape: Shape;
+  /** Text engraved on a medal or shield: "2", "W", "EF". */
+  mark?: string;
+}
+const { shape, mark } = Astro.props;
+
+// The wreath's leaves sit along two mirrored curves. Placed from the curve's
+// own points and tangents so they follow the bend instead of hanging off it.
+const bez = (t: number, p: number[][]) => {
+  const u = 1 - t;
+  const pt = [0, 1].map(
+    (k) => u * u * u * p[0][k] + 3 * u * u * t * p[1][k] + 3 * u * t * t * p[2][k] + t * t * t * p[3][k]
+  );
+  const d = [0, 1].map(
+    (k) => 3 * u * u * (p[1][k] - p[0][k]) + 6 * u * t * (p[2][k] - p[1][k]) + 3 * t * t * (p[3][k] - p[2][k])
+  );
+  return { x: pt[0], y: pt[1], a: (Math.atan2(d[1], d[0]) * 180) / Math.PI };
+};
+const LEFT = [[19, 43], [8, 38], [6, 20], [15, 9]];
+const RIGHT = LEFT.map(([x, y]) => [48 - x, y]);
+const leaves = [0.18, 0.38, 0.58, 0.78].flatMap((t) => [
+  { ...bez(t, LEFT), side: -1 },
+  { ...bez(t, RIGHT), side: 1 },
+]);
+const star = (cx: number, cy: number, r: number) =>
+  Array.from({ length: 10 }, (_, i) => {
+    const rad = i % 2 ? r * 0.42 : r;
+    const a = (Math.PI / 5) * i - Math.PI / 2;
+    return `${(cx + rad * Math.cos(a)).toFixed(2)},${(cy + rad * Math.sin(a)).toFixed(2)}`;
+  }).join(' ');
+---
+{shape === 'cup' && (
+  <svg class="ti" viewBox="0 0 48 64" aria-hidden="true">
+    <path class="body" d="M12 7h24v12c0 10-5.6 16-12 16s-12-6-12-16Z" />
+    <path d="M12 11c-7.5 0-7.5 13 1.4 14.6M36 11c7.5 0 7.5 13-1.4 14.6" />
+    <path class="body" d="M21.4 35c.6 4 .2 6.6-2.4 9h10c-2.6-2.4-3-5-2.4-9" />
+    <rect class="body" x="15" y="44" width="18" height="4" rx=".6" />
+    <rect class="body" x="12" y="48" width="24" height="10" rx="1" />
+    <path class="glint" d="M16.2 10.5c0 9 1 14.5 4.3 19" />
+    <path class="engrave" d="M17 53h14" />
+  </svg>
+)}
+{shape === 'salver' && (
+  <svg class="ti" viewBox="0 0 48 64" aria-hidden="true">
+    <circle class="body" cx="24" cy="23" r="16" />
+    <circle class="engrave" cx="24" cy="23" r="11.5" />
+    <path class="engrave" d="M16.2 15.5c4.4 4.4 4.4 10.6 0 15M31.8 15.5c-4.4 4.4-4.4 10.6 0 15" />
+    <path class="glint" d="M11.5 18.5a13.5 13.5 0 0 1 8-9" />
+    <path d="M20 39l-2.5 10M28 39l2.5 10" />
+    <rect class="body" x="12" y="49" width="24" height="9" rx="1" />
+  </svg>
+)}
+{shape === 'medal' && (
+  <svg class="ti" viewBox="0 0 48 64" aria-hidden="true">
+    <path class="ribbon" d="M13 3h7l7.5 22-5 2.4ZM35 3h-7l-7.5 22 5 2.4Z" />
+    <circle class="body" cx="24" cy="41" r="14" />
+    <circle class="engrave" cx="24" cy="41" r="10" />
+    {mark
+      ? <text class="mark--medal" x="24" y="47" text-anchor="middle">{mark}</text>
+      : <polygon class="fillmark" points={star(24, 41, 6.5)} />}
+    <path class="glint" d="M14.5 36a10.5 10.5 0 0 1 5-5.6" />
+  </svg>
+)}
+{shape === 'wreath' && (
+  <svg class="ti" viewBox="0 0 48 64" aria-hidden="true">
+    <path d={`M${LEFT[0]}C${LEFT[1]} ${LEFT[2]} ${LEFT[3]}M${RIGHT[0]}C${RIGHT[1]} ${RIGHT[2]} ${RIGHT[3]}`} />
+    {leaves.map((l) => (
+      <ellipse
+        class="leaf"
+        cx="0" cy="0" rx="3.4" ry="1.35"
+        transform={`translate(${l.x.toFixed(2)} ${l.y.toFixed(2)}) rotate(${(l.a + l.side * 38).toFixed(1)}) translate(2.6 0)`}
+      />
+    ))}
+    <polygon class="body" points={star(24, 24, 9)} />
+    <path d="M24 34v10" />
+    <rect class="body" x="16" y="44" width="16" height="4" rx=".6" />
+    <rect class="body" x="13" y="48" width="22" height="10" rx="1" />
+    <path class="engrave" d="M18 53h12" />
+  </svg>
+)}
+{shape === 'shield' && (
+  <svg class="ti" viewBox="0 0 48 64" aria-hidden="true">
+    <path class="body" d="M9 8h30v19c0 11-7.5 18-15 22-7.5-4-15-11-15-22Z" />
+    <path class="engrave" d="M13 12h22v15c0 8.5-5.4 14-11 17.2-5.6-3.2-11-8.7-11-17.2Z" />
+    {mark && <text x="24" y="31" text-anchor="middle">{mark}</text>}
+    <path d="M24 49v4" />
+    <rect class="body" x="15" y="53" width="18" height="5" rx=".6" />
+  </svg>
+)}
+{shape === 'spoon' && (
+  <svg class="ti ti--flat" viewBox="0 0 64 20" aria-hidden="true">
+    <ellipse class="body" cx="12" cy="11" rx="9.5" ry="6" />
+    <path class="engrave" d="M6.5 9.5c2-2 5-2.6 8-1.6" />
+    <path class="body" d="M21 9.6 58 7.4c2.2-.1 3.4 1.2 3.4 2.8S60.2 13.2 58 13l-37-1.2Z" />
+    <path class="engrave" d="M30 10.4c8-.4 16-.9 24-.9" />
+  </svg>
+)}
+
+<style>
+  .ti { display: block; width: 100%; height: 100%; overflow: visible; }
+  .ti path, .ti rect, .ti circle, .ti polygon, .ti ellipse {
+    fill: none; stroke: currentColor; stroke-width: 1.5;
+    stroke-linejoin: round; stroke-linecap: round;
+  }
+  /* A wash of the metal, not a fill: the line drawing stays the object and the
+     tint only says what it's made of. */
+  .ti .body { fill: currentColor; fill-opacity: 0.16; }
+  .ti .ribbon { fill: currentColor; fill-opacity: 0.08; stroke-opacity: 0.6; }
+  .ti .engrave { stroke-width: 0.9; stroke-opacity: 0.55; }
+  .ti .glint { stroke-width: 1.2; stroke-opacity: 0.6; stroke: #fffaf0; }
+  .ti .leaf { fill: currentColor; fill-opacity: 0.5; stroke-width: 0.6; }
+  .ti .fillmark { fill: currentColor; fill-opacity: 0.85; stroke-width: 0.6; }
+  .ti text {
+    fill: currentColor; font-family: var(--serif); font-weight: 700;
+    font-size: 13px; letter-spacing: 0.02em;
+  }
+  .ti text.mark--medal { font-size: 17px; }
+</style>
