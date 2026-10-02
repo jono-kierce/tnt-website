@@ -10,21 +10,21 @@
  *
  * Only the alpha channel is ever used: the marks ship as masks and take their
  * ink from CSS (site) or from a tint at compose time (favicon, og). That's why
- * the white artwork is the source and the black one is never opened — on alpha
- * they are the same drawing.
+ * the white artwork is the source and the black and green ones are never
+ * opened — on alpha all three are the same drawing.
  */
 
 /** Source artwork, relative to the repo root. */
-export const LOGO_SOURCE = "logos/white logo ' no text.png";
+export const LOGO_SOURCE = 'logos/tnt-logo-primary-white.png';
 
-/** Crops, in source pixels: [left, top, right, bottom] of the 2732×2048 file. */
+/** Crops, in source pixels: [left, top, right, bottom] of the 1682×2000 file. */
 export const MARKS = {
   /**
-   * The crest alone: TNT, laurel, crossed racquets, ball. Stops above the
-   * handwritten "Tuesday Night Tennis", which the site and the templates both
-   * set in type next to it.
+   * The crest alone: TNT, laurel, crossed racquets, ball. Stops in the gap
+   * above the "TUESDAY NIGHT TENNIS" wordmark, which the site and the
+   * templates both set in type next to it.
    */
-  crest: [725, 18, 2048, 1518],
-  /** The full lockup, script included — for anything with room for it. */
-  lockup: [725, 18, 2048, 1998],
+  crest: [0, 0, 1682, 1740],
+  /** The full lockup, wordmark included — for anything with room for it. */
+  lockup: [0, 0, 1682, 2000],
 };
