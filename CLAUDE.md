@@ -170,8 +170,8 @@ whose numbers come from outside this repo; see below). **Read
   season config's `teams` keys (`declaredTeams` in `site-data.ts`), which is
   also what seeds a live ladder at 0/0/0. Round sizes vary on purpose: S5 was
   drawn as five rounds of four matches and five of five. `check-data` reports
-  byes and never warns about an uneven round; the one thing it errors on is a
-  team drawn twice in the same round.
+  byes and never warns about an uneven round; a team drawn twice in the same
+  round is only a warning (S5 R8 Green and R9 White are drawn that way).
 - **A team can withdraw mid-season, and that is not a bye.** `TeamConfig.withdrawn`
   marks it (Black, S5, after round four). It comes off the ladder and out of the
   field the byes are computed against, and **its matches are struck from its
@@ -448,8 +448,9 @@ share only a colour), and a label that's nearly always true says nothing.
 - **S4 (2025) is complete** — full results, honours filled, votes loaded and
   unsealed.
 - **Season 5 (2026) is LIVE, seven rounds played.** `currentSeason` is 5 and
-  `sealedVoteSeasons` is `[5]`. Ten Tuesdays, 18 Aug to 20 Oct 2026; the whole
-  draw is in the CSV and rounds 1–7 have results. R7 ran five matches (Pink twice; Green v Pink and Brown v Yellow pulled forward from R8/R10, Green v Brown pushed to R8). **Remove 5 from
+  `sealedVoteSeasons` is `[5]`. Nine Tuesdays, 18 Aug to 13 Oct 2026 (drawn
+  as ten; the redraw finished the round robin a week early); the whole
+  draw is in the CSV and rounds 1–7 have results. R7 ran five matches (Pink twice; Green v Pink and Brown v Yellow pulled forward from R8/R10, Green v Brown pushed to R8). R8 has Green and Navy twice (Green v Navy pulled forward from R10), R9 has White twice. **Remove 5 from
   `sealedVoteSeasons`** on awards night.
 - **S5 was drafted as ten teams and is being played by nine.** It was the first
   **ten-team** season — **Brown** joined the original nine in `TEAMS` — and was
@@ -457,7 +458,7 @@ share only a colour), and a label that's nearly always true says nothing.
   **Black withdrew after round four**: Littlejohn stopped playing and Angus Hume
   moved to Green alongside Quinn Feikema, displacing Lewis Mossman. The back
   half was redrawn around the remaining nine, so the season is **40 fixtures**
-  and rounds five to ten run three or four matches a night. Black is
+  and rounds five to nine run three to five matches a night. Black is
   `withdrawn: true` in `season-5.ts` — off the ladder, never on a bye, still
   carrying its `pair` so its four rounds print a pairing, and still in
   `draftOrder` because it was drafted. Its matches are struck from its

@@ -16,6 +16,8 @@
      fits. "Career Winners" at 88px would otherwise run straight under it. */
   .headline { font-size: 88px; margin-top: 16px; max-width: 770px; }
   .sub { margin-top: 12px; }
+  /* A board titled by the bare stat has no subtitle; don't leave its gap. */
+  .sub:empty { display: none; }
   header .mark { position: absolute; right: 0; top: -34px; width: 92px; color: var(--gold); }
   .rule-gold {
     height: 2px; margin-top: 24px;
@@ -316,7 +318,7 @@ function toneColor(t) {
 
 /**
  * Set the headline as large as it goes on one line, down to a floor. A board's
- * title comes from its spec, so "Bad Stats" and "Winners Per Set, All Time"
+ * title comes from its spec, so "Unforced Errors" and "Winners Per Set, All Time"
  * both have to land — and a headline that silently wrapped would eat a row off
  * the bottom of the table instead of complaining.
  */

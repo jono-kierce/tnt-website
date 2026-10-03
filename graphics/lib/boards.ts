@@ -26,24 +26,38 @@ export function seasonBoards(season: number): StatBoardSpec[] {
       showPhoto: true,
       note: 'Finals votes are a separate award',
     },
+    // Titled by the bare stat, no subtitle — the column heading says the rest.
+    // "Per match" is the per-set rate on the home-and-away scope, where every
+    // match is one set (see `leaderBoards`); the scope keeps a three-set final
+    // from ever counting as one match.
     {
-      id: 'good-stats',
-      title: 'Good Stats',
-      subtitle: 'Winners per set',
-      metricLabel: 'Winners / set',
+      id: 'winners',
+      title: 'Winners',
+      metricLabel: 'Per match',
       stat: 'winners',
       perSet: true,
       season,
+      scope: 'regular',
       polarity: 'high',
     },
     {
-      id: 'bad-stats',
-      title: 'Bad Stats',
-      subtitle: 'Unforced errors per set',
-      metricLabel: 'UE / set',
+      id: 'errors-forced',
+      title: 'Errors Forced',
+      metricLabel: 'Per match',
+      stat: 'errorsForced',
+      perSet: true,
+      season,
+      scope: 'regular',
+      polarity: 'high',
+    },
+    {
+      id: 'unforced-errors',
+      title: 'Unforced Errors',
+      metricLabel: 'Per match',
       stat: 'unforcedErrors',
       perSet: true,
       season,
+      scope: 'regular',
       // Still ranked biggest-first — #1 always means the biggest number. The
       // ramp is what flips, so topping this board reads as the disgrace it is.
       polarity: 'low',

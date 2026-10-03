@@ -166,7 +166,7 @@ export interface LadderRowPayload {
   losses: number;
   /** Games for ÷ against, already rounded for print. */
   ratio: string;
-  /** Above the finals cutoff. */
+  /** Above the finals cutoff — every row when the ladder is drawn without one. */
   qualifies: boolean;
 }
 
@@ -176,7 +176,8 @@ export interface LadderPayload {
   title: string;
   subtitle: string;
   footnote: string;
-  finalsCutoff: number;
+  /** null = no finals cut drawn (`--no-cut`): no line, nobody greyed out. */
+  finalsCutoff: number | null;
   rows: LadderRowPayload[];
 }
 
@@ -191,7 +192,7 @@ const DEFAULT_FINALS_CUTOFF = 8;
 export async function ladderPayload(
   season: number,
   round: RoundRef,
-  opts: { finalsCutoff?: number } = {}
+  opts: { finalsCutoff?: number; noCut?: boolean } = {}
 ): Promise<LadderPayload> {
   // The ladder as it stood that night. Finals rounds sort above every
   // home-and-away round, so a finals `round` keeps the whole season — which is
@@ -209,17 +210,18 @@ export async function ladderPayload(
     await withdrawnTeams(season)
   );
 
-  const cutoff = opts.finalsCutoff ?? DEFAULT_FINALS_CUTOFF;
+  // `noCut` draws the plain table: with eight of nine teams going through, the
+  // line only ever singles out last place.
+  const cutoff = opts.noCut ? null : (opts.finalsCutoff ?? DEFAULT_FINALS_CUTOFF);
   const complete =
     round.stage !== null || homeAndAwayComplete(season, round.round);
+  const when = complete ? 'Home & away complete' : `After ${round.label}`;
 
   return {
     kind: 'ladder',
     eyebrow: eyebrowLabel(season),
     title: complete ? 'Final Ladder' : 'Standings',
-    subtitle: complete
-      ? `Home & away complete · Top ${cutoff} play finals`
-      : `After ${round.label} · Top ${cutoff} play finals`,
+    subtitle: cutoff === null ? when : `${when} · Top ${cutoff} play finals`,
     footnote: 'Ratio = games won ÷ games lost',
     finalsCutoff: cutoff,
     rows: table.map((r) => ({
@@ -230,7 +232,7 @@ export async function ladderPayload(
       wins: r.wins,
       losses: r.losses,
       ratio: r.ratio.toFixed(2),
-      qualifies: r.rank <= cutoff,
+      qualifies: cutoff === null || r.rank <= cutoff,
     })),
   };
 }

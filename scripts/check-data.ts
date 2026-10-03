@@ -226,8 +226,9 @@ for (const [tie, teams] of finalsTies) {
 //     A fixture is four rows sharing Team/Opponent/Season/Round with the two
 //     players a side and every RESULT column blank; the blank `win?` is what
 //     makes it a fixture rather than a result (see StatRow.scheduled). What can
-//     go wrong is a half-filled row, a name that isn't on that team, or a team
-//     drawn to play twice in one night.
+//     go wrong is a half-filled row or a name that isn't on that team. A team
+//     drawn twice in one night is only a warning — the real draw does it (S5 R8
+//     Green, R9 White), same as a played round can (S1 R8 Red, S5 R7 Pink).
 //
 //     Round sizes are NOT checked. TNT rounds vary — with an odd number of
 //     teams somebody always sits out, and S5 is expected to run five rounds of
@@ -320,7 +321,7 @@ for (const season of allSeasons(rows)) {
     }
     for (const [team, n] of seen) {
       if (n > 1) {
-        errors.push(
+        warnings.push(
           `${team} is drawn to play ${n} matches in S${season} ${round.roundLabel}`
         );
       }

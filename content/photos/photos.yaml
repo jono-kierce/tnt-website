@@ -489,3 +489,130 @@
   players: [jimmy-gorton]
   season: 5
   caption:
+
+# --- Archive additions (Oct 2026): S1–S4 frames from TNT Media, IDs by fixture elimination ---
+
+- file: season-1/lightblue-pair-s1.jpg
+  players: [quinn-feikema, jim-papa]
+  season: 1
+  caption: Team Light Blue in S1
+
+- file: season-2/papa-crouch.jpg
+  players: [jim-papa]
+  season: 2
+  caption:
+
+- file: season-2/charlie-forehand-s2.jpg
+  players: [charlie-simpson]
+  season: 2
+  caption:
+
+- file: season-2/pink-pair-s2.jpg
+  players: [damon-maurice, jonathan-kierce]
+  season: 2
+  caption: Team Pink in S2
+
+- file: season-2/red-pair-s2.jpg
+  players: [ethan-seamer, lewis-mossman]
+  season: 2
+  caption: Team Red in S2
+
+- file: season-2/yellow-pair-s2.jpg
+  players: [luke-sharrock, max-razums]
+  season: 2
+  caption: Team Yellow in S2
+
+- file: season-2/razums-forehand.jpg
+  players: [max-razums]
+  season: 2
+  caption:
+
+- file: season-2/archie-s2.jpg
+  players: [archie-littlejohn]
+  season: 2
+  caption:
+
+- file: season-2/mumme-lunge.jpg
+  players: [will-mumme]
+  season: 2
+  caption:
+
+- file: season-2/wise-lunge.jpg
+  players: [emerson-wise]
+  season: 2
+  caption:
+
+- file: season-2/croucher-volley.jpg
+  players: [declan-croucher]
+  season: 2
+  caption:
+
+- file: season-3/papa-forehand.jpg
+  players: [jim-papa]
+  season: 3
+  caption:
+
+- file: season-3/harris-forehand.jpg
+  players: [jamie-harris]
+  season: 3
+  caption:
+
+- file: season-3/burgess-backhand.jpg
+  players: [will-burgess]
+  season: 3
+  caption:
+
+- file: season-4/sharrock-forehand.jpg
+  players: [luke-sharrock]
+  season: 4
+  caption:
+
+- file: season-2/green-pair-s2.jpg
+  players: [jack-raines, ted-angel]
+  season: 2
+  caption: Team Green in S2
+
+- file: season-2/sharrock-forehand.jpg
+  players: [luke-sharrock]
+  season: 2
+  caption:
+
+- file: season-3/pink-pair-s3.jpg
+  players: [will-burgess, jamie-harris]
+  season: 3
+  caption: Team Pink in S3
+
+- file: season-3/black-pair-s3.jpg
+  players: [jim-papa, lachlan-jenkin]
+  season: 3
+  caption: Team Black in S3
+
+- file: season-3/navy-pair-s3.jpg
+  players: [ethan-seamer, shayl-inlander]
+  season: 3
+  caption: Team Navy in S3
+
+- file: season-3/gorton-backhand.jpg
+  players: [jimmy-gorton]
+  season: 3
+  caption:
+
+- file: season-3/mossman-forehand.jpg
+  players: [lewis-mossman]
+  season: 3
+  caption:
+
+- file: season-3/croucher-s3.jpg
+  players: [declan-croucher]
+  season: 3
+  caption:
+
+- file: season-3/feikema-bucks.jpg
+  players: [quinn-feikema]
+  season: 3
+  caption:
+
+- file: season-4/ed-fistpump.jpg
+  players: [ed-simpson]
+  season: 4
+  caption:

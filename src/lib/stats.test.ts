@@ -1146,8 +1146,9 @@ describe('the real S5 draw', () => {
     const matches = seasonMatches(rows, 5);
     // Drawn as 45 — five rounds of four and five of five, nine each for ten
     // teams. Black withdrew after round four and the back half was redrawn
-    // around the remaining nine, which is why this is 40 and why rounds five
-    // to ten run three or four matches rather than a tidy pattern.
+    // around the remaining nine, which is why this is 40 (the 36-match round
+    // robin plus Black's four) and why rounds five to nine run three to five
+    // matches rather than a tidy pattern.
     expect(matches.length).toBe(40);
     for (const m of matches) {
       expect(m.start, `S5 R${m.roundLabel} ${m.key}`).not.toBeNull();
@@ -1157,11 +1158,12 @@ describe('the real S5 draw', () => {
     }
   });
 
-  it('runs ten Tuesdays, one round each, 18 Aug to 20 Oct 2026', () => {
+  // Drawn over ten Tuesdays; the redraw finished the round robin in nine.
+  it('runs nine Tuesdays, one round each, 18 Aug to 13 Oct 2026', () => {
     const rounds = seasonRounds(rows, 5);
     expect(rounds.map((r) => r.date)).toEqual([
       '2026-08-18', '2026-08-25', '2026-09-01', '2026-09-08', '2026-09-15',
-      '2026-09-22', '2026-09-29', '2026-10-06', '2026-10-13', '2026-10-20',
+      '2026-09-22', '2026-09-29', '2026-10-06', '2026-10-13',
     ]);
     // A round is one night: no round spans two dates.
     for (const r of rounds) {

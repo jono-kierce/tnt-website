@@ -9,8 +9,9 @@ import type { SeasonConfig } from './schema.ts';
  * off it, and Littlejohn and Hume keep those matches on their career pages —
  * but it is off the ladder and out of the draw from round five, and Angus Hume
  * moved to Green alongside Quinn Feikema. That leaves nine teams and a redrawn
- * back half: rounds five to ten run three or four matches a night with byes,
- * 40 fixtures across the season rather than the 45 originally drawn.
+ * back half: rounds five to nine run three to five matches a night with byes,
+ * 40 fixtures across the season rather than the 45 originally drawn, and the
+ * round robin is done by 13 Oct — round ten (20 Oct) was dropped.
  *
  * `finals` below is the bracket *shape* only — no `result` on any match yet,
  * so seed slots resolve against the live in-progress ladder and `winnerOf`

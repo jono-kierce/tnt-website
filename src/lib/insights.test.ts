@@ -294,7 +294,79 @@ describe('ladder stakes', () => {
     rows.push(...played('3', '5', { team: 'Navy', players: ['C Three', 'D Four'] }, { team: 'Pink', players: ['A One', 'B Two'] }));
     const insight = stakesInsight(contextForLast(normalizeRows(rows)))!;
     expect(insight.label).toBe('Top spot');
-    expect(insight.detail).toMatch(/go top of the ladder with a win/);
+    // Navy, not Pink: Pink are already top. This test used to pin the
+    // opposite, which is how "Yellow go top" reached a 6–0 Yellow in S5 R8.
+    expect(insight.detail).toBe('Navy go top of the ladder with a win.');
+    expect(insight.team).toBe('Navy');
+  });
+
+  describe('the leader', () => {
+    const P = { team: 'Pink', players: ['A One', 'B Two'] };
+    const N = { team: 'Navy', players: ['C Three', 'D Four'] };
+    const R = { team: 'Red', players: ['E Five', 'F Six'] };
+    const W = { team: 'White', players: ['G 7', 'H 8'] };
+    const fixture = (round: string, a: typeof P, b: typeof P) =>
+      [[a, b], [b, a]].flatMap(([s, o]) =>
+        s.players.map((player) =>
+          raw({
+            Team: s.team, Opponent: o.team, Season: '3', Round: round, Player: player,
+            Score: '', 'Team Score': '', 'Opponent Score': '', 'win?': '',
+          })
+        )
+      );
+    /**
+     * A double round robin of four. Rounds 1–4 played: Pink 4–0, Navy and Red
+     * 2–2, White 0–4. Rounds 5 and 6 drawn. `upTo` stops the played results
+     * early, turning the rest of round four into fixtures too.
+     */
+    const season = (upTo = 4) => {
+      const results: [string, typeof P, typeof P][] = [
+        ['1', P, N], ['1', R, W],
+        ['2', P, R], ['2', N, W],
+        ['3', P, W], ['3', N, R],
+        ['4', P, N], ['4', R, W],
+      ];
+      const draw: [string, typeof P, typeof P][] = [
+        ['5', P, R], ['5', N, W],
+        ['6', P, W], ['6', N, R],
+      ];
+      const rows = [
+        ...results.filter(([r]) => +r <= upTo).flatMap(([r, a, b]) => played('3', r, a, b)),
+        ...results.filter(([r]) => +r > upTo).flatMap(([r, a, b]) => fixture(r, a, b)),
+        ...draw.flatMap(([r, a, b]) => fixture(r, a, b)),
+      ];
+      return normalizeRows(rows);
+    };
+    const pinkIn = (rows: StatRow[], round: number) =>
+      insightContext(
+        seasonMatches(rows).find((m) => m.round === round && m.sides.some((s) => s.team === 'Pink'))!,
+        rows
+      );
+
+    it('clinches the minor premiership when nobody can catch it', () => {
+      // Pink 4–0 v Red 2–2 in round five. A win makes five; Navy can reach
+      // four at most, Red three.
+      const insight = stakesInsight(pinkIn(season(), 5))!;
+      expect(insight.label).toBe('Minor premiership');
+      expect(insight.detail).toBe('Pink clinch the minor premiership with a win.');
+    });
+
+    it('never tells the leader it will go top', () => {
+      // Round four, Pink 3–0 v Navy 2–1: a Pink win makes four, and Navy can
+      // still get to four, so nothing is clinched — and Navy can't go top
+      // off one win either. The old branch said "Pink go top" here.
+      const insight = stakesInsight(pinkIn(season(3), 4));
+      expect(insight?.detail ?? '').not.toMatch(/go top|clinch/);
+    });
+
+    it("won't claim a clinch off a draw that isn't all loaded", () => {
+      // Drop Navy v Red from round six: Navy's ceiling now looks a match
+      // lower than it is, so the clinch can't be trusted.
+      const rows = season().filter(
+        (r) => !(r.round === 6 && (r.team === 'Navy' || r.team === 'Red'))
+      );
+      expect(stakesInsight(pinkIn(rows, 5))?.label).not.toBe('Minor premiership');
+    });
   });
 
   it('stays quiet in the opening rounds, when a ladder means nothing', () => {

@@ -16,7 +16,7 @@
  * Everything is derived from `stats.ts`. No detector counts a row itself.
  */
 
-import type { StatRow } from './types.ts';
+import type { LadderRow, StatRow } from './types.ts';
 import {
   ladder,
   seasonMatches,
@@ -527,9 +527,34 @@ export function stakesInsight(ctx: InsightContext): Insight | null {
       weight: 78,
     };
   }
-  // Winner goes top: the better-placed side is first or second, and one win
-  // separates them from the summit.
-  if (high.rank <= 2 && high.wins + 1 > leader.wins) {
+  // The leader can't "go top" — it's already there, which is what this branch
+  // used to say about it (S5 R8: "Yellow go top of the ladder with a win", of
+  // a 6–0 Yellow). What a leader's match can carry is the minor premiership,
+  // or the other side taking first off it.
+  if (high === leader) {
+    if (clinchesWithWin(ctx, table, high.team)) {
+      return {
+        kind: 'stakes',
+        label: 'Minor premiership',
+        detail: `${high.team} clinch the minor premiership with a win.`,
+        team: high.team,
+        weight: 76,
+      };
+    }
+    // Level on wins and behind only on games: beat the leader and you lead.
+    if (low.wins >= high.wins) {
+      return {
+        kind: 'stakes',
+        label: 'Top spot',
+        detail: `${low.team} go top of the ladder with a win.`,
+        team: low.team,
+        weight: 75,
+      };
+    }
+  }
+  // Winner goes top: the second side is level on wins with the leader (who
+  // isn't in this match), so one more takes them past.
+  else if (high.rank === 2 && high.wins + 1 > leader.wins) {
     return {
       kind: 'stakes',
       label: 'Top spot',
@@ -573,6 +598,41 @@ export function stakesInsight(ctx: InsightContext): Insight | null {
     };
   }
   return null;
+}
+
+/**
+ * Would a win put `team` out of everyone's reach on wins alone?
+ *
+ * Every other team's ceiling is its wins plus every home-and-away match it has
+ * left — the matches not before this one, played or not, so a 2023 page reads
+ * as it would have that night. This match is a loss in the opponent's
+ * ceiling. Strictly out of reach only: a tie on wins goes to games ratio,
+ * which nobody can promise a fortnight out.
+ *
+ * Matches against a withdrawn team are struck from the ladder, so they don't
+ * count here either. And the remaining draw has to be all there to be
+ * believed: if every team in the field isn't down for the same number of
+ * matches, rows are missing, a ceiling is too low, and no claim is made.
+ */
+function clinchesWithWin(ctx: InsightContext, table: LadderRow[], team: string): boolean {
+  const { match } = ctx;
+  const withdrawn = new Set(ctx.withdrawnTeams ?? []);
+  // "Left" is whatever the ladder hasn't counted — not `isBefore`, which
+  // breaks a tie inside a round on team names, so a same-night fixture
+  // alphabetically ahead of this one would vanish from the draw.
+  const counted = new Set(ctx.history.map((m) => m.key));
+  const left = new Map(table.map((t) => [t.team, 0]));
+  for (const m of seasonMatches(ctx.allRows)) {
+    if (m.season !== match.season || m.isFinals || m.key === match.key) continue;
+    if (counted.has(m.key) || m.sides.some((s) => withdrawn.has(s.team))) continue;
+    for (const s of m.sides) left.set(s.team, (left.get(s.team) ?? 0) + 1);
+  }
+  const inMatch = new Set(match.sides.map((s) => s.team));
+  const drawn = table.map((t) => t.matchesPlayed + left.get(t.team)! + (inMatch.has(t.team) ? 1 : 0));
+  if (drawn.some((n) => n !== drawn[0])) return false;
+
+  const wins = table.find((t) => t.team === team)!.wins + 1;
+  return table.every((t) => t.team === team || t.wins + left.get(t.team)! < wins);
 }
 
 /**

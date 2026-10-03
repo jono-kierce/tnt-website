@@ -70,6 +70,7 @@ const { values: argv } = parseArgs({
     sim: { type: 'string' },
     runs: { type: 'string' },
     career: { type: 'boolean', default: false },
+    'no-cut': { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h', default: false },
   },
 });
@@ -116,6 +117,8 @@ TNT graphics renderer
                    containing both team colours, or "match1.jpg" positionally.
                    A fixture with no photo renders on the scrim and warns.
   --career         Also render the all-time boards.
+  --no-cut         Draw the ladder without the finals cut: no line, no
+                   greyed-out rows, and no "Top 8 play finals" subtitle.
   --subtitle <s>   Override the draft board's subtitle.
   --footnote <s>   Small print bottom-right of the draft board (date, venue).
   --pair <a,b>     The two players for --only pair, comma-separated:
@@ -464,7 +467,7 @@ if (only.has('predictions')) {
 }
 
 if (only.has('ladder')) {
-  await shoot('ladder.html', await ladderPayload(season, round), `${stem}-ladder.png`);
+  await shoot('ladder.html', await ladderPayload(season, round, { noCut: argv['no-cut'] }), `${stem}-ladder.png`);
 }
 
 if (only.has('pointsladder')) {

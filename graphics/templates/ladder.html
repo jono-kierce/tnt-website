@@ -164,7 +164,7 @@ window.__render = function (d) {
 
   const html = [];
   d.rows.forEach((r, i) => {
-    if (i === d.finalsCutoff) html.push(`<div class="cutline">Finals cut</div>`);
+    if (d.finalsCutoff != null && i === d.finalsCutoff) html.push(`<div class="cutline">Finals cut</div>`);
     html.push(`
       <div class="row ${r.rank === 1 ? 'lead' : ''} ${r.qualifies ? '' : 'missed'}" data-team="${esc(r.team)}">
         <div class="pos">${r.rank}</div>
