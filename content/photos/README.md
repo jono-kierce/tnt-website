@@ -38,6 +38,18 @@ gallery. If you forget step 2, `npm run dev`, `npm run build` and
 - **Order matters**: galleries render in manifest order, and a player's avatar
   is their first *solo-tagged* photo (falling back to their first tagged one).
   Reorder entries to change what leads.
+- **Profile pictures**: the avatar is shown at 64–120px, where a wide action
+  shot is a speck. To use a close-up instead, crop a square headshot into
+  `avatars/<slug>.jpg` and list it with `avatar: true` and exactly one player.
+  It becomes that player's avatar and never appears in a gallery, so it can be
+  cut from a photo that's already listed (or one that isn't, like a team pair)
+  without showing anyone twice:
+
+  ```yaml
+  - file: avatars/jim-papa.jpg   # cut from season-3/black-pair-s3.jpg
+    players: [jim-papa]
+    avatar: true
+  ```
 
 Photos are copied into the built site automatically (`scripts/copy-assets.mjs`);
 you don't need to touch `public/`.

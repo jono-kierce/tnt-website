@@ -35,7 +35,7 @@ import { insightsFor } from '../../src/lib/insights.ts';
 import { formatDate, formatDateLong, formatTime } from '../../src/lib/datetime.ts';
 import type { MatchSide, SetScore, StatRow } from '../../src/lib/types.ts';
 import { SITE, isVotesSealed } from '../../src/config/site.ts';
-import { PHOTOS_DIR, avatarPhoto, playerPhotos, type Photo } from '../../src/lib/photos.ts';
+import { PHOTOS_DIR, leadPhoto, playerPhotos, type Photo } from '../../src/lib/photos.ts';
 import {
   allSeasonConfigs,
   getSeasonConfig,
@@ -831,10 +831,12 @@ function currentTeamForChip(player: string): string | null {
  * leaderboard for 2026 fronted by a 2023 frame reads as a mistake, and the kit
  * is usually wrong — so it takes solo shots tagged with that season and nothing
  * else; no photo means no hero, and the plain board renders. A career board
- * takes the avatar, same as the site.
+ * takes the lead gallery photo — the site's avatar unless the player has an
+ * `avatar: true` headshot, which is cut for a 120px tile and too small to
+ * front a 1080px slide.
  */
 export function leaderPhoto(slug: string, season?: number, index = 0): Photo | null {
-  if (season === undefined) return avatarPhoto(slug);
+  if (season === undefined) return leadPhoto(slug);
   const mine = playerPhotos(slug).filter((p) => p.season === season && p.players.length === 1);
   return mine.length ? mine[index % mine.length] : null;
 }

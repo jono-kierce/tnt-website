@@ -433,6 +433,7 @@ const photos = allPhotos();
 const validSlugs = new Set(rows.map((r) => r.slug));
 const knownSeasons = new Set([...allSeasons(rows), SITE.currentSeason]);
 const seenFiles = new Set<string>();
+const avatarOwners = new Set<string>();
 
 for (const p of photos) {
   const wherePhoto = `photos.yaml → ${p.file}`;
@@ -446,6 +447,16 @@ for (const p of photos) {
   }
   if (p.season !== null && !knownSeasons.has(p.season)) {
     warnings.push(`Photo season ${p.season} has no CSV rows: ${wherePhoto}`);
+  }
+  // An avatar crop stands in for one person's profile picture, so it has to
+  // name exactly one — and that person can only have one.
+  if (p.avatar) {
+    if (p.players.length !== 1) {
+      errors.push(`avatar: true needs exactly one player, has ${p.players.length}: ${wherePhoto}`);
+    } else if (avatarOwners.has(p.players[0])) {
+      warnings.push(`${p.players[0]} has two avatar: true photos (the first wins): ${wherePhoto}`);
+    }
+    for (const s of p.players) avatarOwners.add(s);
   }
 }
 for (const f of missingPhotoFiles()) {

@@ -4,7 +4,11 @@
  * what the caption says. Folder layout is just storage; tags live here.
  *
  * Manifest order is meaningful: galleries render in it, and a player's avatar
- * is their first solo-tagged photo (falling back to their first tagged one).
+ * is their first solo-tagged photo (falling back to their first tagged one) —
+ * unless an entry marked `avatar: true` names them. That's a square headshot
+ * cut for the 64–120px profile tile, where a wide action frame shrinks to a
+ * speck: it only ever shows as the avatar, never in a gallery, so the frame it
+ * was cut from isn't shown twice.
  *
  * Kept importable from plain Node (scripts/check-data.ts): no import.meta.env,
  * no Vite-only APIs. Paths are relative — the UI layer applies the site base.
@@ -28,6 +32,8 @@ export interface Photo {
   season: number | null;
   /** Caption shown under the photo, or null for none. */
   caption: string | null;
+  /** A profile-picture crop: the avatar for its one player, never in a gallery. */
+  avatar: boolean;
 }
 
 let cache: Photo[] | null = null;
@@ -45,24 +51,39 @@ export function allPhotos(): Photo[] {
       players: Array.isArray(e.players) ? e.players.map(String) : [],
       season: typeof e.season === 'number' ? e.season : null,
       caption: typeof e.caption === 'string' && e.caption.trim() ? e.caption.trim() : null,
+      avatar: e.avatar === true,
     }));
   return cache;
 }
 
-/** Photos tagged with a player, in manifest order. */
-export function playerPhotos(slug: string): Photo[] {
-  return allPhotos().filter((p) => p.players.includes(slug));
+/** Manifest entries that belong in galleries — everything but avatar crops. */
+export function galleryPhotos(): Photo[] {
+  return allPhotos().filter((p) => !p.avatar);
 }
 
-/** A player's avatar photo: first solo-tagged, else first tagged, else null. */
-export function avatarPhoto(slug: string): Photo | null {
+/** Gallery photos tagged with a player, in manifest order. */
+export function playerPhotos(slug: string): Photo[] {
+  return galleryPhotos().filter((p) => p.players.includes(slug));
+}
+
+/**
+ * A player's lead gallery photo: first solo-tagged, else first tagged, else
+ * null. Full-size, so it's what a graphic fronts a career board with — an
+ * avatar crop is too small to be blown up to 1080px.
+ */
+export function leadPhoto(slug: string): Photo | null {
   const mine = playerPhotos(slug);
   return mine.find((p) => p.players.length === 1) ?? mine[0] ?? null;
 }
 
-/** Photos belonging to a season, in manifest order. */
+/** A player's avatar: their `avatar: true` crop, else their lead photo. */
+export function avatarPhoto(slug: string): Photo | null {
+  return allPhotos().find((p) => p.avatar && p.players.includes(slug)) ?? leadPhoto(slug);
+}
+
+/** Gallery photos belonging to a season, in manifest order. */
 export function seasonPhotos(season: number): Photo[] {
-  return allPhotos().filter((p) => p.season === season);
+  return galleryPhotos().filter((p) => p.season === season);
 }
 
 /** Image files on disk under content/photos/ (relative paths, sorted). */

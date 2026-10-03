@@ -273,7 +273,13 @@ whose numbers come from outside this repo; see below). **Read
 - **Photos:** `content/photos/photos.yaml` is the manifest — file, tagged player
   slugs, season, caption. Folders (`season-N/`, `misc/`) are just storage. A
   photo not in the manifest is invisible; `check-data` and `copy-assets` both
-  warn. Manifest order = gallery order; avatar = first solo-tagged photo.
+  warn. Manifest order = gallery order; avatar = first solo-tagged photo,
+  **unless an `avatar: true` entry names the player** — a square headshot in
+  `content/photos/avatars/`, cut for the 64–120px tile (a wide action frame
+  is a speck there). Those never show in a gallery (`galleryPhotos()` is the
+  gate under `playerPhotos`/`seasonPhotos`), so cutting one from a listed
+  photo or a pair shot shows nobody twice. A graphic's career board takes
+  `leadPhoto()` instead: an 800px crop can't front a 1080px slide.
 - **Photos are served unprocessed.** They go through `public/`, the one
   directory Astro copies byte-for-byte, so `astro:assets` never sees them —
   whatever is on disk is what a visitor downloads into a 200px tile. **Run

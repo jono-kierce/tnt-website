@@ -616,3 +616,68 @@
   players: [ed-simpson]
   season: 4
   caption:
+
+# --- Profile pictures (avatar: true) -------------------------------------------
+# Square headshots for the 64-120px avatar tile. Never shown in a gallery, so
+# cutting one from a photo already listed above doesn't show it twice. The
+# comment names the frame each was cut from.
+
+- file: avatars/billy-coutinho.jpg   # season-5/coutinho-leap.JPG
+  players: [billy-coutinho]
+  avatar: true
+
+- file: avatars/conor-paraskevas.jpg   # TNT Media/S2 Photos/R2/C.Simpson_C.Para_v_W.Mumme_A.Little/DSC08013.JPG
+  players: [conor-paraskevas]
+  avatar: true
+
+- file: avatars/damon-maurice.jpg   # season-3/s3-champions.jpg
+  players: [damon-maurice]
+  avatar: true
+
+- file: avatars/ed-simpson.jpg   # season-5/navy-pair.JPG
+  players: [ed-simpson]
+  avatar: true
+
+- file: avatars/flynn-braden.jpg   # season-5/handshake-red-pink.JPG
+  players: [flynn-braden]
+  avatar: true
+
+- file: avatars/jack-raines.jpg   # TNT Media/S2 Photos/R2/J.Kierce_D.Maurice v T. Angel J.Raines/DSC08125.JPG
+  players: [jack-raines]
+  avatar: true
+
+- file: avatars/jackson-virgona.jpg   # season-4/jackson.JPG
+  players: [jackson-virgona]
+  avatar: true
+
+- file: avatars/jamie-harris.jpg   # season-3/pink-pair-s3.jpg
+  players: [jamie-harris]
+  avatar: true
+
+- file: avatars/jim-papa.jpg   # season-3/black-pair-s3.jpg
+  players: [jim-papa]
+  avatar: true
+
+- file: avatars/lachlan-jenkin.jpg   # season-3/black-pair-s3.jpg
+  players: [lachlan-jenkin]
+  avatar: true
+
+- file: avatars/lachy-godden.jpg   # season-4/s4-runnersup.jpg
+  players: [lachy-godden]
+  avatar: true
+
+- file: avatars/lewis-mossman.jpg   # season-4/lewis.jpg
+  players: [lewis-mossman]
+  avatar: true
+
+- file: avatars/shayl-inlander.jpg   # season-3/navy-pair-s3.jpg
+  players: [shayl-inlander]
+  avatar: true
+
+- file: avatars/ted-angel.jpg   # TNT Media/S2 Photos/R2/J.Kierce_D.Maurice v T. Angel J.Raines/DSC08127.JPG
+  players: [ted-angel]
+  avatar: true
+
+- file: avatars/will-mumme.jpg   # season-5/navy-pair.JPG
+  players: [will-mumme]
+  avatar: true

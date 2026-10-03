@@ -259,7 +259,8 @@ label, row count, season or career, per-set or total, and `polarity`.
   `payloads.ts`): a solo photo tagged with the board's season, never an older
   frame, since a 2026 leaderboard fronted by a 2023 kit reads as a mistake. If
   there isn't one, the plain board renders and the CLI names the player whose
-  photo is missing. A career board takes `avatarPhoto()`, as the site does.
+  photo is missing. A career board takes `leadPhoto()` — the site's avatar
+  rule minus `avatar: true` headshots, which are too small for a 1080px slide.
   `photoIndex` picks a later frame so one player leading two consecutive
   slides isn't shown twice in the same pose. `cutout: true` is for a
   transparent PNG.

@@ -39,6 +39,7 @@ import {
 import { SITE, TEAMS } from '../../src/config/site.ts';
 import { getSeasonConfig } from './season-configs.ts';
 import { longestMatches, pairSplit, teamPoints } from '../../src/lib/points.ts';
+import { avatarPhoto, leadPhoto, playerPhotos } from '../../src/lib/photos.ts';
 
 /** Compact "6 7" / "4 6³" for asserting on a whole side at once. */
 const line = (sets: { games: string; tiebreak: string | null }[]) =>
@@ -473,11 +474,22 @@ describe('leader boards', () => {
       expect(b.rows).toHaveLength(8);
     }
     // No photo from the board's season means no spotlight, never an older
-    // frame: Charlie has photos from S1 and S5, and none from S2.
-    expect(leaderPhoto('charlie-simpson', 5)?.season).toBe(5);
-    expect(leaderPhoto('charlie-simpson', 2)).toBeNull();
-    // A career board takes the avatar, same as the site.
-    expect(leaderPhoto('charlie-simpson')).not.toBeNull();
+    // frame. Found from the manifest rather than named, because the gap closes
+    // whenever somebody's archive photo goes up: a player with a solo photo in
+    // one season and none in another.
+    const solo = (slug: string, season: number) =>
+      playerPhotos(slug).some((p) => p.season === season && p.players.length === 1);
+    const gap = [...new Set(rows.map((r) => r.slug))]
+      .flatMap((slug) => [1, 2, 3, 4, 5].map((season) => ({ slug, season })))
+      .find(({ slug, season }) => !solo(slug, season) && [1, 2, 3, 4, 5].some((n) => solo(slug, n)))!;
+    expect(gap).toBeDefined();
+    expect(leaderPhoto(gap.slug, gap.season)).toBeNull();
+    // A career board takes the lead gallery photo: never an avatar crop, which
+    // is cut for a 120px tile and would be blown up across the slide.
+    expect(leaderPhoto(gap.slug)).not.toBeNull();
+    expect(leaderPhoto(gap.slug)!.avatar).toBe(false);
+    expect(leaderPhoto('jim-papa')).toEqual(leadPhoto('jim-papa'));
+    expect(avatarPhoto('jim-papa')!.avatar).toBe(true);
   });
 });
 
