@@ -53,10 +53,60 @@ function pruneDir(from, to) {
   return removed;
 }
 
-// 1. CSV for download
+// Split one CSV line into its raw cells, quotes and all, so a line can be
+// re-joined byte-for-byte with only the cells we touched changed.
+function splitCsvLine(line) {
+  const cells = [];
+  let cell = '';
+  let quoted = false;
+  for (const ch of line) {
+    if (ch === '"') quoted = !quoted;
+    if (ch === ',' && !quoted) {
+      cells.push(cell);
+      cell = '';
+    } else cell += ch;
+  }
+  cells.push(cell);
+  return cells;
+}
+
+/**
+ * The CSV as published: the `votes` cell blanked on every row of a season in
+ * `SITE.sealedVoteSeasons`. The site and the graphics blank those votes
+ * themselves (`sealVotes` in stats.ts), but the download link would otherwise
+ * hand out the file as committed. BOM, line endings and every other cell are
+ * left exactly as they are.
+ */
+function sealedCsv(text, sealed) {
+  if (!sealed.length) return text;
+  const lines = text.split('\n');
+  const header = splitCsvLine(lines[0].replace(/^﻿/, '').replace(/\r$/, ''));
+  const seasonCol = header.indexOf('Season');
+  const votesCol = header.indexOf('votes');
+  if (seasonCol < 0 || votesCol < 0) {
+    throw new Error('[copy-assets] CSV has no Season/votes column — refusing to publish it unsealed');
+  }
+  let blanked = 0;
+  const out = lines.map((line, i) => {
+    if (i === 0) return line;
+    const cr = line.endsWith('\r') ? '\r' : '';
+    const cells = splitCsvLine(cr ? line.slice(0, -1) : line);
+    if (!sealed.includes(Number(cells[seasonCol])) || !(cells[votesCol] ?? '').trim()) return line;
+    cells[votesCol] = '';
+    blanked++;
+    return cells.join(',') + cr;
+  });
+  console.log(`[copy-assets] sealed seasons ${sealed.join(', ')}: ${blanked} vote(s) blanked in the download`);
+  return out.join('\n');
+}
+
+// 1. CSV for download, sealed votes blanked
 const csv = path.join(root, 'data/alltimestats.csv');
 if (fs.existsSync(csv)) {
-  copyFile(csv, path.join(root, 'public/data/alltimestats.csv'));
+  const { SITE } = await import('../src/config/site.ts');
+  const dest = path.join(root, 'public/data/alltimestats.csv');
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(dest, sealedCsv(fs.readFileSync(csv, 'utf8'), SITE.sealedVoteSeasons));
   console.log('[copy-assets] data/alltimestats.csv -> public/data/');
 }
 

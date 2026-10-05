@@ -240,7 +240,7 @@ const payload = { datasets, teamColors, minGames: SITE.perGameMinGames, sealedSe
     if (stat === 'votes' && scope === 'all') notes.push('Season 1 votes are era-adjusted to the two-voter 3-2-1 scale — a 2 counts as 6, a 1 as 4. Season boards show votes as cast.');
     notes.push('Matches shown is the number behind the figure — a stat missing from a night is left out, not counted as zero.');
     if (applyMin) notes.push(`Minimum ${minGames} matches to qualify.`);
-    if ((stat === 'votes' || stat === 'finalsVotes') && cfg.sealedSeasons.includes(Number(scope))) notes.push('Votes for this season are sealed 🔒 — board will populate after awards night.');
+    if ((stat === 'votes' || stat === 'finalsVotes' || stat === 'bog') && cfg.sealedSeasons.includes(Number(scope))) notes.push('Votes for this season are sealed 🔒 — board will populate after awards night.');
     if (stat === 'errorsForced') notes.push('Errors Forced only tracked from Season 2.');
     note.textContent = notes.join(' ');
   }

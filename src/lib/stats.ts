@@ -728,6 +728,31 @@ export function strikeWithdrawnVotes(
   return rows.map((r) => (gone(r.season).has(r.opponent) ? { ...r, votesStruck: true } : r));
 }
 
+/**
+ * Blank every vote — and so every BOG — in a season whose votes are sealed
+ * (`SITE.sealedVoteSeasons`), so nothing built from these rows can show them.
+ *
+ * The CSV carries a live season's votes as they're cast; the seal is a promise
+ * about what gets *published*, not about what's in the file. Every page and
+ * board used to guard itself (`sealed && votes === null`), which only held
+ * while the column was blank: once the votes went in, a player's season tile,
+ * his career total, the BOG count in his header, the match log, the records
+ * page and the all-time leaderboards all printed them. Applied once, where the
+ * site (`site-data.ts`) and the renderer (`payloads.ts`) load their rows, a
+ * sealed season reads exactly as a blank column does and the per-page guards
+ * go back to being true. `check-data` loads the raw rows, so it still checks
+ * the sealed votes for range. Rows are copied, not mutated.
+ */
+export function sealVotes(
+  rows: StatRow[],
+  sealed: readonly number[] = SITE.sealedVoteSeasons
+): StatRow[] {
+  const s = new Set(sealed);
+  return rows.map((r) =>
+    s.has(r.season) ? { ...r, votes: null, adjustedVotes: null, bog: false } : r
+  );
+}
+
 /** Aggregate a set of already-filtered rows for one player into a PlayerAgg. */
 function aggregateRows(
   player: string,

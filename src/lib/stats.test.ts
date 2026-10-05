@@ -25,8 +25,10 @@ import {
   winStreaks,
   winStreakRun,
   strikeWithdrawnVotes,
+  sealVotes,
 } from './stats.ts';
 import { canonicalName, shortName, stripFillIn } from '../config/aliases.ts';
+import { SITE } from '../config/site.ts';
 import { allSeasonConfigs } from '../config/seasons/index.ts';
 import type { FinalsSlot } from '../config/seasons/schema.ts';
 
@@ -293,6 +295,32 @@ describe('a team that withdraws mid-season', () => {
 });
 
 describe('votes-era handling', () => {
+  it('blanks a sealed season\'s votes and BOG, whatever the CSV holds', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'Pink', Opponent: 'Red', Season: '4', Round: '1', Player: 'X', votes: '3' }),
+      raw({ Team: 'Pink', Opponent: 'Red', Season: '5', Round: '1', Player: 'X', votes: '6', 'win?': 'TRUE' }),
+      raw({ Team: 'Red', Opponent: 'Pink', Season: '5', Round: '1', Player: 'Y', votes: '1' }),
+    ]);
+    expect(rows[1].bog).toBe(true);
+    const sealed = sealVotes(rows, [5]);
+    expect(sealed.filter((r) => r.season === 5).map((r) => [r.votes, r.adjustedVotes, r.bog]))
+      .toEqual([[null, null, false], [null, null, false]]);
+    // Career and the open season are untouched; the sealed one reads as blank.
+    expect(playerAgg('X', sealed).votes).toBe(3);
+    expect(playerAgg('X', sealed, { season: 5 }).votes).toBeNull();
+    expect(playerAgg('X', sealed).bog).toBe(1); // the S4 night, not the S5 one
+    // Copied, not mutated — check-data still sees the votes as cast.
+    expect(rows[1].votes).toBe(6);
+  });
+
+  it('seals the site\'s own rows for every season in sealedVoteSeasons', async () => {
+    const { allRows } = await import('./site-data.ts');
+    for (const season of SITE.sealedVoteSeasons) {
+      const leaked = allRows.filter((r) => r.season === season && (r.votes !== null || r.bog));
+      expect(leaked).toEqual([]);
+    }
+  });
+
   it('treats blank votes as null (sealed), not zero', () => {
     const rows = normalizeRows([
       raw({ Team: 'Pink', Season: '4', Round: '1', Player: 'X', votes: '' }),

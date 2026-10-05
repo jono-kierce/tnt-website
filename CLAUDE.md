@@ -225,6 +225,14 @@ whose numbers come from outside this repo; see below). **Read
   settle it by accident.
 - **Votes eras:** S1 = 2/1 + Player-of-the-Round; S2+ = two voters × 3-2-1
   (max 6/match). Blank votes are treated as missing (never 0).
+- **Sealed votes are blanked at load, not per page.** The CSV carries a live
+  season's votes as they're cast; `sealVotes` in `stats.ts` nulls `votes`,
+  `adjustedVotes` and `bog` for every season in `sealedVoteSeasons`, applied
+  once in `site-data.ts` and `payloads.ts` — so career totals, the records
+  page and the all-time boards can't count them either. `copy-assets` blanks
+  the same cells in the downloadable CSV. `check-data` reads the raw rows, so
+  it still range-checks them. The repo itself is public, though: the committed
+  CSV is readable on GitHub whatever the site does.
 - **S1 votes are era-adjusted in cross-era windows only:** a career/all-time
   tally counts an S1 home-and-away 2 as 6 and a 1 as 4 (`adjustedVotes`, mapped
   in `normalize.ts` from `SITE.voteEraMap`), so a best-on-court night weighs the

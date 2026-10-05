@@ -14,7 +14,7 @@
  *    about how many seasons you've played as how well, so its board is worth a
  *    top-five mention and no grade.
  */
-import { SITE } from '../config/site.ts';
+import { SITE, isVotesSealed } from '../config/site.ts';
 import {
   allPlayers,
   perSet,
@@ -47,6 +47,9 @@ export const RANK_METRICS = [
 ] as const;
 
 export type RankMetric = (typeof RANK_METRICS)[number];
+
+/** Every board read off the `votes` column, BOG included. */
+const VOTE_METRICS = new Set<RankMetric>(['votes', 'finalsVotes', 'bog']);
 
 /**
  * Metrics where topping the board is the bad news. The rank still reads the
@@ -208,6 +211,9 @@ function buildTable(rows: StatRow[], season: number | undefined): RankTable {
     for (const a of field) table[mode].set(a.player, {});
 
     for (const metric of RANK_METRICS) {
+      // A sealed season's votes arrive blank (`sealVotes`), which makes every
+      // BOG count a 0 — and a field tied at 0 would hand everyone a #1.
+      if (season !== undefined && isVotesSealed(season) && VOTE_METRICS.has(metric)) continue;
       const scored = field
         .map((a) => ({ player: a.player, value: metricValue(a, metric, mode) }))
         .filter((e): e is { player: string; value: number } => e.value !== null)

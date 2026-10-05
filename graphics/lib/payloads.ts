@@ -21,6 +21,7 @@ import {
   winStreakRun,
   streakEndLabel,
   pairRecord,
+  sealVotes,
   strikeWithdrawnVotes,
   teamRoster,
   type CountingStat,
@@ -51,14 +52,16 @@ import { longestMatches, pairSplit, teamPoints } from '../../src/lib/points.ts';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// Votes earned against a withdrawn team come pre-struck, as on the site — see
-// `strikeWithdrawnVotes`. The Node config loader is async, hence the await.
+// Votes earned against a withdrawn team come pre-struck and a sealed season's
+// votes come blank, as on the site — see `strikeWithdrawnVotes` and `sealVotes`.
+// The blanking is what keeps a sealed season out of a *career* or all-time
+// board, which the per-season refusal below can't see. The Node config loader
+// is async, hence the await.
 const withdrawnBySeason = new Map(
   (await allSeasonConfigs()).map((c) => [c.season, withdrawnOf(c)] as const)
 );
-export const rows: StatRow[] = strikeWithdrawnVotes(
-  loadStatRows(),
-  (season) => withdrawnBySeason.get(season) ?? []
+export const rows: StatRow[] = sealVotes(
+  strikeWithdrawnVotes(loadStatRows(), (season) => withdrawnBySeason.get(season) ?? [])
 );
 
 /**

@@ -96,10 +96,14 @@ const finalsVotesSub =
   : finalsMvp.games ? `4-3-2-1 · ${finalsMvp.games} finals`
   : '4-3-2-1';
 
-const bogValue = rateMode ? (agg.games ? fmt(agg.bog / agg.games, 2) : '—') : String(agg.bog);
-const bogSub = [rateMode ? 'per match' : '', finals.bog > 0 ? `${finals.bog} in finals` : '']
-  .filter(Boolean)
-  .join(' · ');
+// BOG is derived from votes, so a sealed season has none to count — a 0 here
+// would read as "never best on court", not "not telling yet".
+const bogValue = sealed ? '🔒'
+  : rateMode ? (agg.games ? fmt(agg.bog / agg.games, 2) : '—') : String(agg.bog);
+const bogSub = sealed ? 'sealed until awards night'
+  : [rateMode ? 'per match' : '', finals.bog > 0 ? `${finals.bog} in finals` : '']
+    .filter(Boolean)
+    .join(' · ');
 
 const chip = (metric: RankMetric, what: string) => ({ badge: ranks[metric], what });
 const ranked = Object.keys(ranks).length > 0;

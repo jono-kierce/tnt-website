@@ -8,6 +8,7 @@ import {
   scheduledRows,
   seasonMatches,
   seasonRounds,
+  sealVotes,
   strikeWithdrawnVotes,
   teamRoster,
   records,
@@ -32,9 +33,10 @@ import { playerAwards, seasonAwards, type Award } from './honours.ts';
 /**
  * Everything in the CSV, fixtures included. Only the schedule, the match pages
  * and the prediction model want this — see `rows` below. Votes earned against
- * a withdrawn team come pre-struck, so no tally has to remember.
+ * a withdrawn team come pre-struck, and a sealed season's votes come blank
+ * (`sealVotes`), so no tally — and no page — has to remember.
  */
-export const allRows: StatRow[] = strikeWithdrawnVotes(loadStatRows(), withdrawnTeams);
+export const allRows: StatRow[] = sealVotes(strikeWithdrawnVotes(loadStatRows(), withdrawnTeams));
 
 /**
  * The rows the site's statistics are built from: played matches only.
