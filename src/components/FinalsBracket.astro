@@ -2,6 +2,7 @@
 import type { FinalsRound, FinalsSlot, FinalsMatch } from '../config/seasons/schema.ts';
 import type { LadderRow } from '../lib/types.ts';
 import { teamMeta } from '../config/site.ts';
+import { bracketLayout } from '../lib/bracket.ts';
 
 interface Props { finals: FinalsRound[]; ladder: LadderRow[] }
 const { finals, ladder } = Astro.props;
@@ -18,7 +19,8 @@ function resolveTeam(slot: FinalsSlot): string {
   return losers.get(slot.loserOf) ?? '';
 }
 
-// Two passes so winnerOf references resolve regardless of declaration order.
+// One pass per match so winnerOf/loserOf references resolve regardless of
+// declaration order.
 for (let pass = 0; pass < allMatches.length; pass++) {
   for (const m of allMatches) {
     if (!m.result || winners.has(m.id)) continue;
@@ -42,7 +44,6 @@ function label(slot: FinalsSlot): string {
   return t ? (ladderName(t) ?? t) : `Loser of ${slot.loserOf}`;
 }
 function ladderName(team: string) { return ladder.find((l) => l.team === team)?.pairingName; }
-function slotTeam(slot: FinalsSlot): string { return resolveTeam(slot); }
 
 // "6(4)" -> 6 games with the tiebreak points shown small, tennis-style.
 function sets(scores: string[] | undefined) {
@@ -52,177 +53,148 @@ function sets(scores: string[] | undefined) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Bracket geometry. Ties are laid out on a grid so each match sits vertically
-// centred between the two it feeds from — 1v8 above 4v5, their semi centred on
-// the pair, and so on. Every leaf gets two grid rows so that a span's midpoint
-// always lands exactly on a row line, which is what the connector lines hang
-// off. Nothing here is season-specific; it's derived from the winnerOf/loserOf
-// references, so any bracket shape lays itself out.
-// ---------------------------------------------------------------------------
-const byId = new Map(allMatches.map((m) => [m.id, m]));
-
-function feeders(m: FinalsMatch): (FinalsMatch | undefined)[] {
-  return [m.home, m.away].map((s) => {
-    if ('winnerOf' in s) return byId.get(s.winnerOf);
-    if ('loserOf' in s) return byId.get(s.loserOf);
-    return undefined;
-  });
-}
-
-/** Leaf-unit span [first, last] each match occupies, keyed by match id. */
-const span = new Map<string, [number, number]>();
-let leaves = 0;
-
-/**
- * A bare seed (no match feeding it — a bye straight into this round) claims
- * no space of its own: the tie sits flush on whichever real feeder it has,
- * rather than being padded out to the average of a feeder that isn't there.
- * Only a tie with two bare seeds (an actual first-round pairing) allocates
- * fresh leaves. A tie with two real feeders spans the union, as ever.
- */
-function assign(m: FinalsMatch): [number, number] {
-  const existing = span.get(m.id);
-  if (existing) return existing;
-  // Claim the id first so a malformed self/cyclic reference can't loop forever.
-  span.set(m.id, [leaves, leaves]);
-  const parts = feeders(m).map((f) => (f && f.id !== m.id ? assign(f) : null));
-  const real = parts.filter((p): p is [number, number] => p !== null);
-  let s: [number, number];
-  if (real.length === 0) {
-    s = [leaves, leaves + 1];
-    leaves += 2;
-  } else if (real.length === 1) {
-    s = real[0];
-  } else {
-    s = [Math.min(...real.map((p) => p[0])), Math.max(...real.map((p) => p[1]))];
-  }
-  span.set(m.id, s);
-  return s;
-}
-
-// Walk back from the last round so the first round falls into bracket order.
-for (const m of [...finals].reverse().flatMap((r) => r.matches)) assign(m);
-const rows = Math.max(leaves, 1) * 2;
-
-const rowStart = (m: FinalsMatch) => (span.get(m.id)?.[0] ?? 0) * 2 + 1;
-const rowEnd = (m: FinalsMatch) => (span.get(m.id)?.[1] ?? 0) * 2 + 3;
-/** Row line the tie's own centre sits on. */
-const centreRow = (m: FinalsMatch) => {
-  const s = span.get(m.id) ?? [0, 0];
-  return s[0] + s[1] + 2;
-};
-
-/**
- * Vertical line joining this match's two feeders, or null if it has fewer
- * than two — a bye tie has only one real feeder, and since it now sits
- * flush on that feeder's own span (see `assign`), their centres already
- * coincide with no line needed to bridge them.
- */
-function connector(m: FinalsMatch): [number, number] | null {
-  const fed = feeders(m).filter((f): f is FinalsMatch => !!f);
-  if (fed.length < 2) return null;
-  const centres = fed.map(centreRow);
-  return [Math.min(...centres), Math.max(...centres)];
-}
-
-// Render each round top-to-bottom in bracket order rather than declared order.
-const orderedRounds = finals.map((r) => ({
-  ...r,
-  matches: [...r.matches].sort((a, b) => rowStart(a) - rowStart(b)),
-}));
-// The join ticks are data-driven, not positional: a bare seed pairing sitting
-// in a later column (a 3 v 6 alongside a wildcard winner) feeds from nothing,
-// so it must not draw a stub pointing back into empty space. Likewise a tie
-// nobody references forward draws no stub out.
-const referenced = new Set(allMatches.flatMap((m) => feeders(m).filter((f) => !!f).map((f) => f!.id)));
-const hasIn = (m: FinalsMatch) => feeders(m).some((f) => !!f);
-const hasOut = (m: FinalsMatch) => referenced.has(m.id);
-
 function side(m: FinalsMatch, which: 'home' | 'away') {
   const slot = m[which];
-  const team = slotTeam(slot);
+  const team = resolveTeam(slot);
   const meta = team ? teamMeta(team) : null;
   const won = m.result ? m.result.winner === which : false;
   const scores = m.result ? (which === 'home' ? m.result.homeScore : m.result.awayScore) : undefined;
-  return { label: label(slot), team, meta, won, sets: sets(scores) };
+  return { label: label(slot), meta, won, sets: sets(scores) };
 }
+
+// ---------------------------------------------------------------------------
+// Geometry. Where each tie sits and how its lines run comes from
+// `src/lib/bracket.ts` in abstract units — the same layout the Instagram
+// finals graphic draws — and these are this page's pixels for it. The tie's
+// rows are a fixed height so a line can land on the row it fills: SLOT is the
+// distance from a tie's centre to the middle of either row.
+// ---------------------------------------------------------------------------
+// Tie width: five rounds of 218 fit a 1280px window; a three-round knockout
+// has the room to give a bold winner and a two-set score more.
+const W = finals.length > 4 ? 218 : 250;
+const G = 36;      // gap between rounds, where the lines turn
+const U = 128;     // one unit down the page
+const SLOT = 20.5; // .tie padding + border + half a 40px .tie-side
+const PORT = 16;   // gap between a tie's two exits
+const LANE = 10;   // gap between two lines turning in the same gap
+
+const layout = bracketLayout(finals, { slot: SLOT / U, port: PORT / U });
+const width = finals.length * W + Math.max(finals.length - 1, 0) * G;
+const height = Math.ceil(layout.span * U);
+const colX = (c: number) => c * (W + G);
+const decided = new Set(allMatches.filter((m) => m.result).map((m) => m.id));
+
+const paths = layout.edges.map((e) => {
+  // Same round: a straight drop between the two ties' centres, drawn behind
+  // them so only the gap between the cards shows.
+  if (e.stacked) {
+    const x = colX(e.toCol) + W / 2;
+    return { d: `M${x} ${(e.y1 * U).toFixed(1)}V${(e.y2 * U).toFixed(1)}`, kind: e.kind, decided: decided.has(e.from) };
+  }
+  const x1 = colX(e.fromCol) + W;
+  const x2 = colX(e.toCol);
+  const y1 = +(e.y1 * U).toFixed(1);
+  const y2 = +(e.y2 * U).toFixed(1);
+  const turn = x2 - G / 2 + (e.lane - (e.lanes - 1) / 2) * LANE;
+  const d = y1 === y2 ? `M${x1} ${y1}H${x2}` : `M${x1} ${y1}H${turn}V${y2}H${x2}`;
+  return { d, kind: e.kind, decided: decided.has(e.from) };
+});
 ---
 {finals.length === 0 ? (
   <p class="muted">Finals bracket for this season hasn't been added yet.</p>
 ) : (
-  <div class="bracket-wrap">
-    <div class="bracket">
-      {orderedRounds.map((round) => (
-        <div class="bracket-col">
+  <div class="bracket-wrap" style={`--bw:${width}px`}>
+    <div class="bracket" style={`width:${width}px;--W:${W}px;--G:${G}px`}>
+      <div class="bracket-heads">
+        {finals.map((round) => (
           <div class="bracket-head">
             <p class="finenote bracket-round">{round.name}</p>
             {round.format && <p class="finenote bracket-format">{round.format}</p>}
           </div>
-          <div class="bracket-ties" style={`grid-template-rows: repeat(${rows}, 1fr)`}>
-          {round.matches.map((m) => connector(m)).map((c) => (
-            c && <span class="connector" style={`grid-row: ${c[0]} / ${c[1]}`}></span>
-          ))}
-          {round.matches.map((m) => {
-            const h = side(m, 'home'), a = side(m, 'away');
-            return (
-              <div class:list={['tie', 'card', { 'has-in': hasIn(m), 'has-out': hasOut(m) }]}
-                style={`grid-row: ${rowStart(m)} / ${rowEnd(m)}`}>
-                {m.label && <span class="tie-label">{m.label}</span>}
-                {[h, a].map((s) => (
-                  <div class={`tie-side ${s.won ? 'won' : ''}`}
-                    style={s.meta ? `--team-color:${s.meta.color};--team-color-2:${s.meta.color2}` : ''}>
-                    <span class="bar"></span>
-                    <span class="tie-name">{s.label}</span>
-                    <span class="tie-score">
-                      {s.sets.map((set) => (
-                        <span class="set">{set.games}{set.tb && <sup>{set.tb}</sup>}</span>
-                      ))}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            );
-          })}
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
+      <div class="bracket-field" style={`height:${height}px`}>
+        <svg class="bracket-lines" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+          {paths.map((p) => <path d={p.d} class:list={[p.kind, { decided: p.decided }]} />)}
+        </svg>
+        {layout.columns.flatMap((col) => col.ties.map((t) => {
+          const m = t.match;
+          const h = side(m, 'home'), a = side(m, 'away');
+          return (
+            <div class:list={['tie', 'card', { double: t.doubleChance }]}
+              style={`left:${colX(t.col)}px;top:${(t.pos * U).toFixed(1)}px`}>
+              {m.label && <span class="tie-label">{m.label}</span>}
+              {[h, a].map((s) => (
+                <div class={`tie-side ${s.won ? 'won' : ''}`}
+                  style={s.meta ? `--team-color:${s.meta.color};--team-color-2:${s.meta.color2}` : ''}>
+                  <span class="bar"></span>
+                  <span class="tie-name">{s.label}</span>
+                  <span class="tie-score">
+                    {s.sets.map((set) => (
+                      <span class="set">{set.games}{set.tb && <sup>{set.tb}</sup>}</span>
+                    ))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          );
+        }))}
+      </div>
     </div>
+    {layout.doubleChance && (
+      <p class="finenote bracket-key">
+        <span class="key key-winner"></span> Winner through
+        <span class="key key-loser"></span> Loser's second chance
+        <span class="key key-double"></span> Double chance
+      </p>
+    )}
   </div>
 )}
 
 <style>
-  .bracket-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  /* --gap is split either side of the column boundary by the connector lines. */
-  /* --line-soft reads as card borders but vanishes against the page, so the
-     bracket lines get their own slightly brighter tone. */
-  .bracket { display: flex; gap: var(--gap); min-width: min-content; align-items: stretch; --gap: 26px; --bracket-line: color-mix(in srgb, var(--muted) 42%, transparent); }
-  .bracket-col { display: flex; flex-direction: column; min-width: 230px; }
-  /* Explicit rows + spans put every tie on its feeders' midpoint. The single
-     explicit column and the grid-column on the children are load-bearing: ties
-     and connectors deliberately overlap on the row axis, and without a column
-     to pin them to, auto-placement flows the overlaps into implicit extra
-     columns — which silently widens the round and staggers its ties sideways. */
-  .bracket-ties { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); }
-  .tie { grid-column: 1; align-self: center; margin: 5px 0; }
-  .connector { grid-column: 1; justify-self: start; width: 1px; margin-left: calc(var(--gap) / -2); background: var(--bracket-line); }
-  .tie.has-in::before, .tie.has-out::after {
-    content: ''; position: absolute; top: 50%; width: calc(var(--gap) / 2); height: 1px; background: var(--bracket-line);
+  /* A bracket wider than the page breaks out of the container, centred on it,
+     up to the viewport's width; past that it scrolls. A narrower one stays
+     flush left in the container like everything else on the page. */
+  .bracket-wrap {
+    --fit: max(100%, min(100vw - 40px, var(--bw)));
+    width: var(--fit);
+    margin-left: calc((100% - var(--fit)) / 2);
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    --bracket-line: color-mix(in srgb, var(--muted) 42%, transparent);
   }
-  .tie.has-in::before { left: calc(var(--gap) / -2); }
-  .tie.has-out::after { right: calc(var(--gap) / -2); }
+  .bracket-heads { display: grid; grid-template-columns: repeat(auto-fill, var(--W)); column-gap: var(--G); margin-bottom: 12px; }
   .bracket-round { text-align: center; text-transform: uppercase; letter-spacing: 0.16em; margin: 0; }
   .bracket-format { text-align: center; text-transform: none; letter-spacing: 0.02em; font-size: 0.68rem; opacity: 0.7; margin: 2px 0 2px; }
-  .tie { padding: 10px 12px; position: relative; }
-  .tie-label { position: absolute; top: -9px; left: 12px; font-size: 0.6rem; letter-spacing: 0.1em; color: var(--muted); background: var(--card); padding: 0 6px; text-transform: uppercase; }
-  .tie-side { display: grid; grid-template-columns: 6px 1fr auto; align-items: center; gap: 10px; padding: 8px 2px; }
+
+  .bracket-field { position: relative; }
+  .bracket-lines { position: absolute; inset: 0; overflow: visible; }
+  .bracket-lines path { fill: none; stroke: var(--bracket-line); stroke-width: 1; }
+  .bracket-lines path.loser { stroke: color-mix(in srgb, var(--loss) 70%, transparent); stroke-dasharray: 4 4; }
+  .bracket-lines path.decided { stroke: color-mix(in srgb, var(--gold-soft) 60%, transparent); }
+  .bracket-lines path.loser.decided { stroke: color-mix(in srgb, var(--loss) 85%, transparent); }
+
+  /* Centred on its `top`, so the layout's `pos` is the tie's middle. */
+  .tie { position: absolute; width: var(--W); transform: translateY(-50%); padding: 10px 12px; }
+  .tie.double { border-color: color-mix(in srgb, var(--gold) 45%, var(--line)); }
+  .tie-label { position: absolute; top: -9px; left: 12px; font-size: 0.6rem; letter-spacing: 0.1em; color: var(--muted); background: var(--card); padding: 0 6px; text-transform: uppercase; white-space: nowrap; }
+  .tie.double .tie-label { color: var(--gold-soft); }
+  /* Fixed row height: the lines land on these rows (SLOT in the frontmatter). */
+  .tie-side { display: grid; grid-template-columns: 6px 1fr auto; align-items: center; gap: 10px; height: 40px; padding: 0 2px; }
   .tie-side + .tie-side { border-top: 1px solid var(--line-soft); }
   .tie-side .bar { height: 20px; }
-  .tie-name { font-family: var(--serif); font-size: 0.98rem; white-space: nowrap; }
+  /* A name too long for the row wraps onto a second line inside it rather than
+     losing its tail — two lines still fit the fixed 40px. */
+  .tie-name { font-family: var(--serif); font-size: 0.92rem; line-height: 1.05; }
   .tie-side:not(.won) .tie-name { color: var(--ivory-dim); }
   .tie-side.won .tie-name { color: var(--ivory); font-weight: 700; }
   .tie-score { font-variant-numeric: tabular-nums; color: var(--gold-soft); font-weight: 700; display: flex; gap: 9px; }
   /* Fixed-width sets + out-of-flow tiebreak so both sides' columns line up. */
   .set { position: relative; min-width: 0.75em; text-align: right; }
   .set sup { position: absolute; left: 100%; top: -0.15em; font-size: 0.62em; font-weight: 600; }
+
+  .bracket-key { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 18px 0 0; }
+  .key { display: inline-block; width: 22px; height: 0; border-top: 1px solid var(--bracket-line); margin-left: 10px; }
+  .key:first-child { margin-left: 0; }
+  .key-loser { border-top: 1px dashed color-mix(in srgb, var(--loss) 70%, transparent); }
+  .key-double { width: 14px; height: 10px; border: 1px solid color-mix(in srgb, var(--gold) 60%, var(--line)); border-radius: 3px; }
 </style>

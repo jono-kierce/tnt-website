@@ -7,6 +7,8 @@ import {
   fillInRecord,
   fillInVotes,
   headToHead,
+  isPlayed,
+  isPlayedMatch,
   ladder,
   ladderWithPairings,
   leaderboard,
@@ -20,6 +22,7 @@ import {
   isBagelAgainst,
   playedRows,
   pairRecord,
+  rivalryRecord,
   teamRoster,
   lineupPairingName,
   winStreaks,
@@ -27,6 +30,7 @@ import {
   strikeWithdrawnVotes,
   sealVotes,
 } from './stats.ts';
+import { redrawnRows } from './testing.ts';
 import { canonicalName, shortName, stripFillIn } from '../config/aliases.ts';
 import { SITE } from '../config/site.ts';
 import { allSeasonConfigs } from '../config/seasons/index.ts';
@@ -950,10 +954,11 @@ describe('finals data matches the brackets', () => {
     const csvRows = rows.filter((r) => r.season === season && r.isFinals);
 
     const winners = new Map<string, string>();
+    const losers = new Map<string, string>();
     const resolve = (slot: FinalsSlot): string | null => {
       if ('seed' in slot) return seeds[slot.seed - 1] ?? null;
       if ('winnerOf' in slot) return winners.get(slot.winnerOf) ?? null;
-      return null; // loserOf — unused so far
+      return losers.get(slot.loserOf) ?? null; // S5's double chance
     };
 
     for (const round of cfg.finals ?? []) {
@@ -963,6 +968,7 @@ describe('finals data matches the brackets', () => {
         const res = m.result;
         if (home && away && res) {
           winners.set(m.id, res.winner === 'home' ? home : away);
+          losers.set(m.id, res.winner === 'home' ? away : home);
         }
 
         const stage = m.id.replace(/\d+$/, '');
@@ -1310,8 +1316,8 @@ describe('match records and rounds', () => {
   });
 });
 
-describe('the real CSV, with Season 5 fixtures in it', () => {
-  const all = loadStatRows();
+describe('the real CSV, with Season 5\'s last round put back to a draw', () => {
+  const all = redrawnRows(5, 9);
   const played = all.filter((r) => !r.scheduled);
 
   it('has fixtures, and they are all Season 5 with nothing but names on them', () => {
@@ -1401,10 +1407,89 @@ describe('bagels — 6-0 results', () => {
   });
 
   it('a fixture contributes nothing', () => {
-    const drawn = all.filter((r) => r.scheduled);
+    const drawn = redrawnRows(5, 9).filter((r) => r.scheduled);
     expect(drawn.length).toBeGreaterThan(0);
     expect(drawn.some(isBagelFor)).toBe(false);
     expect(drawn.some(isBagelAgainst)).toBe(false);
+  });
+});
+
+describe('forfeits — a result for the ladder, and nothing else', () => {
+  const forfeit = (team: string, opponent: string, players: string[], win: boolean) =>
+    players.map((Player) =>
+      raw({
+        Team: team, Opponent: opponent, Season: '5', Round: '2', Score: 'forfeit', Player,
+        Aces: '', 'Unforced Errors': '', 'Forced Errors': '', 'Double Faults': '', Winners: '',
+        'win?': win ? 'TRUE' : 'FALSE',
+        'Team Score': win ? '6' : '0',
+        'Opponent Score': win ? '0' : '6',
+      })
+    );
+  const played = (team: string, opponent: string, players: string[], win: boolean) =>
+    players.map((Player) =>
+      raw({
+        Team: team, Opponent: opponent, Season: '5', Round: '1', Player,
+        Score: win ? '6-4' : '4-6',
+        'win?': win ? 'TRUE' : 'FALSE',
+        'Team Score': win ? '6' : '4',
+        'Opponent Score': win ? '4' : '6',
+      })
+    );
+  const rows = normalizeRows([
+    // Round 1, played: Pink beat Yellow 6-4. Round 2, Yellow didn't turn up.
+    ...played('Pink', 'Yellow', ['A One', 'B Two'], true),
+    ...played('Yellow', 'Pink', ['C Three', 'D Four'], false),
+    ...forfeit('Pink', 'Yellow', ['A One', 'B Two'], true),
+    ...forfeit('Yellow', 'Pink', ['C Three', 'D Four'], false),
+  ]);
+  const playedOnly = rows.filter((r) => !r.forfeit);
+
+  it('is read off the Score column, and is a result but not a played match', () => {
+    const f = rows.filter((r) => r.forfeit);
+    expect(f).toHaveLength(4);
+    expect(f.every((r) => !r.scheduled && !isPlayed(r))).toBe(true);
+    const m = seasonMatches(rows).find((x) => x.round === 2)!;
+    expect([m.forfeit, m.scheduled, m.winner, isPlayedMatch(m)]).toEqual([true, false, 'Pink', false]);
+  });
+
+  it('counts on the ladder as the 6-0 it was awarded', () => {
+    const table = ladder(5, rows);
+    const line = (t: string) => {
+      const r = table.find((x) => x.team === t)!;
+      return [r.matchesPlayed, r.wins, r.gamesFor, r.gamesAgainst];
+    };
+    expect(line('Pink')).toEqual([2, 2, 12, 4]);
+    expect(line('Yellow')).toEqual([2, 0, 4, 12]);
+  });
+
+  it('counts toward nobody — careers, streaks, head-to-heads and pairs never see it', () => {
+    for (const p of ['A One', 'B Two', 'C Three', 'D Four']) {
+      expect(playerAgg(p, rows, { includeFillIns: true })).toEqual(
+        playerAgg(p, playedOnly, { includeFillIns: true })
+      );
+      expect(headToHead(p, rows)).toEqual(headToHead(p, playedOnly));
+    }
+    expect(playerAgg('A One', rows).games).toBe(1);
+    expect(winStreaks(rows)).toEqual(winStreaks(playedOnly));
+    expect(pairRecord('A One', 'B Two', rows)).toEqual(pairRecord('A One', 'B Two', playedOnly));
+    expect(rivalryRecord('A One', 'C Three', rows)).toEqual(
+      rivalryRecord('A One', 'C Three', playedOnly)
+    );
+  });
+
+  it('S5 R9: Yellow forfeited to Pink, and only the ladder knows', () => {
+    const all = loadStatRows();
+    const m = seasonMatches(all, 5).find(
+      (x) => x.round === 9 && x.sides.some((s) => s.team === 'Yellow')
+    )!;
+    expect([m.forfeit, m.winner]).toEqual([true, 'Pink']);
+    expect(ladder(5, all, undefined, undefined, ['Black']).find((r) => r.team === 'Yellow')!.losses).toBe(1);
+    const without = all.filter((r) => !r.forfeit);
+    for (const p of ['Charlie Simpson', 'Damon Maurice', 'Luke Sharrock', 'Jack Raines']) {
+      expect(playerAgg(p, all, { includeFillIns: true })).toEqual(
+        playerAgg(p, without, { includeFillIns: true })
+      );
+    }
   });
 });
 
@@ -1490,12 +1575,13 @@ describe('pairRecord — two players as team-mates', () => {
   });
 
   it('never reports a fixture as a result', () => {
-    // S5's whole draw is in the CSV. Every S5 pair is 0 matches so far unless
+    // S5's last round put back to a draw. Every S5 pair is 0 matches so far unless
     // they have actually taken the court. Counted over the matches the two of
     // them played *together*, not over Pink's matches: a team's declared pair
     // is not who turned out every week — R6 is Charlie Simpson with a fill-in.
-    const drawn = pairRecord('Charlie Simpson', 'Damon Maurice', all)!;
-    const played = seasonMatches(all).filter(
+    const live = redrawnRows(5, 9);
+    const drawn = pairRecord('Charlie Simpson', 'Damon Maurice', live)!;
+    const played = seasonMatches(live).filter(
       (m) =>
         !m.scheduled &&
         m.season === 5 &&
@@ -1506,6 +1592,62 @@ describe('pairRecord — two players as team-mates', () => {
     );
     expect(drawn.seasons.find((s) => s.season === 5)!.wins + drawn.seasons.find((s) => s.season === 5)!.losses)
       .toBe(played.length);
+  });
+});
+
+describe('rivalryRecord — two players across the net', () => {
+  const all = loadStatRows();
+  const KS = rivalryRecord('Jonathan Kierce', 'Luke Sharrock', all)!;
+
+  it('agrees with headToHead on meetings, record and games', () => {
+    const h = headToHead('Jonathan Kierce', all).find((x) => x.opponent === 'Luke Sharrock')!;
+    expect(KS.meetings).toBe(h.meetings);
+    expect(KS.wins).toBe(h.wins);
+    expect(KS.losses).toBe(h.losses);
+    expect(KS.gamesFor).toBe(h.gamesFor);
+    expect(KS.gamesAgainst).toBe(h.gamesAgainst);
+  });
+
+  it('reads every meeting from the first player\'s side, oldest first', () => {
+    expect(KS.matches.map((m) => `S${m.season} ${m.roundLabel}`)).toEqual([
+      'S1 9', 'S2 8', 'S3 2', 'S4 4', 'S4 Final',
+    ]);
+    const final = KS.matches.at(-1)!;
+    expect(final.teams).toEqual(['White', 'Pink']);
+    expect(final.partners).toEqual(['Lachy Godden', 'Angus Hume']);
+    expect(final.score).toBe('4-6 6(3)-7');
+    expect(final.win).toBe(false);
+    expect(KS.setsFor).toBe(2);
+    expect(KS.setsAgainst).toBe(4);
+  });
+
+  it('is symmetric in its two arguments', () => {
+    const flipped = rivalryRecord('Luke Sharrock', 'Jonathan Kierce', all)!;
+    expect(flipped.wins).toBe(KS.losses);
+    expect(flipped.gamesFor).toBe(KS.gamesAgainst);
+    expect(flipped.setsFor).toBe(KS.setsAgainst);
+    expect(flipped.members[0].tally.winners.total).toBe(KS.members[1].tally.winners.total);
+  });
+
+  it('counts each player\'s own rows over the meetings only', () => {
+    const [k, s] = KS.members;
+    expect(k.games).toBe(KS.meetings);
+    expect(s.games).toBe(KS.meetings);
+    expect(k.wins).toBe(KS.wins);
+    expect(s.wins).toBe(KS.losses);
+    // The S4 final is a scoreline only, so stats cover four of the five.
+    expect(k.tally.winners.games).toBe(4);
+  });
+
+  it('never counts a match the two played as team-mates', () => {
+    // 26 matches together across S1, S2 and S4; across the net only once, in
+    // S5 R4. A fold keyed on "both appear in this match" would count all 27.
+    const SG = rivalryRecord('Ed Simpson', 'Jimmy Gorton', all)!;
+    expect(SG.matches.map((m) => `S${m.season} ${m.roundLabel}`)).toEqual(['S5 4']);
+  });
+
+  it('returns null for two players who have never met', () => {
+    expect(rivalryRecord('Jonathan Kierce', 'Nobody At All', all)).toBeNull();
   });
 });
 

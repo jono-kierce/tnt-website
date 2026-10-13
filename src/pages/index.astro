@@ -7,6 +7,7 @@ import { predictionFor } from '../lib/predict.ts';
 import { withBase, seasonHref, scheduleHref } from '../lib/url.ts';
 import {
   headlineRound,
+  finalsLine,
   rotatingFunStat,
   seasonLadder,
   seasonRosters,
@@ -15,6 +16,7 @@ import {
 const season = SITE.currentSeason;
 const table = seasonLadder(season);
 const snapshot = table.slice(0, 8);
+const finals = finalsLine(season, table.length);
 const fun = rotatingFunStat();
 
 // The latest round with results, or — before a ball is hit — the first one
@@ -60,7 +62,7 @@ const predictions = new Map(
       <div>
         <p class="eyebrow">Standings</p>
         <h2 class="serif-title" style="margin-bottom:14px">{seasonLabel(season)} Ladder</h2>
-        <LadderTable rows={snapshot} cutoff={8} caption="Ranked by wins, then games ratio (for ÷ against). Top 8 make finals." />
+        <LadderTable rows={snapshot} cutoff={finals.cutoff} caption={`Ranked by wins, then games ratio (for ÷ against). ${finals.text}`} />
         <p class="mt-16"><a href={withBase('/ladder/')}>Full ladder →</a></p>
       </div>
       <div>

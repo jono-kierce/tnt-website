@@ -85,6 +85,17 @@ export interface StatRow {
    * the row becomes an ordinary played row with no other change anywhere.
    */
   scheduled: boolean;
+  /**
+   * A match one side forfeited: `Score` is `forfeit`, the game columns carry
+   * the awarded 6-0, `win?` says who was awarded it, and every stat and vote is
+   * blank. The four rows keep the line-ups as drawn.
+   *
+   * A forfeit is a result for the ladder and nothing else. Nobody played, so
+   * it isn't `isPlayed` — no aggregate, record, streak, head-to-head, rating or
+   * insight counts it. `matchSides` is the one entry point that does, because
+   * that's what the ladder is built from.
+   */
+  forfeit: boolean;
 
   aces: number | null;
   unforcedErrors: number | null;
@@ -136,6 +147,8 @@ export interface MatchSide {
   teamScore: number;
   opponentScore: number;
   win: boolean;
+  /** Awarded, not played — see StatRow.forfeit. Counts on the ladder only. */
+  forfeit: boolean;
 }
 
 export interface LadderRow {

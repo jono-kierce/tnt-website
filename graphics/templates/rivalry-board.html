@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Rivalry board</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  header { flex: none; position: relative; }
+  .eyebrow { margin-top: -64px; }
+  .headline { font-size: 76px; margin-top: 16px; max-width: 820px; line-height: 1.05; }
+  header .mark { position: absolute; right: 0; top: -34px; width: 92px; color: var(--gold); }
+  .rule-gold {
+    height: 2px; margin-top: 22px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  /* ---- The duel: two names, two win counts ---- */
+  .duel { flex: none; display: flex; align-items: center; padding: 34px 8px 26px; }
+  .side { flex: 1; display: flex; align-items: center; gap: 22px; }
+  .side.right { flex-direction: row-reverse; text-align: right; }
+  .side .bar { width: 12px; height: 150px; border-radius: 6px; flex: none;
+               background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  .side.no-team .bar { background: rgba(244, 241, 232, 0.18); }
+  .side .nm { font-size: 38px; font-weight: 500; letter-spacing: 0.015em; line-height: 1.1; }
+  .side .wins {
+    font-family: var(--display); font-weight: 700; font-size: 168px; line-height: 0.86;
+    color: rgba(244, 241, 232, 0.55); font-variant-numeric: tabular-nums;
+  }
+  .side.lead .wins { color: var(--gold); }
+  .side .wl {
+    font-size: 21px; font-weight: 600; letter-spacing: 0.2em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.5); margin: 6px 0 8px;
+  }
+  .duel .v {
+    flex: none; width: 80px; text-align: center;
+    font-family: var(--display); font-weight: 600; font-size: 34px; color: var(--gold-soft);
+  }
+
+  /* ---- Every meeting. The bar on the winner's side is lit. ---- */
+  .meetings { flex: none; display: flex; gap: 14px; margin-bottom: 30px; }
+  .mt {
+    flex: 1; display: flex; align-items: stretch; gap: 0;
+    border: 1px solid var(--rule); border-radius: 10px; overflow: hidden;
+    background: rgba(244, 241, 232, 0.03);
+  }
+  .mt .tb { width: 8px; flex: none; background: linear-gradient(180deg, var(--team), var(--team-2)); opacity: 0; }
+  .mt.win-a .tb.a, .mt.win-b .tb.b { opacity: 1; }
+  .mt .body { flex: 1; text-align: center; padding: 14px 4px 16px; }
+  .mt .lbl {
+    font-size: 19px; font-weight: 600; letter-spacing: 0.16em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.5);
+  }
+  .mt .sc {
+    font-family: var(--display); font-weight: 600; font-size: 30px; line-height: 1.15;
+    color: var(--paper); font-variant-numeric: tabular-nums; margin-top: 6px;
+  }
+  .mt .sc sup { font-size: 0.5em; margin-left: 1px; }
+
+  /* ---- The stat rows ---- */
+  .stats { flex: 1; display: flex; flex-direction: column; }
+  .srow {
+    flex: 1; display: flex; align-items: center; gap: 24px;
+    padding: 0 8px; border-top: 1px solid var(--rule);
+  }
+  .val {
+    width: 260px; flex: none;
+    font-family: var(--display); font-weight: 700; font-size: 58px; line-height: 0.9;
+    color: rgba(244, 241, 232, 0.55); font-variant-numeric: tabular-nums;
+  }
+  .val.right { text-align: right; }
+  /* Same rule as the pair board: the bigger number is lit; polarity picks the ink. */
+  .srow.lead-a .val.left, .srow.lead-b .val.right { color: var(--gold); }
+  .srow.low.lead-a .val.left, .srow.low.lead-b .val.right { color: var(--tone-3); }
+  .label {
+    flex: 1; text-align: center;
+    font-size: 23px; font-weight: 500; letter-spacing: 0.16em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.5);
+  }
+
+  footer { flex: none; padding-top: 18px; margin-bottom: -74px; }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette" id="canvas">
+  <header>
+    <div class="mark mark--crest"></div>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="duel">
+    <div class="side" id="sideA"></div>
+    <div class="v">v</div>
+    <div class="side right" id="sideB"></div>
+  </div>
+
+  <div class="meetings" id="meetings"></div>
+
+  <div class="stats" id="stats"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+  </footer>
+</div>
+
+<script type="module">
+const DATA = {
+  eyebrow: 'Head to head',
+  title: 'Kierce v Sharrock',
+  a: 'J. Kierce', b: 'L. Sharrock',
+  teamA: 'White', teamB: 'Yellow',
+  winsA: 2, winsB: 3,
+  meetings: [
+    { label: 'S1 R9', teamA: 'White', teamB: 'Orange', winner: 'a', sets: [{ a: 7, b: 5, tbA: null, tbB: null }] },
+    { label: 'S2 R8', teamA: 'Pink', teamB: 'Yellow', winner: 'b', sets: [{ a: 3, b: 6, tbA: null, tbB: null }] },
+    { label: 'S3 R2', teamA: 'White', teamB: 'Red', winner: 'a', sets: [{ a: 6, b: 3, tbA: null, tbB: null }] },
+    { label: 'S4 R4', teamA: 'White', teamB: 'Pink', winner: 'b', sets: [{ a: 4, b: 6, tbA: null, tbB: null }] },
+    { label: 'S4 Final', teamA: 'White', teamB: 'Pink', winner: 'b', sets: [{ a: 4, b: 6, tbA: null, tbB: null }, { a: 6, b: 7, tbA: 3, tbB: null }] },
+  ],
+  stats: [
+    { label: 'Sets',            a: '2',  b: '4',  lead: 'b', polarity: 'high' },
+    { label: 'Games',           a: '30', b: '33', lead: 'b', polarity: 'high' },
+    { label: 'Winners',         a: '26', b: '19', lead: 'a', polarity: 'high' },
+    { label: 'Errors forced',   a: '16', b: '27', lead: 'b', polarity: 'high' },
+    { label: 'Aces',            a: '1',  b: '0',  lead: 'a', polarity: 'high' },
+    { label: 'Unforced errors', a: '24', b: '23', lead: 'a', polarity: 'low'  },
+    { label: 'Double faults',   a: '2',  b: '3',  lead: 'b', polarity: 'low'  },
+  ],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/** As large as the headline goes on one line, down to a floor. */
+function fitHeadline(el, max = 76, min = 44) {
+  el.style.whiteSpace = 'nowrap';
+  for (let size = max; size >= min; size -= 2) {
+    el.style.fontSize = `${size}px`;
+    if (el.scrollWidth <= el.clientWidth) return;
+  }
+  el.style.whiteSpace = 'normal';
+}
+
+const tb = (n) => (n === null || n === undefined ? '' : `<sup>${n}</sup>`);
+const setText = (s) => `${s.a}${tb(s.tbA)}–${s.b}${tb(s.tbB)}`;
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+  fitHeadline(document.getElementById('title'));
+
+  const side = (el, name, team, wins, lead, right) => {
+    el.className = `side${right ? ' right' : ''}${team ? '' : ' no-team'}${lead ? ' lead' : ''}`;
+    if (team) el.dataset.team = team;
+    el.innerHTML = `<div class="bar"></div>
+      <div><div class="wins">${esc(wins)}</div><div class="wl">${wins === 1 ? 'Win' : 'Wins'}</div><div class="nm">${esc(name)}</div></div>`;
+  };
+  side(document.getElementById('sideA'), d.a, d.teamA, d.winsA, d.winsA > d.winsB, false);
+  side(document.getElementById('sideB'), d.b, d.teamB, d.winsB, d.winsB > d.winsA, true);
+
+  document.getElementById('meetings').innerHTML = d.meetings.map((m) => `
+    <div class="mt win-${m.winner}">
+      <div class="tb a" data-team="${esc(m.teamA)}"></div>
+      <div class="body">
+        <div class="lbl">${esc(m.label)}</div>
+        <div class="sc">${m.sets.map(setText).join('<br>')}</div>
+      </div>
+      <div class="tb b" data-team="${esc(m.teamB)}"></div>
+    </div>`).join('');
+
+  document.getElementById('stats').innerHTML = d.stats.map((s) => `
+    <div class="srow ${s.lead ? `lead-${s.lead}` : ''} ${s.polarity === 'low' ? 'low' : ''}">
+      <div class="val left">${esc(s.a)}</div>
+      <div class="label">${esc(s.label)}</div>
+      <div class="val right">${esc(s.b)}</div>
+    </div>`).join('');
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

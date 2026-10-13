@@ -7,6 +7,7 @@ import { withdrawnTeams } from '../config/seasons/schema.ts';
 import { isVotesSealed } from '../config/site.ts';
 import { shortName } from '../config/aliases.ts';
 import type { StatRow } from './types.ts';
+import { redrawnRows } from './testing.ts';
 
 const rows = strikeWithdrawnVotes(loadStatRows(), (s) => withdrawnTeams(getSeasonConfig(s)));
 
@@ -121,11 +122,13 @@ describe('trophy cabinet honours', () => {
   });
 
   it('awards no ladder honour or stat title until the home-and-away is over', () => {
-    // S5 is live — rounds still drawn, not played.
-    expect(homeAndAwayComplete(5, rows)).toBe(false);
-    const hs = honoursOf(5, { sealed: false });
+    // S5 with its last round still drawn — the state it sat in for eight weeks.
+    const live = strikeWithdrawnVotes(redrawnRows(5, 9), (s) => withdrawnTeams(getSeasonConfig(s)));
+    expect(homeAndAwayComplete(5, live)).toBe(false);
+    const hs = honoursOf(5, { rows: live, sealed: false });
     expect(hs.filter((h) => ['minorPremiers', 'woodenSpoon', 'statLeader'].includes(h.kind))).toEqual([]);
-    for (const season of [1, 2, 3, 4]) expect(homeAndAwayComplete(season, rows)).toBe(true);
+    // S5 finished on a forfeit, which is a result: it closes a season too.
+    for (const season of [1, 2, 3, 4, 5]) expect(homeAndAwayComplete(season, rows)).toBe(true);
   });
 
   it('never gives a withdrawn team the minor premiership or the spoon', () => {

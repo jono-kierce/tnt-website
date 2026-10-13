@@ -11,6 +11,7 @@
 import { loadStatRows, parseRound } from '../../src/lib/normalize.ts';
 import {
   isPartial,
+  isPlayedMatch,
   ladderWithPairings,
   leaderboard,
   matchSides,
@@ -21,6 +22,7 @@ import {
   winStreakRun,
   streakEndLabel,
   pairRecord,
+  rivalryRecord,
   sealVotes,
   strikeWithdrawnVotes,
   teamRoster,
@@ -49,6 +51,8 @@ import { shortName, slugify } from '../../src/config/aliases.ts';
 import { ANALYSTS, type AnalystPredictions } from './predictions.ts';
 import { loadMvpSim } from './mvp-sim.ts';
 import { longestMatches, pairSplit, teamPoints } from '../../src/lib/points.ts';
+import { bracketLayout, type EdgeKind } from '../../src/lib/bracket.ts';
+import type { FinalsSlot } from '../../src/config/seasons/schema.ts';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -185,10 +189,9 @@ export interface LadderPayload {
 }
 
 /**
- * How many teams play finals. Not in the config anywhere, because it has never
- * changed and the bracket in each season config is the real record of it — so
- * read it off the bracket when there is one and fall back to the league's
- * standing rule of a top eight.
+ * How many teams play finals, when a season has no bracket to read it off —
+ * the league's standing rule of a top eight. A bracket always wins: S5's takes
+ * all nine.
  */
 const DEFAULT_FINALS_CUTOFF = 8;
 
@@ -214,8 +217,12 @@ export async function ladderPayload(
   );
 
   // `noCut` draws the plain table: with eight of nine teams going through, the
-  // line only ever singles out last place.
-  const cutoff = opts.noCut ? null : (opts.finalsCutoff ?? DEFAULT_FINALS_CUTOFF);
+  // line only ever singles out last place. A bracket that takes the whole
+  // field (S5) draws no line either, and says so.
+  const berths =
+    opts.finalsCutoff ?? (await seasonFinalsBerths(season)) ?? DEFAULT_FINALS_CUTOFF;
+  const everyone = berths >= table.length;
+  const cutoff = opts.noCut || everyone ? null : berths;
   const complete =
     round.stage !== null || homeAndAwayComplete(season, round.round);
   const when = complete ? 'Home & away complete' : `After ${round.label}`;
@@ -224,7 +231,12 @@ export async function ladderPayload(
     kind: 'ladder',
     eyebrow: eyebrowLabel(season),
     title: complete ? 'Final Ladder' : 'Standings',
-    subtitle: cutoff === null ? when : `${when} · Top ${cutoff} play finals`,
+    subtitle:
+      cutoff !== null
+        ? `${when} · Top ${cutoff} play finals`
+        : everyone && !opts.noCut
+          ? `${when} · Everyone plays finals`
+          : when,
     footnote: 'Ratio = games won ÷ games lost',
     finalsCutoff: cutoff,
     rows: table.map((r) => ({
@@ -312,8 +324,10 @@ export async function resultCardPayloads(
   round: RoundRef,
   opts: { photos?: Record<string, string> } = {}
 ): Promise<ResultCardPayload[]> {
+  // A forfeit counts on the ladder (`matchSides` keeps it for that) but has
+  // no night to put on a card.
   const sides = matchSides(rows, season, 'all').filter(
-    (s) => s.round === round.round
+    (s) => s.round === round.round && !s.forfeit
   );
   const byKey = new Map(sides.map((s) => [`${s.team}|${s.opponent}`, s]));
 
@@ -557,7 +571,7 @@ export interface ScoreboardPayload {
  * Same shape and the same ordering rules: kickoff order (`byPlayingOrder`), so
  * it reads top to bottom the way the night ran, and the same derived byes. The
  * per-fixture result cards stay the richer post; this is the one that needs no
- * human input at all.
+ * human input at all. A forfeit isn't on it: nothing was played.
  */
 export async function scoreboardPayload(
   season: number,
@@ -577,7 +591,7 @@ export async function scoreboardPayload(
   const teamConfig = await seasonTeamConfigs(season);
 
   const matches: ScoreboardMatchPayload[] = sr.matches
-    .filter((m) => !m.scheduled)
+    .filter(isPlayedMatch)
     .map((m) => {
       const side = (l: (typeof m.sides)[number]): ScoreboardSidePayload => ({
         team: l.team,
@@ -605,6 +619,114 @@ export async function scoreboardPayload(
     footnote: '',
     matches,
     byes: sr.byes,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Finals format
+// ---------------------------------------------------------------------------
+
+/**
+ * Pixel sizes for `finals-format.html`. They live here, not in the template,
+ * because the layout needs two of them before it can run: a line lands on the
+ * row it fills (`slot`) and a tie with two exits splits them (`port`), and
+ * `bracketLayout` works in units of `unit`. The template draws with the same
+ * numbers it's handed.
+ */
+const FINALS_GEOMETRY = {
+  /** The safe width the rounds share, and the gap between two of them. */
+  frame: 952,
+  gap: 36,
+  /** One unit down the page: five units (S5's busiest round) fill the field. */
+  unit: 168,
+  /** Tie centre to the middle of either row: 8px padding + 1px border + half a 52px row. */
+  slot: 35,
+  port: 14,
+  lane: 9,
+} as const;
+
+export interface FinalsSlotPayload {
+  /** A seed prints as "1st"; a reference as its kind over the tie it comes from. */
+  seed: string | null;
+  kind: EdgeKind | null;
+  from: string | null;
+}
+
+export interface FinalsTiePayload {
+  id: string;
+  col: number;
+  pos: number;
+  doubleChance: boolean;
+  home: FinalsSlotPayload;
+  away: FinalsSlotPayload;
+}
+
+export interface FinalsFormatPayload {
+  kind: 'finals-format';
+  eyebrow: string;
+  title: string;
+  /** FINALS_GEOMETRY plus the tie width, which depends on how many rounds share the frame. */
+  geometry: typeof FINALS_GEOMETRY & { width: number };
+  rounds: string[];
+  span: number;
+  ties: FinalsTiePayload[];
+  edges: {
+    kind: EdgeKind;
+    fromCol: number;
+    toCol: number;
+    y1: number;
+    y2: number;
+    stacked: boolean;
+    lane: number;
+    lanes: number;
+  }[];
+}
+
+/**
+ * The season's finals bracket as a structure explainer: seeds and "winner of"
+ * / "loser of" slots, no teams — the post that announces a format, not a
+ * fixture. Reads the bracket shape off the season config and lays it out with
+ * `bracketLayout`, the same as the season page, so the two can't disagree.
+ */
+export async function finalsFormatPayload(
+  season: number,
+  opts: { title?: string } = {}
+): Promise<FinalsFormatPayload> {
+  const finals = (await getSeasonConfig(season))?.finals;
+  if (!finals?.length) {
+    throw new Error(`Season ${season} has no finals bracket in src/config/seasons/season-${season}.ts.`);
+  }
+  const g = FINALS_GEOMETRY;
+  const width = Math.floor((g.frame - (finals.length - 1) * g.gap) / finals.length);
+  const layout = bracketLayout(finals, { slot: g.slot / g.unit, port: g.port / g.unit });
+
+  const slot = (s: FinalsSlot): FinalsSlotPayload =>
+    'seed' in s
+      ? { seed: ordinal(s.seed), kind: null, from: null }
+      : 'winnerOf' in s
+        ? { seed: null, kind: 'winner', from: s.winnerOf }
+        : { seed: null, kind: 'loser', from: s.loserOf };
+
+  return {
+    kind: 'finals-format',
+    eyebrow: `Finals · ${eyebrowLabel(season)}`,
+    title: opts.title ?? 'The New Finals',
+    geometry: { ...g, width },
+    rounds: finals.map((r) => r.name),
+    span: layout.span,
+    ties: layout.columns.flatMap((c) =>
+      c.ties.map((t) => ({
+        id: t.match.id,
+        col: t.col,
+        pos: t.pos,
+        doubleChance: t.doubleChance,
+        home: slot(t.match.home),
+        away: slot(t.match.away),
+      }))
+    ),
+    edges: layout.edges.map(({ kind, fromCol, toCol, y1, y2, stacked, lane, lanes }) => ({
+      kind, fromCol, toCol, y1, y2, stacked, lane, lanes,
+    })),
   };
 }
 
@@ -1522,6 +1644,106 @@ export function pairBoardPayload(a: string, b: string): PairBoardPayload {
     })),
     stats,
     footnote: notes.join(' \u00b7 '),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Rivalry board — two players' record against each other
+// ---------------------------------------------------------------------------
+
+export interface RivalrySetPayload {
+  a: number;
+  b: number;
+  /** Tiebreak points, printed small on the loser's side. */
+  tbA: number | null;
+  tbB: number | null;
+}
+
+export interface RivalryMeetingPayload {
+  /** "S1 R9", "S4 Final". */
+  label: string;
+  teamA: string;
+  teamB: string;
+  winner: 'a' | 'b';
+  sets: RivalrySetPayload[];
+}
+
+export interface RivalryBoardPayload {
+  kind: 'rivalry-board';
+  id: string;
+  eyebrow: string;
+  title: string;
+  a: string;
+  b: string;
+  teamA: string | null;
+  teamB: string | null;
+  winsA: number;
+  winsB: number;
+  meetings: RivalryMeetingPayload[];
+  stats: PairStatRowPayload[];
+}
+
+/**
+ * Counting stats only, like the pair board. **No votes and no BOG**: that is
+ * what lets this board skip the sealed-season check — two players who met in
+ * S5 still get a board, because nothing on it reads the `votes` column.
+ */
+const RIVALRY_STATS: { label: string; stat: CountingStat; polarity: 'high' | 'low' }[] = [
+  { label: 'Winners', stat: 'winners', polarity: 'high' },
+  { label: 'Errors forced', stat: 'errorsForced', polarity: 'high' },
+  { label: 'Aces', stat: 'aces', polarity: 'high' },
+  { label: 'Unforced errors', stat: 'unforcedErrors', polarity: 'low' },
+  { label: 'Double faults', stat: 'doubleFaults', polarity: 'low' },
+];
+
+const surname = (name: string) => name.split(' ').slice(1).join(' ') || name;
+
+export function rivalryBoardPayload(a: string, b: string): RivalryBoardPayload {
+  const rec = rivalryRecord(a, b, rows);
+  if (!rec) {
+    throw new Error(
+      `${a} and ${b} have never played a match against each other. Check the ` +
+        `spelling against the canonical names in src/config/aliases.ts.`
+    );
+  }
+  const [aggA, aggB] = rec.members;
+  const cell = (v: number | null) => (v === null ? '\u2014' : String(v));
+  const lead = (x: number | null, y: number | null): 'a' | 'b' | null =>
+    x === null || y === null || x === y ? null : x > y ? 'a' : 'b';
+  const row = (label: string, x: number | null, y: number | null, polarity: 'high' | 'low') =>
+    ({ label, a: cell(x), b: cell(y), lead: lead(x, y), polarity });
+
+  return {
+    kind: 'rivalry-board',
+    id: `rivalry-${slugify(a)}-${slugify(b)}`,
+    eyebrow: 'Head to head',
+    // Surnames: two full names don't fit the headline on one line.
+    title: `${surname(a)} v ${surname(b)}`,
+    a: shortName(a),
+    b: shortName(b),
+    teamA: currentTeamForChip(a),
+    teamB: currentTeamForChip(b),
+    winsA: rec.wins,
+    winsB: rec.losses,
+    meetings: rec.matches.map((m) => ({
+      label: `S${m.season} ${m.isFinals ? m.roundLabel : `R${m.round}`}`,
+      teamA: m.teams[0],
+      teamB: m.teams[1],
+      winner: m.win ? 'a' : 'b',
+      sets: m.setScores.map((s) => ({
+        a: s.for,
+        b: s.against,
+        tbA: s.tiebreakFor,
+        tbB: s.tiebreakAgainst,
+      })),
+    })),
+    stats: [
+      row('Sets', rec.setsFor, rec.setsAgainst, 'high'),
+      row('Games', rec.gamesFor, rec.gamesAgainst, 'high'),
+      ...RIVALRY_STATS.map(({ label, stat, polarity }) =>
+        row(label, aggA.tally[stat].total, aggB.tally[stat].total, polarity)
+      ),
+    ],
   };
 }
 

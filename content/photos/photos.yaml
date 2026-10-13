@@ -490,6 +490,31 @@
   season: 5
   caption:
 
+- file: season-5/brown-embrace.jpg
+  players: [ted-angel, adam-dickson]
+  season: 5
+  caption: Brown on their way to a 6-3 win over Green in round eight
+
+- file: season-5/dickson-serve.jpg
+  players: [adam-dickson]
+  season: 5
+  caption:
+
+- file: season-5/mumme-slide.jpg
+  players: [will-mumme]
+  season: 5
+  caption:
+
+- file: season-5/ed-serve.jpg
+  players: [ed-simpson]
+  season: 5
+  caption:
+
+- file: season-5/red-pair.jpg
+  players: [jamie-harris, lachlan-jenkin]
+  season: 5
+  caption: Red beat Navy 6-4 in round eight
+
 # --- Archive additions (Oct 2026): S1–S4 frames from TNT Media, IDs by fixture elimination ---
 
 - file: season-1/lightblue-pair-s1.jpg

@@ -58,6 +58,8 @@ const pct = (side: 0 | 1) =>
         </span>
         {match.scheduled ? (
           <span class="pct">{pct(i as 0 | 1)}<small>%</small></span>
+        ) : match.forfeit ? (
+          <span class="score">{side.gamesFor}-{side.gamesAgainst}</span>
         ) : (
           <span class="score"><SetScore score={side.score} /></span>
         )}
@@ -69,6 +71,7 @@ const pct = (side: 0 | 1) =>
       To play{time && <> · <time datetime={datetimeAttr(match.start)}>{time}</time></>}
     </span>
   )}
+  {match.forfeit && <span class="tag">Forfeit</span>}
   {!match.scheduled && match.isDraw && <span class="tag">No result recorded</span>}
 </a>
 

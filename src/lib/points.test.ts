@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadStatRows, normalizeRows } from './normalize.ts';
-import { seasonMatches } from './stats.ts';
+import { isPlayedMatch, seasonMatches } from './stats.ts';
 import {
   allMatchPoints,
   longestMatches,
@@ -111,9 +111,10 @@ describe('matchPoints', () => {
 describe('points across the CSV', () => {
   const all = allMatchPoints(loadStatRows());
 
-  it('counts every S5 match and most of the rest', () => {
+  it('counts every played S5 match and most of the rest', () => {
+    // Played: a forfeit has a result but no points, so it isn't one.
     expect(all.filter((mp) => mp.match.season === 5).length).toBe(
-      seasonMatches(loadStatRows(), 5).filter((m) => !m.scheduled).length
+      seasonMatches(loadStatRows(), 5).filter(isPlayedMatch).length
     );
     expect(all.length).toBeGreaterThan(150);
   });
@@ -173,7 +174,7 @@ describe('points across the CSV', () => {
       won += mp.sides[i].won;
       lost += mp.sides[1 - i].won;
     }
-    expect(kierce).toMatchObject({ pointsWon: won, pointsLost: lost, wins: 3 });
+    expect(kierce).toMatchObject({ pointsWon: won, pointsLost: lost, wins: 5 });
     expect(kierce.onCourtShare).toBeCloseTo(won / (won + lost));
     // Partners who never missed a night together share the same number.
     const [a, b] = ['Luke Sharrock', 'Jack Raines'].map(

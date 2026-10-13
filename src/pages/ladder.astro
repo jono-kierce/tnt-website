@@ -4,25 +4,25 @@ import LadderTable from '../components/LadderTable.astro';
 import TeamChip from '../components/TeamChip.astro';
 import { SITE, seasonLabel } from '../config/site.ts';
 import { withBase } from '../lib/url.ts';
-import { seasonLadder, seasonRosters } from '../lib/site-data.ts';
+import { finalsLine, seasonLadder, seasonRosters } from '../lib/site-data.ts';
 import { playerHref } from '../lib/url.ts';
 import { playerSlug } from '../config/aliases.ts';
 
 const season = SITE.currentSeason;
 const table = seasonLadder(season);
 const rosters = seasonRosters(season);
+const finals = finalsLine(season, table.length);
 ---
 <Layout title={`${seasonLabel(season)} Ladder`}>
   <section class="section container">
     <p class="eyebrow">Current Season · Standings</p>
     <h1 class="serif-title">{seasonLabel(season)} Ladder</h1>
     <p class="lead" style="max-width:640px">
-      Ranked by wins, then games ratio (games for ÷ games against). Top eight
-      qualify for finals.
+      Ranked by wins, then games ratio (games for ÷ games against). {finals.text}
     </p>
 
     <div class="mt-24">
-      <LadderTable rows={table} cutoff={8}
+      <LadderTable rows={table} cutoff={finals.cutoff}
         caption="Games ratio = total games for ÷ total games against across the season." />
     </div>
 

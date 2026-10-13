@@ -18,6 +18,7 @@
 
 import type { LadderRow, StatRow } from './types.ts';
 import {
+  isPlayedMatch,
   ladder,
   seasonMatches,
   type MatchLineup,
@@ -74,6 +75,14 @@ export interface InsightContext {
   history: MatchRecord[];
   /** Rows for those matches — the same window, per player. */
   historyRows: StatRow[];
+  /**
+   * `history` plus any forfeits in the same window: every *result*. Forfeits
+   * count on the ladder and nowhere else (see `StatRow.forfeit`), so this is
+   * what a ladder detector reads, and `history` is what a player detector reads.
+   */
+  results: MatchRecord[];
+  /** Rows for `results` — the ladder's input. */
+  resultRows: StatRow[];
   /** All rows, for a detector that needs the season's declared field. */
   allRows: StatRow[];
   declaredTeams?: string[];
@@ -128,14 +137,18 @@ export function insightContext(
   allRows: StatRow[],
   opts: InsightOptions = {}
 ): InsightContext {
-  const history = seasonMatches(allRows)
+  const results = seasonMatches(allRows)
     .filter((m) => !m.scheduled && isBefore(m, match))
     .sort((a, b) => a.season - b.season || a.round - b.round || a.key.localeCompare(b.key));
+  const history = results.filter(isPlayedMatch);
   const historyRows = history.flatMap((m) => m.sides.flatMap((s) => s.players));
+  const resultRows = results.flatMap((m) => m.sides.flatMap((s) => s.players));
   return {
     match,
     history,
     historyRows,
+    results,
+    resultRows,
     allRows,
     declaredTeams: opts.declaredTeams,
     withdrawnTeams: opts.withdrawnTeams,
@@ -226,7 +239,7 @@ function isNextUp(ctx: InsightContext): boolean {
   const { match } = ctx;
   if (match.isFinals) return true;
   let latest = 0;
-  for (const m of ctx.history) {
+  for (const m of ctx.results) {
     if (m.season === match.season && !m.isFinals && m.round > latest) latest = m.round;
   }
   return match.round <= latest + 1;
@@ -492,7 +505,7 @@ export function stakesInsight(ctx: InsightContext): Insight | null {
   if (match.isFinals || match.round <= 2) return null;
   if (!isNextUp(ctx)) return null;
 
-  const before = ctx.historyRows.filter((r) => r.season === match.season);
+  const before = ctx.resultRows.filter((r) => r.season === match.season);
   if (!before.length) return null;
   const table = ladder(
     match.season,
@@ -620,7 +633,7 @@ function clinchesWithWin(ctx: InsightContext, table: LadderRow[], team: string):
   // "Left" is whatever the ladder hasn't counted — not `isBefore`, which
   // breaks a tie inside a round on team names, so a same-night fixture
   // alphabetically ahead of this one would vanish from the draw.
-  const counted = new Set(ctx.history.map((m) => m.key));
+  const counted = new Set(ctx.results.map((m) => m.key));
   const left = new Map(table.map((t) => [t.team, 0]));
   for (const m of seasonMatches(ctx.allRows)) {
     if (m.season !== match.season || m.isFinals || m.key === match.key) continue;
@@ -717,7 +730,7 @@ export function dominanceInsight(ctx: InsightContext): Insight | null {
   const MARGIN = 1.15;
   const MIN_PLAYED = 3;
 
-  const before = ctx.historyRows.filter((r) => r.season === match.season);
+  const before = ctx.resultRows.filter((r) => r.season === match.season);
   if (!before.length) return null;
   const table = ladder(
     match.season,
@@ -886,7 +899,7 @@ export function basementInsight(ctx: InsightContext): Insight | null {
   if (match.isFinals || match.round < 4) return null;
   if (!isNextUp(ctx)) return null;
 
-  const before = ctx.historyRows.filter((r) => r.season === match.season);
+  const before = ctx.resultRows.filter((r) => r.season === match.season);
   if (!before.length) return null;
   const table = ladder(
     match.season,

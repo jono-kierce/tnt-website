@@ -25,6 +25,7 @@ import {
   SealedVotesError,
   draftPayload,
   eyebrowLabel,
+  finalsFormatPayload,
   ladderPayload,
   latestRound,
   nextPreviewRound,
@@ -35,6 +36,7 @@ import {
   rows as allRows,
   scoreboardPayload,
   pairBoardPayload,
+  rivalryBoardPayload,
   pairSplitPayload,
   pointsLadderPayload,
   longestMatchesPayload,
@@ -84,7 +86,8 @@ TNT graphics renderer
                    round in the CSV.
   --only <list>    Comma-separated: ladder, results, scoreboard, boards, draft,
                    preview, streaks, streakstory, headline, predictions,
-                   pair, mvpsim, leaders, pointsladder, pairsplit, longest.
+                   pair, rivalry, mvpsim, leaders, pointsladder, pairsplit, longest,
+                   finals.
                    Default: ladder,results,scoreboard,boards
                    — draft, preview, streaks, headline, predictions and pair
                    are once-off posts, so they only render when asked.
@@ -121,7 +124,7 @@ TNT graphics renderer
                    greyed-out rows, and no "Top 8 play finals" subtitle.
   --subtitle <s>   Override the draft board's subtitle.
   --footnote <s>   Small print bottom-right of the draft board (date, venue).
-  --pair <a,b>     The two players for --only pair, comma-separated:
+  --pair <a,b>     The two players for --only pair or rivalry, comma-separated:
                    --pair "Ed Simpson,Jimmy Gorton".
   --out <dir>      Output folder. Default: graphics/out.
 
@@ -130,6 +133,11 @@ Pair board (--only pair) — two players' record as team-mates:
   --pair <a,b>     The two players, comma-separated, as the CSV names them:
                    --pair "Ed Simpson,Jimmy Gorton". Refused for a pair who
                    played together in a season whose votes are still sealed.
+
+Rivalry board (--only rivalry) — two players' record against each other:
+
+  --pair <a,b>     The two players, as the CSV names them. Every meeting,
+                   finals and fill-ins included. No votes, so no seal.
 
 MVP simulation (--only mvpsim) — the MVP race as a Monte Carlo projection:
 
@@ -155,6 +163,10 @@ Streak story (--only streakstory) — one win streak as a swipeable carousel:
                    team, then the record book and the next fixture — with a
                    W-chip rail along the foot of every slide.
 
+Finals format (--only finals) — the season's bracket as a structure explainer:
+                   seeds and "winner of / loser of" slots, no teams. Needs no
+                   --round. --headline overrides the title ("The New Finals").
+
 Headline card (--only headline) — an ad-hoc news/banter post:
 
   --headline <s>   The big headline (required for the headline card).
@@ -176,7 +188,7 @@ if (!Number.isFinite(season)) {
 // `draft` and `preview` are deliberately not in the default set — a draft is a
 // once-a-season post, and a preview is a once-a-week one you ask for the day
 // before, not something every CI push should render.
-const KINDS = ['ladder', 'results', 'scoreboard', 'boards', 'draft', 'preview', 'streaks', 'streakstory', 'headline', 'predictions', 'pair', 'mvpsim', 'leaders', 'pointsladder', 'pairsplit', 'longest'];
+const KINDS = ['ladder', 'results', 'scoreboard', 'boards', 'draft', 'preview', 'streaks', 'streakstory', 'headline', 'predictions', 'pair', 'rivalry', 'mvpsim', 'leaders', 'pointsladder', 'pairsplit', 'longest', 'finals'];
 const only = new Set(
   (argv.only ?? 'ladder,results,scoreboard,boards').split(',').map((s) => s.trim()).filter(Boolean)
 );
@@ -397,6 +409,17 @@ if (only.has('pair')) {
   }
 }
 
+if (only.has('rivalry')) {
+  // Two players across the net, all-time. Reuses --pair for the names.
+  const names = (argv.pair ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (names.length !== 2) {
+    warnings.push('--only rivalry needs --pair "First Last,First Last". Nothing rendered.');
+  } else {
+    const board = rivalryBoardPayload(names[0], names[1]);
+    await shoot('rivalry-board.html', board, `${board.id}.png`);
+  }
+}
+
 if (only.has('mvpsim')) {
   // The MVP race as a projection. A once-off post, out of the default set, and
   // the only family whose numbers come from outside this repo — so it renders
@@ -464,6 +487,15 @@ if (only.has('predictions')) {
   for (const card of cards) {
     await shoot('predictions.html', card, `s${season}-predictions-${card.slug}.png`);
   }
+}
+
+if (only.has('finals')) {
+  // The bracket's shape off the season config — no match data, so no round.
+  await shoot(
+    'finals-format.html',
+    await finalsFormatPayload(season, { title: argv.headline }),
+    `s${season}-finals-format.png`
+  );
 }
 
 if (only.has('ladder')) {

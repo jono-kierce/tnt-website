@@ -111,6 +111,22 @@ a leaderboard, not a record, not a streak. When the night is over, type the
 stats and the `win?` onto those same rows and they become ordinary played rows.
 Nothing else needs changing.
 
+### Forfeits — a match one side didn't turn up for
+
+Fill in the fixture's four rows with `forfeit` in `Score`, the 6-0 in the game
+columns and `win?` saying who was awarded it. Leave every stat and vote blank:
+
+```
+Pink,Yellow,5,9,2026-10-13T20:30,forfeit,Charlie Simpson,,,,,,,,,TRUE,6,0,,
+Yellow,Pink,5,9,2026-10-13T20:30,forfeit,Luke Sharrock,,,,,,,,,FALSE,0,6,,
+```
+
+A forfeit counts **on the ladder and nowhere else**: nobody played, so it adds
+to no player's matches, win-loss, streak, head-to-head or rating, and no
+graphic cards it. Its match page says it was a forfeit. `check-data` errors if
+the game columns aren't 6-0 to the winner, or if only some of the match's rows
+say `forfeit`.
+
 **Byes are not entered** — they're worked out. A team with no fixture in a round
 is on a bye, and the round shows it. That's why the season config lists every
 team (`src/config/seasons/season-<N>.ts`): a team on a bye in round one has no

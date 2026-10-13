@@ -45,6 +45,12 @@ const STAGE_LABEL: Record<FinalsStage, string> = {
  * — `QF`, `SF`, `F`. Anything else is treated as a regular round for sorting
  * purposes; `check-data` is what tells you about a typo.
  */
+/**
+ * What the Score column says when one side didn't turn up: `forfeit` on all
+ * four rows, the awarded 6-0 in the game columns. See StatRow.forfeit.
+ */
+export const FORFEIT_SCORE = 'forfeit';
+
 /** One set: `6`, `6(4)` — a set lost on a breaker carries the loser's points. */
 const SET_RE = /^(\d+)(?:\((\d+)\))?-(\d+)(?:\((\d+)\))?$/;
 
@@ -173,6 +179,7 @@ export function normalizeRows(raw: Record<string, string>[]): StatRow[] {
         // Read off the raw cell, because `bool()` above has already collapsed
         // blank and FALSE into the same `false`.
         scheduled: (r['win?'] ?? '').trim() === '',
+        forfeit: score.toLowerCase() === FORFEIT_SCORE,
         teamScore: num(r['Team Score']),
         opponentScore: num(r['Opponent Score']),
 

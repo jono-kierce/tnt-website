@@ -1,4 +1,4 @@
-import type { FinalsStage, LadderRow, MatchSide, StatRow } from './types.ts';
+import type { FinalsStage, LadderRow, MatchSide, SetScore, StatRow } from './types.ts';
 import { SITE } from '../config/site.ts';
 import { playerSlug, shortName } from '../config/aliases.ts';
 import { loadStatRows } from './normalize.ts';
@@ -31,8 +31,14 @@ const matchKey = (r: { season: number; round: number; team: string; opponent: st
  * because the callers include `graphics/lib/payloads.ts`, which loads the CSV
  * itself. A fixture leaking into a posted graphic is exactly the failure the
  * one-source-of-truth rule exists to prevent.
+ *
+ * A forfeit fails it too: it has a result but nobody played it, so it belongs
+ * to the ladder alone (`matchSides`) — see `StatRow.forfeit`.
  */
-export const isPlayed = (r: StatRow): boolean => !r.scheduled;
+export const isPlayed = (r: StatRow): boolean => !r.scheduled && !r.forfeit;
+
+/** `isPlayed` for a whole match: a result that was actually played. */
+export const isPlayedMatch = (m: MatchRecord): boolean => !m.scheduled && !m.forfeit;
 
 /** Rows for matches that have actually been played. */
 export const playedRows = (rows: StatRow[]): StatRow[] => rows.filter(isPlayed);
@@ -67,6 +73,9 @@ export const inScope = (r: StatRow, scope: StatScope): boolean =>
  * rows (including SINGLES GAME) so singles matches still count for the ladder.
  * Defaults to the home-and-away season: the ladder is what seeds the finals, so
  * it must never contain them.
+ *
+ * Forfeits are in — this is the ladder's input, and the ladder is the one place
+ * an awarded match counts. Anything else reading these drops `forfeit` sides.
  */
 export function matchSides(
   rows: StatRow[],
@@ -93,6 +102,7 @@ export function matchSides(
       teamScore: r.teamScore,
       opponentScore: r.opponentScore,
       win: r.win,
+      forfeit: r.forfeit,
     });
   }
   return [...seen.values()];
@@ -139,6 +149,11 @@ export interface MatchRecord {
   isFinals: boolean;
   /** No result recorded yet — see StatRow.scheduled. */
   scheduled: boolean;
+  /**
+   * Awarded rather than played — see StatRow.forfeit. Not `scheduled`, so it
+   * has a `winner`, but `isPlayedMatch` is false: only the ladder counts it.
+   */
+  forfeit: boolean;
   /** Both sides, ordered by team name. */
   sides: [MatchLineup, MatchLineup];
   /**
@@ -229,6 +244,7 @@ export function seasonMatches(
       roundLabel: r.roundLabel,
       isFinals: r.isFinals,
       scheduled,
+      forfeit: !scheduled && sides.some((s) => s.players.some((p) => p.forfeit)),
       sides,
       winner: scheduled ? null : winner,
       // Both sides flagged the same way — nobody won it. TNT has never
@@ -1015,7 +1031,7 @@ export interface HeadToHead {
 function fixtureSides(rows: StatRow[]): Map<string, StatRow[]> {
   const sides = new Map<string, StatRow[]>();
   for (const r of rows) {
-    if (r.scheduled || r.isSingles) continue;
+    if (!isPlayed(r) || r.isSingles) continue;
     const key = matchKey(r);
     (sides.get(key) ?? sides.set(key, []).get(key)!).push(r);
   }
@@ -1035,7 +1051,7 @@ export function headToHead(
   const byOpponent = new Map<string, HeadToHead>();
 
   for (const r of rows) {
-    if (r.scheduled || r.isSingles || r.player !== player) continue;
+    if (!isPlayed(r) || r.isSingles || r.player !== player) continue;
     const across = sides.get(`${r.season}|${r.round}|${r.opponent}|${r.team}`) ?? [];
     for (const o of across) {
       if (o.player === player) continue;
@@ -1160,7 +1176,7 @@ export function pairRecord(
   // off `MatchRecord` rather than recounted here — `win?` stays the only
   // authority on who won, as it is everywhere else.
   const shared = seasonMatches(rows)
-    .filter((m) => !m.scheduled && !m.isSingles)
+    .filter((m) => isPlayedMatch(m) && !m.isSingles)
     .flatMap((m) => {
       const side = m.sides.find((s) => {
         const names = s.players.map((p) => p.player);
@@ -1219,6 +1235,108 @@ export function pairRecord(
     ratio: gamesAgainst === 0 ? gamesFor : gamesFor / gamesAgainst,
     seasons: [...bySeason.values()].sort((x, y) => x.season - y.season),
     members: [member(a), member(b)],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Rivalries — two players on opposite sides of the net
+// ---------------------------------------------------------------------------
+
+/** One meeting, from the first player's side of the net. */
+export interface RivalryMeeting {
+  season: number;
+  round: number;
+  roundLabel: string;
+  stage: FinalsStage | null;
+  isFinals: boolean;
+  /** Each side's team and partner, in `players` order. */
+  teams: [string, string];
+  partners: [string | null, string | null];
+  /** Scoreline and set scores from the first player's side. */
+  score: string;
+  setScores: SetScore[];
+  /** The first player's side won, from `win?`. */
+  win: boolean;
+}
+
+/**
+ * Two players' record against each other, and each one's own numbers over
+ * exactly those meetings.
+ *
+ * The mirror of `pairRecord`, under the same rules as `headToHead`: finals and
+ * fill-in appearances count. Everything is from the first player's side —
+ * `wins` are his, `gamesFor` are his side's — and `members` follow argument
+ * order. `setsFor`/`setsAgainst` count sets off `setScores`, which is fine for
+ * a tally of sets; who won the *match* still comes from `win?` alone.
+ */
+export interface RivalryRecord {
+  players: [string, string];
+  slugs: [string, string];
+  meetings: number;
+  wins: number;
+  losses: number;
+  gamesFor: number;
+  gamesAgainst: number;
+  setsFor: number;
+  setsAgainst: number;
+  /** Oldest first. */
+  matches: RivalryMeeting[];
+  /** Each player's own aggregate over the meetings, in `players` order. */
+  members: [PlayerAgg, PlayerAgg];
+}
+
+/** Null if the two have never faced each other — not a 0–0 record. */
+export function rivalryRecord(
+  a: string,
+  b: string,
+  rows: StatRow[] = loadStatRows()
+): RivalryRecord | null {
+  const met = seasonMatches(rows)
+    .filter((m) => isPlayedMatch(m) && !m.isSingles)
+    .flatMap((m) => {
+      const sideA = m.sides.find((s) => s.players.some((p) => p.player === a));
+      const sideB = m.sides.find((s) => s.players.some((p) => p.player === b));
+      if (!sideA || !sideB || sideA === sideB) return [];
+      return [{ match: m, sideA, sideB }];
+    });
+  if (!met.length) return null;
+
+  const partner = (side: MatchLineup, player: string) =>
+    side.players.find((p) => p.player !== player)?.player ?? null;
+
+  const matches: RivalryMeeting[] = met.map(({ match, sideA, sideB }) => ({
+    season: match.season,
+    round: match.round,
+    roundLabel: match.roundLabel,
+    stage: match.stage,
+    isFinals: match.isFinals,
+    teams: [sideA.team, sideB.team],
+    partners: [partner(sideA, a), partner(sideB, b)],
+    score: sideA.score,
+    setScores: sideA.setScores,
+    win: match.winner === sideA.team,
+  }));
+
+  const sum = (f: (x: (typeof met)[number]) => number) => met.reduce((t, x) => t + f(x), 0);
+  const member = (player: string, side: 'sideA' | 'sideB'): PlayerAgg => {
+    const mine = met.flatMap((x) => x[side].players).filter((r) => r.player === player);
+    return aggregateRows(player, mine[0]?.slug ?? playerSlug(player), mine, 'all', true);
+  };
+
+  const wins = matches.filter((m) => m.win).length;
+  return {
+    players: [a, b],
+    slugs: [playerSlug(a), playerSlug(b)],
+    meetings: matches.length,
+    wins,
+    losses: matches.length - wins,
+    gamesFor: sum((x) => x.sideA.gamesFor),
+    gamesAgainst: sum((x) => x.sideA.gamesAgainst),
+    setsFor: sum((x) => x.sideA.setScores.filter((s) => s.won).length),
+    // A level set (S4 R9's 5-5) went to neither side, so it isn't `!won`.
+    setsAgainst: sum((x) => x.sideA.setScores.filter((s) => s.against > s.for).length),
+    matches,
+    members: [member(a, 'sideA'), member(b, 'sideB')],
   };
 }
 
@@ -1581,7 +1699,7 @@ export function winStreakRun(player: string, rows: StatRow[]): StreakRun | null 
   };
 
   // The same sequence `winStreaks` walks: his played, non-fill-in nights.
-  const played = matches.filter((m) => !m.scheduled && mine(m) !== -1).map(view);
+  const played = matches.filter((m) => isPlayedMatch(m) && mine(m) !== -1).map(view);
   let best = 0,
     cur = 0,
     runStart = 0,

@@ -51,7 +51,7 @@
  */
 
 import type { StatRow } from './types.ts';
-import { seasonMatches, type MatchRecord } from './stats.ts';
+import { isPlayedMatch, seasonMatches, type MatchRecord } from './stats.ts';
 import { loadStatRows } from './normalize.ts';
 import { SITE } from '../config/site.ts';
 import { solveSPD } from './linalg.ts';
@@ -269,8 +269,9 @@ function lineup(m: MatchRecord, side: 0 | 1): StatRow[] {
 
 /**
  * Everything the fit reads, built once: the global player index and the played,
- * two-a-side matches in playing order. Singles nights (no pair to rate) and
- * fixtures (no result) are left out here, so nothing downstream has to remember.
+ * two-a-side matches in playing order. Singles nights (no pair to rate),
+ * fixtures (no result) and forfeits (a result nobody played) are left out here,
+ * so nothing downstream has to remember.
  */
 interface Design {
   players: string[];
@@ -281,7 +282,7 @@ interface Design {
 
 function buildDesign(rows: StatRow[]): Design {
   const all = seasonMatches(rows)
-    .filter((m) => !m.scheduled)
+    .filter(isPlayedMatch)
     .sort((a, b) => a.season - b.season || a.round - b.round || a.key.localeCompare(b.key));
 
   const index = new Map<string, number>();

@@ -63,8 +63,10 @@ img { max-width: 100%; display: block; }
 
 /* --- Layout ---------------------------------------------------------------- */
 .container { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 20px; }
-.section { margin: 48px 0; }
-.section-lg { margin: 72px 0; }
+/* Block margins only: a `.section.container` must keep the container's auto
+   inline margins, or every page sits flush left past --maxw. */
+.section { margin-block: 48px; }
+.section-lg { margin-block: 72px; }
 
 /* --- Type ------------------------------------------------------------------ */
 .eyebrow {

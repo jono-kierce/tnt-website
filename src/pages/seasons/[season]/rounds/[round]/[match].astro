@@ -46,11 +46,15 @@ const { match } = Astro.props as { match: MatchRecord };
 const season = match.season;
 const sealed = isVotesSealed(season);
 const prediction = predictionFor(match);
-const insights = insightsFor(match, allRows, {
-  declaredTeams: declaredTeams(season),
-  withdrawnTeams: withdrawnTeams(season),
-  finalsCutoff: finalsCutoff(season),
-});
+// A forfeit gets neither: there was no match to call or to set up.
+const insights = match.forfeit
+  ? []
+  : insightsFor(match, allRows, {
+      declaredTeams: declaredTeams(season),
+      withdrawnTeams: withdrawnTeams(season),
+      finalsCutoff: finalsCutoff(season),
+    });
+const forfeited = match.forfeit ? match.sides.find((s) => s.team !== match.winner)! : null;
 
 const heading = match.isFinals
   ? match.roundLabel === 'Final'
@@ -110,6 +114,7 @@ const accent = teamMeta(match.winner ?? match.sides[0].team);
         </time></>
       )}
       {match.scheduled && <> · <span class="to-play">Yet to be played</span></>}
+      {match.forfeit && <> · <span class="to-play">Forfeit</span></>}
     </p>
 
     <div class="scoreboard card card--dark">
@@ -141,6 +146,8 @@ const accent = teamMeta(match.winner ?? match.sides[0].team);
             <div class="sb-score">
               {match.scheduled ? (
                 <span class="sb-dash" aria-label="Not yet played">—</span>
+              ) : match.forfeit ? (
+                <>{side.gamesFor}-{side.gamesAgainst}</>
               ) : (
                 <SetScore score={side.score} />
               )}
@@ -154,6 +161,17 @@ const accent = teamMeta(match.winner ?? match.sides[0].team);
     </div>
   </section>
 
+  {forfeited && (
+    <section class="section container">
+      <p class="muted">
+        {forfeited.team} forfeited, so {match.winner} take it{' '}
+        {match.sides.find((s) => s.team === match.winner)!.gamesFor}-{forfeited.gamesFor} on
+        the ladder. Nobody played, so it counts toward no one's record, streak or rating.
+      </p>
+    </section>
+  )}
+
+  {!match.forfeit && (
   <section class="section container grid grid-2" style="align-items:start">
     <div class="card">
       <PredictionBar prediction={prediction} winner={match.winner} />
@@ -167,6 +185,7 @@ const accent = teamMeta(match.winner ?? match.sides[0].team);
       )}
     </div>
   </section>
+  )}
 
   {!match.scheduled && anyStats && (
     <section class="section container">
@@ -220,7 +239,7 @@ const accent = teamMeta(match.winner ?? match.sides[0].team);
     </section>
   )}
 
-  {!match.scheduled && !anyStats && (
+  {!match.scheduled && !match.forfeit && !anyStats && (
     <section class="section container">
       <p class="muted">
         No player stats were recorded for this match — the scoreline is all there is.

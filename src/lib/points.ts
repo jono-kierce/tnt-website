@@ -1,5 +1,5 @@
 import type { StatRow } from './types.ts';
-import { seasonMatches, type MatchRecord, type StatScope, inScope } from './stats.ts';
+import { isPlayedMatch, seasonMatches, type MatchRecord, type StatScope, inScope } from './stats.ts';
 
 /**
  * POINTS IN A MATCH — rebuilt from the box score.
@@ -116,11 +116,11 @@ function countable(m: MatchRecord): boolean {
 }
 
 /**
- * Count a match in points. Null for a fixture, the SINGLES GAME sentinel, and
+ * Count a match in points. Null for a fixture, a forfeit, the SINGLES GAME sentinel, and
  * any match whose stats don't pass `countable`.
  */
 export function matchPoints(m: MatchRecord): MatchPoints | null {
-  if (m.scheduled || m.isSingles || !countable(m)) return null;
+  if (!isPlayedMatch(m) || m.isSingles || !countable(m)) return null;
 
   const side = (i: 0 | 1): SidePoints => {
     const own = m.sides[i].players;
@@ -193,7 +193,7 @@ export interface PointsOptions {
 export function allMatchPoints(rows: StatRow[], opts: PointsOptions = {}): MatchPoints[] {
   const { season, scope = 'all' } = opts;
   return seasonMatches(rows, season)
-    .filter((m) => !m.scheduled && inScope(m.sides[0].players[0], scope))
+    .filter((m) => isPlayedMatch(m) && inScope(m.sides[0].players[0], scope))
     .map(matchPoints)
     .filter((mp): mp is MatchPoints => mp !== null);
 }

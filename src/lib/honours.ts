@@ -106,7 +106,9 @@ export interface AwardsContext {
  */
 export function homeAndAwayComplete(season: number, rows: StatRow[]): boolean {
   const regular = rows.filter((r) => r.season === season && !r.isFinals && !r.isSingles);
-  return regular.some(isPlayed) && !regular.some((r) => !isPlayed(r));
+  // `scheduled`, not `!isPlayed`: a forfeit is a result, so it finishes a
+  // season as surely as a match does.
+  return regular.some(isPlayed) && !regular.some((r) => r.scheduled);
 }
 
 /** The names a config honour lists, matched on its title. */

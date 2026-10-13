@@ -77,6 +77,9 @@ src/lib/site-data.ts     page-facing helpers (season ladder, MVP tally, fun stat
 src/lib/datetime.ts      formats the Start column for display — string in, string
                          out, never a Date (see Data conventions)
 src/lib/score.ts         scoreline display helpers (tiebreak formatting)
+src/lib/bracket.ts       finals bracket layout (tie positions, winner/loser lines,
+                         lanes) in abstract units — shared by FinalsBracket.astro
+                         and the finals-format graphic
 src/lib/csv.ts           minimal CSV parser; content.ts renders owner markdown;
                          url.ts builds base-path-aware links
 src/lib/photos.ts        photo manifest loader (content/photos/photos.yaml): tags,
@@ -105,13 +108,16 @@ before — no prediction, at most one `insights.ts` line per fixture) and
 scoreboard (the same round's results on one slide, for a night nobody
 photographed — played fixtures only, winner's row first off `win?`). Plus the
 once-off posts, asked for by `--only`: draft, streaks, headline, predictions,
-pair, **pointsladder** and **pairsplit** (teams by share of points won beside
+pair, **rivalry** (two players' head to head — `rivalryRecord` in `stats.ts`,
+no votes so no seal), **pointsladder** and **pairsplit** (teams by share of points won beside
 the real ladder, and each pair's share of its point-ending shots — both read
 `src/lib/points.ts`), **longest** (the all-time
 home-and-away matches by points played, `--round`'s longest lit — also
 `points.ts`), **leaders** (eight stat boards: winners/UE/aces/errors forced as a
 season total and per match — per-set on the H&A scope, where a match is one
-set) and **mvpsim** (the MVP race as a Monte Carlo projection — the one family
+set) **finals** (the season's bracket as a structure explainer — seeds and
+"winner/loser of" slots, no teams, laid out by `src/lib/bracket.ts` like the
+season page) and **mvpsim** (the MVP race as a Monte Carlo projection — the one family
 whose numbers come from outside this repo; see below). **Read
 `graphics/README.md` before touching it**; the rules that matter here:
 
@@ -164,6 +170,20 @@ whose numbers come from outside this repo; see below). **Read
   Filling in the stats and `win?` turns it into a played row with no other
   change. `allSeasons` counts a drawn season (the page must exist); `allPlayers`
   does not (a player with no played rows has no slug, so no page).
+- **A forfeit is a result for the ladder and nothing else.** `Score` = `forfeit`
+  on all four rows, the awarded 6-0 in the game columns, `win?` set, every stat
+  and vote blank, line-ups as drawn (S5 R9, Yellow to Pink). `StatRow.forfeit`
+  is set in `normalize.ts`; it isn't `scheduled` (it has a winner) but it isn't
+  `isPlayed` either, so every player-level path — aggregates, records,
+  streaks, H2H, pairs, rivalries, the model, points, the result cards and the
+  scoreboard graphic — skips it without asking. **`matchSides` is the one
+  entry point that keeps it**, because the ladder is built from it. Match-level
+  code uses `isPlayedMatch` (`!scheduled && !forfeit`); "is the season over"
+  checks `scheduled`, since a forfeit closes a round as surely as a match does.
+  `insights.ts` carries both windows — `history` for player detectors,
+  `results` (forfeits in) for the ladder ones. Tests that need a live fixture
+  build one with `redrawnRows` (`src/lib/testing.ts`) rather than relying on
+  the CSV having any left.
 - **Byes are derived, never stored:** a round's byes are the season's declared
   teams minus the teams with a fixture. That team set can't come from the CSV —
   a team on a bye in round one has no rows at all — so it's passed in from the
@@ -461,10 +481,10 @@ share only a colour), and a label that's nearly always true says nothing.
 
 - **S4 (2025) is complete** — full results, honours filled, votes loaded and
   unsealed.
-- **Season 5 (2026) is LIVE, seven rounds played.** `currentSeason` is 5 and
+- **Season 5 (2026) is LIVE, home-and-away complete.** `currentSeason` is 5 and
   `sealedVoteSeasons` is `[5]`. Nine Tuesdays, 18 Aug to 13 Oct 2026 (drawn
-  as ten; the redraw finished the round robin a week early); the whole
-  draw is in the CSV and rounds 1–7 have results. R7 ran five matches (Pink twice; Green v Pink and Brown v Yellow pulled forward from R8/R10, Green v Brown pushed to R8). R8 has Green and Navy twice (Green v Navy pulled forward from R10), R9 has White twice. **Remove 5 from
+  as ten; the redraw finished the round robin a week early); all nine rounds
+  have results, finals still to come. R9's Pink v Yellow is a forfeit to Pink. R7 ran five matches (Pink twice; Green v Pink and Brown v Yellow pulled forward from R8/R10, Green v Brown pushed to R8). R8 has Green and Navy twice (Green v Navy pulled forward from R10), R9 has White twice. **Remove 5 from
   `sealedVoteSeasons`** on awards night.
 - **S5 was drafted as ten teams and is being played by nine.** It was the first
   **ten-team** season — **Brown** joined the original nine in `TEAMS` — and was
@@ -476,8 +496,17 @@ share only a colour), and a label that's nearly always true says nothing.
   `withdrawn: true` in `season-5.ts` — off the ladder, never on a bye, still
   carrying its `pair` so its four rounds print a pairing, and still in
   `draftOrder` because it was drafted. Its matches are struck from its
-  opponents' ladder and MVP tallies; everywhere else they stand. Finals take eight of nine now, not eight of ten; the bracket is
-  unchanged and the `finals` shape still declares seeds 1–8.
+  opponents' ladder and MVP tallies; everywhere else they stand. Finals are **AFL-style over all nine** (owner's call, 5 Oct 2026):
+  week one is the 8 v 9 wildcard (played first that night, drawn stacked under
+  EF2 — the bracket's one same-round feed), QF1 1v4, QF2 2v3 (double chance),
+  EF1 6v7 and EF2 5 v WC;
+  SF1 = W EF1 v L QF1, SF2 = L QF2 v W EF2; PF1 = W SF1 v W QF2, PF2 = W QF1 v
+  W SF2 (the crossover — no QF replayed before the GF); then the GF. It's the
+  first bracket with `loserOf` slots. `finalsBerths` is 9, so the ladders draw
+  no finals line ("Every team plays finals") and the "Finals race" insight
+  can't fire. **Open:** the CSV `Round` stages only know `QF`/`SF`/`F`
+  (`FinalsStage`, `check-data`, honours reads `F` as the decider) — S5's
+  `WC`/`EF`/`PF`/`GF` need adding before its first final is entered.
 - All four brackets have full results. Finals **player stats**: S3 has finals
   MVP votes in the CSV (28/28 rows; the derived 4-3-2-1 tally matches the
   recorded Finals MVP). S1, S2 and S4 finals are **scorelines only** — no

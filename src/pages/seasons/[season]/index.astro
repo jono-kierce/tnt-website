@@ -10,6 +10,7 @@ import RoundCarousel from '../../../components/RoundCarousel.astro';
 import {
   siteSeasons,
   defaultScheduleRound,
+  finalsLine,
   seasonLadder,
   seasonMvp,
   seasonRoundList,
@@ -28,6 +29,7 @@ export function getStaticPaths() {
 const { season } = Astro.props;
 const cfg = getSeasonConfig(season);
 const table = seasonLadder(season);
+const finalsCut = finalsLine(season, table.length);
 const sealed = isVotesSealed(season);
 const mvp = seasonMvp(season);
 const podium = mvp.slice(0, 3);
@@ -90,7 +92,7 @@ const pairings = Object.fromEntries(
     <div>
       <p class="eyebrow">Final Standings</p>
       <h2 class="serif-title" style="margin-bottom:14px">Ladder</h2>
-      <LadderTable rows={table} cutoff={8} caption="Wins, then games ratio. Top 8 into finals." />
+      <LadderTable rows={table} cutoff={finalsCut.cutoff} caption={`Wins, then games ratio. ${finalsCut.text}`} />
     </div>
     <div>
       <p class="eyebrow">MVP Race</p>

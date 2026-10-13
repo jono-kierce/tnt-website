@@ -28,6 +28,7 @@ node graphics/render.mjs --season 4 --round 9 --only ladder
 node graphics/render.mjs --season 4 --round F --photos ./photos/2025-11-04/
 node graphics/render.mjs --only preview               # next Tuesday's fixtures
 node graphics/render.mjs --only scoreboard           # the round's results, one slide
+node graphics/render.mjs --only finals              # the season's finals format, no teams
 node graphics/render.mjs --help
 ```
 
@@ -39,8 +40,8 @@ CSV — which is exactly the round you just added. PNGs land in `graphics/out/`
 |---|---|
 | `--season <n>` | Default `SITE.currentSeason`. |
 | `--round <r>` | A round number, or `QF` / `SF` / `F`. Default: the season's latest — except for `preview`, see below. |
-| `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `leaders`, `draft`, `preview`, `streaks`, `streakstory`, `headline`, `predictions`, `pair`, `mvpsim`, `pointsladder`, `pairsplit`, `longest` — comma-separated. Default `ladder,results,scoreboard,boards`; the rest are once-off posts, so they only render on request. |
-| `--pair <a,b>` | The two players for `--only pair`, comma-separated. |
+| `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `leaders`, `draft`, `preview`, `streaks`, `streakstory`, `headline`, `predictions`, `pair`, `rivalry`, `mvpsim`, `pointsladder`, `pairsplit`, `longest`, `finals` — comma-separated. Default `ladder,results,scoreboard,boards`; the rest are once-off posts, so they only render on request. |
+| `--pair <a,b>` | The two players for `--only pair` (team-mates) or `--only rivalry` (head to head), comma-separated. |
 | `--sim <path>` | The MVP projection summary CSV, for `--only mvpsim`. Required — there is no default, because the file lives outside this repo. |
 | `--runs <n>` | How many runs that projection was over, for the subtitle. Omitted, it reads "Simulated". |
 | `--photos <dir>` | Photos for the result cards. |
@@ -138,6 +139,7 @@ graphics/
     points-ladder.html
     pair-split.html
     longest-matches.html
+    finals-format.html
     fonts/             vendored .woff2 (committed)
   out/                 rendered PNGs — gitignored
 ```

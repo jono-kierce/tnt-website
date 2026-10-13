@@ -141,6 +141,23 @@ for (const r of rows) {
   // A fixture has no scoreline yet, by definition. The fixture section below
   // is what checks those.
   if (r.scheduled) continue;
+  // A forfeit has no scoreline either — only the 6-0 it was awarded, from the
+  // winner's side. Stats or votes on one would be counted by nothing, which
+  // usually means the match was played after all. See StatRow.forfeit.
+  if (r.forfeit) {
+    const awarded = r.win ? [r.teamScore, r.opponentScore] : [r.opponentScore, r.teamScore];
+    if (awarded[0] !== 6 || awarded[1] !== 0) {
+      errors.push(
+        `Forfeit awarded ${r.teamScore}-${r.opponentScore} with win? ${r.win} ` +
+          `(expected 6-0 to the winner): ${where(r)}`
+      );
+    }
+    const filled = COUNTING_STATS.filter((k) => r[k] !== null);
+    if (filled.length) {
+      warnings.push(`Forfeit row has ${filled.join(', ')} filled in, which nothing counts: ${where(r)}`);
+    }
+    continue;
+  }
   if (!r.score) {
     if (r.isFinals) errors.push(`Finals row has no Score: ${where(r)}`);
     continue;
@@ -181,6 +198,19 @@ for (const r of rows) {
     errors.push(
       `win? says ${r.win} but the scoreline "${r.score}" says otherwise: ${where(r)}`
     );
+  }
+}
+
+// A forfeit is a match-level fact: every row of the match says so, and exactly
+// one side was awarded it.
+for (const m of seasonMatches(rows)) {
+  const all = m.sides.flatMap((s) => s.players);
+  if (!all.some((r) => r.forfeit)) continue;
+  const label = `S${m.season} R${m.roundLabel} ${m.sides.map((s) => s.team).join(' v ')}`;
+  if (!all.every((r) => r.forfeit)) {
+    errors.push(`Only some rows of a match say "forfeit": ${label}`);
+  } else if (m.sides[0].win === m.sides[1].win) {
+    errors.push(`Forfeit needs exactly one side with win? TRUE: ${label}`);
   }
 }
 

@@ -12,11 +12,13 @@ import {
   fitModel,
   passesFaceValidity,
   powerRankings,
+  predictMatch,
   predictPair,
   predictionFor,
   tune,
 } from './predict.ts';
 import { seasonMatches } from './stats.ts';
+import { redrawnRows } from './testing.ts';
 
 /** A played row. Blank `win?` would make it a fixture, so it's always set. */
 function raw(o: Partial<Record<string, string>>): Record<string, string> {
@@ -326,12 +328,29 @@ describe('the committed constants', () => {
   });
 });
 
+describe('a forfeit', () => {
+  it('never reaches the fit — nobody played it', () => {
+    const all = loadStatRows();
+    expect(all.some((r) => r.forfeit)).toBe(true);
+    const a = fitModel(all);
+    const b = fitModel(all.filter((r) => !r.forfeit));
+    expect([...a.skills]).toEqual([...b.skills]);
+  });
+});
+
 describe('a season the fit has not reached', () => {
   it('predicts a redrafted opener as a soft call, never a lock', () => {
-    const fixtures = seasonMatches(loadStatRows(), 5).filter((m) => m.scheduled);
+    // S5 put back to an unplayed draw, and a fit that has never seen it — the
+    // position every season starts from, whatever week the CSV is in.
+    const rows = redrawnRows(5, 1);
+    const model = fitModel(rows);
+    // Round one: the redraft's openers. Later rounds pair a mid-season line-up
+    // change (S5 Green, Feikema & Hume) with nothing to temper it, which is a
+    // different question from the one this test asks.
+    const fixtures = seasonMatches(rows, 5).filter((m) => m.scheduled && m.round === 1);
     expect(fixtures.length).toBeGreaterThan(0);
     for (const m of fixtures) {
-      const p = predictionFor(m);
+      const p = predictMatch(m, model);
       expect(p.scheduled).toBe(true);
       // A redrafted pairing has no season-specific form yet: carried skills,
       // ridge and recency decay together keep every opener short of a lock. The

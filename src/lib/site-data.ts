@@ -91,6 +91,20 @@ export function finalsCutoff(season: number): number | undefined {
 }
 
 /**
+ * The ladder's finals line: where to rule it off, and the caption that says so.
+ * Read off the bracket like `finalsCutoff`, falling back to the league's
+ * long-standing top eight for a season with no bracket declared. When the
+ * bracket takes the whole field (S5: nine of nine) there's no line to draw —
+ * it would only underline last place.
+ */
+export function finalsLine(season: number, fieldSize: number): { cutoff?: number; text: string } {
+  const berths = finalsCutoff(season) ?? 8;
+  return berths >= fieldSize
+    ? { text: 'Every team plays finals.' }
+    : { cutoff: berths, text: `Top ${berths} make finals.` };
+}
+
+/**
  * Every season the site builds a page for. Counts a season that has only been
  * drawn — the schedule is the first thing a new season has to show.
  */

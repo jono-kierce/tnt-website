@@ -140,9 +140,10 @@ export function withdrawnTeams(cfg: SeasonConfig | undefined): string[] {
  *
  * The finals cutoff is a fact about the bracket, and the bracket is right here.
  * `insights.ts` used to hardcode 8, which has been correct every season so far
- * (S1–S4 took 8 of 9, S5 takes 8 of 10) and was correct by luck: nothing tied
+ * for S1–S4 (8 of 9) and was correct by luck: nothing tied
  * the number to the config, so the first season with a different bracket would
- * have quietly kept talking about "the eight".
+ * have quietly kept talking about "the eight". That season is S5, whose
+ * AFL-style bracket takes all nine.
  *
  * Undefined for a season with no bracket declared — the caller then has no
  * business claiming anything about a cutoff.

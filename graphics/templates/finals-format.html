@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Finals Format (Broadsheet)</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  /* The season's finals bracket as a structure, not a fixture: seeds and
+     "winner of / loser of" slots, the same layout the season page draws
+     (src/lib/bracket.ts). Rounds run left to right; solid lines carry winners,
+     dashed ones carry a qualifying-final loser into its semi. A tie feeding
+     one in its own round (the wildcard) stacks under it, joined straight down. */
+  header { flex: none; }
+  .headline { font-size: 76px; margin-top: 14px; }
+  .rule-gold {
+    height: 2px; margin-top: 24px;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  :root {
+    --loser: #e08a86;
+    --line: rgba(244, 241, 232, 0.42);
+  }
+
+  .heads { flex: none; position: relative; height: 54px; margin-top: 26px; }
+  .head {
+    position: absolute; bottom: 0; text-align: center;
+    font-family: var(--display); font-weight: 600; font-size: 14px; line-height: 1.25;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold);
+  }
+
+  .field { flex: none; position: relative; margin-top: 22px; }
+  .field svg { position: absolute; inset: 0; overflow: visible; }
+  .field path { fill: none; stroke: var(--line); stroke-width: 2; }
+  .field path.loser { stroke: var(--loser); stroke-dasharray: 7 6; }
+
+  /* Centred on its `top`, so the layout's `pos` is the tie's middle. */
+  .tie {
+    position: absolute; transform: translateY(-50%);
+    padding: 8px 0;
+    background: #101d14; /* opaque: a stacked edge runs behind it */
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+  }
+  .tie.double { border-color: var(--rule-strong); box-shadow: 0 0 0 1px rgba(217,185,106,0.18); }
+  /* Set into the top border, the way the site labels a tie, so it takes no
+     room from the gap above — which a bypass line may be running through. */
+  .tag {
+    position: absolute; left: 12px; top: -10px; padding: 0 7px;
+    background: #101d14; line-height: 18px;
+    font-family: var(--display); font-weight: 600; font-size: 15px;
+    letter-spacing: 0.16em; color: rgba(244, 241, 232, 0.55);
+  }
+  .tie.double .tag { color: var(--gold); }
+  /* Fixed row height: the lines land on these rows (`slot` in the payload). */
+  .row {
+    height: 52px; padding: 0 14px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .row + .row { border-top: 1px solid var(--rule); }
+  .seed { font-size: 36px; font-weight: 600; line-height: 1; letter-spacing: 0.01em; }
+  .tie.double .seed { color: var(--gold-soft); }
+  .kind {
+    font-size: 14px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase;
+    color: rgba(244, 241, 232, 0.55); line-height: 1;
+  }
+  .kind.loser { color: var(--loser); }
+  .from { font-size: 27px; font-weight: 600; line-height: 1.05; margin-top: 3px; }
+
+
+  footer {
+    flex: none; margin-top: auto; display: flex; justify-content: space-between; align-items: center;
+    padding-top: 26px; margin-bottom: -84px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+  }
+  .key { display: flex; align-items: center; gap: 10px; }
+  .key span { display: inline-block; width: 34px; border-top: 2px solid var(--line); margin-left: 14px; }
+  .key span.loser { border-top: 2px dashed var(--loser); }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette">
+  <div class="mark mark--crest watermark"></div>
+
+  <header>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="heads" id="heads"></div>
+  <div class="field" id="field"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+    <div class="footnote key"><span></span>Winner <span class="loser"></span>Loser</div>
+  </footer>
+</div>
+
+<script type="module">
+/* Sample data — S5's bracket as `finalsFormatPayload` builds it — so this file
+   opens straight in a browser. `render.mjs` calls __render() with the real one. */
+const W = (kind, from) => ({ seed: null, kind, from });
+const S = (seed) => ({ seed, kind: null, from: null });
+const DATA = {
+  eyebrow: 'Finals · Season 5 · 2026',
+  title: 'The New Finals',
+  geometry: { frame: 952, gap: 36, unit: 168, slot: 35, port: 14, lane: 9, width: 211 },
+  rounds: ['Qualifying & Elimination', 'Semi Finals', 'Preliminary Finals', 'Grand Final'],
+  span: 5,
+  ties: [
+    { id: 'EF1', col: 0, pos: 0.5, doubleChance: false, home: S('6th'), away: S('7th') },
+    { id: 'QF1', col: 0, pos: 1.5, doubleChance: true, home: S('1st'), away: S('4th') },
+    { id: 'QF2', col: 0, pos: 2.5, doubleChance: true, home: S('2nd'), away: S('3rd') },
+    { id: 'EF2', col: 0, pos: 3.5, doubleChance: false, home: S('5th'), away: W('winner', 'WC') },
+    { id: 'WC', col: 0, pos: 4.5, doubleChance: false, home: S('8th'), away: S('9th') },
+    { id: 'SF1', col: 1, pos: 1, doubleChance: false, home: W('winner', 'EF1'), away: W('loser', 'QF1') },
+    { id: 'SF2', col: 1, pos: 3, doubleChance: false, home: W('loser', 'QF2'), away: W('winner', 'EF2') },
+    { id: 'PF1', col: 2, pos: 1.5, doubleChance: false, home: W('winner', 'SF1'), away: W('winner', 'QF2') },
+    { id: 'PF2', col: 2, pos: 2.5, doubleChance: false, home: W('winner', 'QF1'), away: W('winner', 'SF2') },
+    { id: 'GF', col: 3, pos: 2, doubleChance: false, home: W('winner', 'PF1'), away: W('winner', 'PF2') },
+  ],
+  edges: [
+    { kind: 'winner', fromCol: 0, toCol: 0, y1: 4.5, y2: 3.5, stacked: true, lane: 0, lanes: 1 },
+    { kind: 'winner', fromCol: 0, toCol: 1, y1: 0.5, y2: 0.76667, stacked: false, lane: 0, lanes: 1 },
+    { kind: 'loser', fromCol: 0, toCol: 1, y1: 1.45333, y2: 1.23333, stacked: false, lane: 0, lanes: 1 },
+    { kind: 'loser', fromCol: 0, toCol: 1, y1: 2.54667, y2: 2.76667, stacked: false, lane: 0, lanes: 1 },
+    { kind: 'winner', fromCol: 0, toCol: 1, y1: 3.5, y2: 3.23333, stacked: false, lane: 0, lanes: 1 },
+    { kind: 'winner', fromCol: 1, toCol: 2, y1: 1, y2: 1.26667, stacked: false, lane: 0, lanes: 2 },
+    { kind: 'winner', fromCol: 0, toCol: 2, y1: 2.45333, y2: 1.73333, stacked: false, lane: 1, lanes: 2 },
+    { kind: 'winner', fromCol: 0, toCol: 2, y1: 1.54667, y2: 2.26667, stacked: false, lane: 0, lanes: 2 },
+    { kind: 'winner', fromCol: 1, toCol: 2, y1: 3, y2: 2.73333, stacked: false, lane: 0, lanes: 2 },
+    { kind: 'winner', fromCol: 2, toCol: 3, y1: 1.5, y2: 1.76667, stacked: false, lane: 0, lanes: 1 },
+    { kind: 'winner', fromCol: 2, toCol: 3, y1: 2.5, y2: 2.23333, stacked: false, lane: 0, lanes: 1 },
+  ],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const slot = (s) => s.seed
+  ? `<div class="row"><div class="seed">${esc(s.seed)}</div></div>`
+  : `<div class="row"><div class="kind ${s.kind}">${s.kind === 'loser' ? 'Loser' : 'Winner'}</div><div class="from">${esc(s.from)}</div></div>`;
+
+window.__render = function (d) {
+  const g = d.geometry;
+  const x = (c) => c * (g.width + g.gap);
+  const width = d.rounds.length * g.width + (d.rounds.length - 1) * g.gap;
+  const height = Math.ceil(d.span * g.unit);
+
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+
+  document.getElementById('heads').innerHTML = d.rounds
+    .map((r, c) => `<div class="head" style="left:${x(c)}px;width:${g.width}px">${esc(r)}</div>`)
+    .join('');
+
+  const paths = d.edges.map((e) => {
+    if (e.stacked) {
+      const cx = x(e.toCol) + g.width / 2;
+      return `<path class="${e.kind}" d="M${cx} ${(e.y1 * g.unit).toFixed(1)}V${(e.y2 * g.unit).toFixed(1)}"/>`;
+    }
+    const x1 = x(e.fromCol) + g.width, x2 = x(e.toCol);
+    const y1 = (e.y1 * g.unit).toFixed(1), y2 = (e.y2 * g.unit).toFixed(1);
+    const turn = x2 - g.gap / 2 + (e.lane - (e.lanes - 1) / 2) * g.lane;
+    const p = y1 === y2 ? `M${x1} ${y1}H${x2}` : `M${x1} ${y1}H${turn}V${y2}H${x2}`;
+    return `<path class="${e.kind}" d="${p}"/>`;
+  }).join('');
+
+  const field = document.getElementById('field');
+  field.style.width = `${width}px`;
+  field.style.height = `${height}px`;
+  field.innerHTML =
+    `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${paths}</svg>` +
+    d.ties.map((t) => `
+      <div class="tie${t.doubleChance ? ' double' : ''}" style="left:${x(t.col)}px;top:${(t.pos * g.unit).toFixed(1)}px;width:${g.width}px">
+        <div class="tag">${esc(t.id)}</div>
+        ${slot(t.home)}${slot(t.away)}
+      </div>`).join('');
+
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

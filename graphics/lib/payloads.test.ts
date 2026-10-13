@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   SealedVotesError,
   draftPayload,
+  finalsFormatPayload,
   ladderPayload,
   latestRound,
   nextPreviewRound,
@@ -16,6 +17,7 @@ import {
   scoreboardPayload,
   seasonRounds,
   pairBoardPayload,
+  rivalryBoardPayload,
   pairSplitPayload,
   pointsLadderPayload,
   longestMatchesPayload,
@@ -28,10 +30,12 @@ import {
 import { ANALYSTS } from './predictions.ts';
 import { leaderBoards } from './boards.ts';
 import {
+  isPlayedMatch,
   ladderWithPairings,
   winStreaks,
   winStreakRun,
   pairRecord,
+  rivalryRecord,
   playerAgg,
   allPlayers,
   seasonRounds as matchRounds,
@@ -162,6 +166,26 @@ describe('ladder payload', () => {
     expect(p.rows.at(-1)).toMatchObject({ rank: 9, qualifies: false });
   });
 
+  it('draws no cut when the bracket takes every team', async () => {
+    // S5's AFL-style bracket seeds all nine: a line would only underline last.
+    const p = await ladderPayload(5, resolveRound('1'));
+    expect(p.finalsCutoff).toBeNull();
+    expect(p.subtitle).toContain('Everyone plays finals');
+  });
+
+  it('builds the finals format off the season bracket', async () => {
+    const p = await finalsFormatPayload(5);
+    expect(p.rounds).toHaveLength(4);
+    expect(p.ties.filter((t) => t.doubleChance).map((t) => t.id).sort()).toEqual(['QF1', 'QF2']);
+    // The wildcard plays first in week one and drops straight into EF2.
+    expect(p.ties.find((t) => t.id === 'WC')!.col).toBe(0);
+    expect(p.edges.filter((e) => e.stacked)).toHaveLength(1);
+    // Four rounds share the 952px frame.
+    expect(p.rounds.length * p.geometry.width + (p.rounds.length - 1) * p.geometry.gap).toBeLessThanOrEqual(952);
+    // Seeds and references only: a structure post names no team.
+    expect(JSON.stringify(p.ties)).not.toMatch(/Navy|Pink|Yellow|Green/);
+  });
+
   it('gives the ladder as it stood mid-season', async () => {
     const early = await ladderPayload(4, resolveRound('3'));
     expect(early.title).toBe('Standings');
@@ -237,16 +261,31 @@ describe('scoreboard', () => {
     expect(levelled.sides[0].won).toBe(true);
   });
 
-  it('shows only played fixtures — a drawn round is the preview\'s job', async () => {
-    // Whichever round is wholly undrawn: naming one pins the test to a week of
-    // the season. It can't just be the next round up for preview — a round
-    // half entered, four sheets in and the fifth still to come, is a legitimate
-    // state (`check-data` warns, never errors), and its board rightly carries
-    // the four that were played.
-    const drawn = matchRounds(rows, 5).find((r) => r.matches.every((m) => m.scheduled));
-    expect(drawn).toBeDefined();
-    const b = await scoreboardPayload(5, resolveRound(drawn!.stage ?? String(drawn!.round)));
-    expect(b.matches).toEqual([]);
+  // Whichever round holds a match that wasn't played — a fixture, or a
+  // forfeit: naming one pins the test to a week of the season. A round half
+  // entered, four sheets in and the fifth still to come, is a legitimate state
+  // (`check-data` warns, never errors), and its board rightly carries the four
+  // that were played; a wholly drawn round is the same check with nothing
+  // played. S5 R9 qualifies for good — Yellow forfeited to Pink.
+  const pending = matchRounds(rows, 5).find((r) => r.matches.some((m) => !isPlayedMatch(m)));
+  it.runIf(pending)('shows only played matches — no fixture, no forfeit', async () => {
+    const r = pending!;
+    const b = await scoreboardPayload(5, resolveRound(r.stage ?? String(r.round)));
+    const key = (teams: string[]) => [...teams].sort().join(' v ');
+    expect(b.matches.map((m) => key(m.sides.map((s) => s.team))).sort()).toEqual(
+      r.matches
+        .filter(isPlayedMatch)
+        .map((m) => key(m.sides.map((s) => s.team)))
+        .sort()
+    );
+  });
+
+  it('leaves a forfeit off the result cards — there was no night to card', async () => {
+    const cards = await resultCardPayloads(5, resolveRound('9'));
+    expect(cards).toHaveLength(4);
+    for (const c of cards) {
+      expect(c.sides.map((s) => s.team).sort()).not.toEqual(['Pink', 'Yellow']);
+    }
   });
 
   it('agrees with the result cards about every scoreline', async () => {
@@ -613,6 +652,28 @@ describe('pair board', () => {
     expect(() => pairBoardPayload('Jonathan Kierce', 'Jimmy Gorton')).toThrow(
       /never played a match as team-mates/
     );
+  });
+});
+
+describe('rivalry board', () => {
+  const board = rivalryBoardPayload('Jonathan Kierce', 'Luke Sharrock');
+
+  it('prints the record stats.ts derived, and does no arithmetic of its own', () => {
+    const rec = rivalryRecord('Jonathan Kierce', 'Luke Sharrock', rows)!;
+    expect([board.winsA, board.winsB]).toEqual([rec.wins, rec.losses]);
+    expect(board.meetings).toHaveLength(rec.meetings);
+    expect(board.meetings.map((m) => m.winner)).toEqual(rec.matches.map((m) => (m.win ? 'a' : 'b')));
+    const games = board.stats.find((s) => s.label === 'Games')!;
+    expect([games.a, games.b]).toEqual([String(rec.gamesFor), String(rec.gamesAgainst)]);
+  });
+
+  it('carries nothing vote-derived, which is why it needs no seal', () => {
+    expect(board.stats.map((s) => s.label)).not.toContain('Votes');
+    expect(board.stats.map((s) => s.label)).not.toContain('Best on ground');
+  });
+
+  it('refuses two players who have never met', () => {
+    expect(() => rivalryBoardPayload('Jonathan Kierce', 'Nobody At All')).toThrow(/never played/);
   });
 });
 
