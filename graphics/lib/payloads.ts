@@ -24,6 +24,7 @@ import {
   pairRecord,
   rivalryRecord,
   sealVotes,
+  strikeWithdrawnMatches,
   strikeWithdrawnVotes,
   teamRoster,
   type CountingStat,
@@ -843,6 +844,12 @@ export interface StatBoardSpec {
   includeFillIns?: boolean;
   /** Overrides `SITE.perGameMinGames` on a rate board. */
   minGames?: number;
+  /**
+   * Leave out matches against a team that withdrew that season, as the ladder
+   * and the honours' stat leaders do (`strikeWithdrawnMatches`). For a season
+   * total, where one extra match is a head start.
+   */
+  strikeWithdrawn?: boolean;
   /** Print a leader's photo in the hero band. Absent photo = no band. */
   showPhoto?: boolean;
   /** A transparent cut-out sits flush; a normal photo gets a framed crop. */
@@ -998,7 +1005,10 @@ export function statBoardPayload(spec: StatBoardSpec): StatBoardPayload {
     );
   }
 
-  const board = leaderboard(stat, rows, {
+  const gone = spec.strikeWithdrawn && season !== undefined ? withdrawnBySeason.get(season) ?? [] : [];
+  const source = gone.length ? strikeWithdrawnMatches(rows, (s) => (s === season ? gone : [])) : rows;
+
+  const board = leaderboard(stat, source, {
     season,
     perSet: rate,
     scope: spec.scope,
@@ -1029,7 +1039,10 @@ export function statBoardPayload(spec: StatBoardSpec): StatBoardPayload {
   }));
 
   const notes: string[] = [];
-  if (!includeFillIns) notes.push('Fill-in matches excluded');
+  // One clause when both apply — two "… excluded" notes wrap the footer.
+  const struck = gone.length ? `matches v ${gone.join(' & ')}` : '';
+  if (!includeFillIns) notes.push(struck ? `Fill-ins & ${struck} excluded` : 'Fill-in matches excluded');
+  else if (struck) notes.push(`M${struck.slice(1)} excluded`);
   if (rate) notes.push(`Min. ${spec.minGames ?? SITE.perGameMinGames} matches`);
   if (spec.note) notes.push(spec.note);
 

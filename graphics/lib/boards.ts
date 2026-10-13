@@ -127,6 +127,11 @@ export function careerBoards(): StatBoardSpec[] {
  * scope sets == matches. The scope is what keeps it honest — widen it and a
  * three-set semi would count as one "match" worth of winners times three. A
  * test holds every player's sets to their matches so the label can't drift.
+ *
+ * Both halves strike matches against a team that withdrew, as the honours'
+ * stat leaders do — a season total is otherwise a head start for whoever met
+ * them (S5: Pink, Navy, White and Green played Black before it left). The
+ * footnote names the team.
  */
 export function leaderBoards(season: number): StatBoardSpec[] {
   const stats = [
@@ -152,6 +157,7 @@ export function leaderBoards(season: number): StatBoardSpec[] {
       scope: 'regular',
       polarity,
       showPhoto: true,
+      strikeWithdrawn: true,
     },
     {
       id: `${slug(title)}-per-match`,
@@ -165,6 +171,7 @@ export function leaderBoards(season: number): StatBoardSpec[] {
       scope: 'regular',
       polarity,
       showPhoto: true,
+      strikeWithdrawn: true,
       // Second frame where there is one, so a player leading both halves of
       // a stat isn't pictured identically on consecutive slides.
       photoIndex: 1,

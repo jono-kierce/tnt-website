@@ -27,6 +27,7 @@ import {
   lineupPairingName,
   winStreaks,
   winStreakRun,
+  strikeWithdrawnMatches,
   strikeWithdrawnVotes,
   sealVotes,
 } from './stats.ts';
@@ -272,6 +273,25 @@ describe('a team that withdraws mid-season', () => {
     expect(playerAgg('P1', struck, { season: 5, scope: 'regular' }).votes).toBe(6);
     // The input isn't mutated.
     expect(voted[1].votesStruck).toBe(false);
+  });
+
+  it('strikes the matches its opponents played against it, that season only', () => {
+    const played = normalizeRows([
+      raw({ Team: 'Pink', Opponent: 'Navy', Season: '5', Round: '1', Player: 'P1', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '2', Winners: '4' }),
+      raw({ Team: 'Navy', Opponent: 'Pink', Season: '5', Round: '1', Player: 'N1', 'win?': 'FALSE', 'Team Score': '2', 'Opponent Score': '6', Winners: '1' }),
+      raw({ Team: 'Navy', Opponent: 'Red', Season: '5', Round: '2', Player: 'N1', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '3', Winners: '5' }),
+      raw({ Team: 'Navy', Opponent: 'Pink', Season: '4', Round: '1', Player: 'N1', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '1', Winners: '7' }),
+    ]);
+    const kept = strikeWithdrawnMatches(played, (season) => (season === 5 ? ['Pink'] : []));
+    // Navy's S5 meeting with Pink goes. Pink's own row stays — its player
+    // keeps the night — and so does the S4 meeting, before Pink withdrew.
+    expect(kept.map((r) => `S${r.season} ${r.team} v ${r.opponent}`)).toEqual([
+      'S5 Pink v Navy', 'S5 Navy v Red', 'S4 Navy v Pink',
+    ]);
+    const n1 = (rs: typeof played) =>
+      leaderboard('winners', rs, { season: 5, scope: 'regular' }).find((e) => e.player === 'N1')!;
+    expect(n1(played)).toMatchObject({ value: 6, games: 2 });
+    expect(n1(kept)).toMatchObject({ value: 5, games: 1 });
   });
 
   it('is not on a bye for the rounds after it leaves', () => {
@@ -1610,15 +1630,16 @@ describe('rivalryRecord — two players across the net', () => {
 
   it('reads every meeting from the first player\'s side, oldest first', () => {
     expect(KS.matches.map((m) => `S${m.season} ${m.roundLabel}`)).toEqual([
-      'S1 9', 'S2 8', 'S3 2', 'S4 4', 'S4 Final',
+      'S1 9', 'S2 8', 'S3 2', 'S4 4', 'S4 Final', 'S5 8',
     ]);
-    const final = KS.matches.at(-1)!;
+    // Found by label, not position: they keep meeting, so the final isn't last.
+    const final = KS.matches.find((m) => m.season === 4 && m.roundLabel === 'Final')!;
     expect(final.teams).toEqual(['White', 'Pink']);
     expect(final.partners).toEqual(['Lachy Godden', 'Angus Hume']);
     expect(final.score).toBe('4-6 6(3)-7');
     expect(final.win).toBe(false);
     expect(KS.setsFor).toBe(2);
-    expect(KS.setsAgainst).toBe(4);
+    expect(KS.setsAgainst).toBe(5);
   });
 
   it('is symmetric in its two arguments', () => {
@@ -1635,8 +1656,8 @@ describe('rivalryRecord — two players across the net', () => {
     expect(s.games).toBe(KS.meetings);
     expect(k.wins).toBe(KS.wins);
     expect(s.wins).toBe(KS.losses);
-    // The S4 final is a scoreline only, so stats cover four of the five.
-    expect(k.tally.winners.games).toBe(4);
+    // The S4 final is a scoreline only, so stats cover five of the six.
+    expect(k.tally.winners.games).toBe(5);
   });
 
   it('never counts a match the two played as team-mates', () => {

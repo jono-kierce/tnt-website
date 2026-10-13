@@ -33,6 +33,7 @@ import {
   ladder,
   leaderboard,
   mvpTally,
+  strikeWithdrawnMatches,
   teamRoster,
   type CountingStat,
 } from './stats.ts';
@@ -214,8 +215,7 @@ export function seasonAwards(season: number, ctx: AwardsContext): Award[] {
     // ladder and the MVP count. Without that, S5's Green, Navy and White
     // (nine home-and-away matches each, one of them against Black) would
     // start a match ahead of a field that played eight.
-    const gone = new Set(ctx.withdrawnTeams);
-    const counting = played.filter((r) => !gone.has(r.opponent));
+    const counting = strikeWithdrawnMatches(played, () => ctx.withdrawnTeams);
     for (const stat of LEADER_STATS) {
       // Led on the season *total*: a season award rewards turning up every
       // Tuesday, not the best rate over a short stint. Won for your own team

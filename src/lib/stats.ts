@@ -745,6 +745,30 @@ export function strikeWithdrawnVotes(
 }
 
 /**
+ * Drop every row played *against* a team that withdrew mid-season — the
+ * stat-total version of the ladder's strike, for a season window that has to
+ * compare like with like. S5's Pink, Navy, White and Green each met Black
+ * before it left, so a raw season total counts a match the rest of the field
+ * never got to play. Used by the honours' stat leaders and the leaders boards.
+ *
+ * Same scope as `strikeWithdrawnVotes`: season by season (Black existed in
+ * S1–S4 and those matches stand), and only the opponents' rows — the
+ * withdrawn team's own players keep the nights they played.
+ */
+export function strikeWithdrawnMatches(
+  rows: StatRow[],
+  withdrawnFor: (season: number) => string[]
+): StatRow[] {
+  const bySeason = new Map<number, Set<string>>();
+  const gone = (season: number) => {
+    let set = bySeason.get(season);
+    if (!set) bySeason.set(season, (set = new Set(withdrawnFor(season))));
+    return set;
+  };
+  return rows.filter((r) => !gone(r.season).has(r.opponent));
+}
+
+/**
  * Blank every vote — and so every BOG — in a season whose votes are sealed
  * (`SITE.sealedVoteSeasons`), so nothing built from these rows can show them.
  *

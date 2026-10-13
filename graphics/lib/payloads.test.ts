@@ -38,10 +38,12 @@ import {
   rivalryRecord,
   playerAgg,
   allPlayers,
+  leaderboard,
   seasonRounds as matchRounds,
+  strikeWithdrawnMatches,
 } from '../../src/lib/stats.ts';
 import { SITE, TEAMS } from '../../src/config/site.ts';
-import { getSeasonConfig } from './season-configs.ts';
+import { getSeasonConfig, withdrawnTeams } from './season-configs.ts';
 import { longestMatches, pairSplit, teamPoints } from '../../src/lib/points.ts';
 import { avatarPhoto, leadPhoto, playerPhotos } from '../../src/lib/photos.ts';
 
@@ -499,6 +501,23 @@ describe('leader boards', () => {
       'unforcedErrors',
     ]);
     for (const spec of specs) expect(statBoardPayload(spec).rows.length).toBeGreaterThan(0);
+  });
+
+  it('strikes matches against a withdrawn team, and says so', async () => {
+    const spec = leaderBoards(5).find((s) => s.id === 'winners-total')!;
+    const gone = await withdrawnTeams(5);
+    expect(gone).toEqual(['Black']);
+    const struck = strikeWithdrawnMatches(rows, (s) => (s === 5 ? gone : []));
+    const expected = leaderboard('winners', struck, { season: 5, scope: 'regular' });
+    const board = statBoardPayload(spec);
+    expect(board.rows.map((r) => r.player)).toEqual(expected.slice(0, board.rows.length).map((e) => e.player));
+    expect(board.footnote).toContain('Fill-ins & matches v Black excluded');
+    // Someone who met Black really does lose that night: the raw total is bigger.
+    const metBlack = rows.find((r) => r.season === 5 && r.opponent === 'Black' && !r.scheduled)!;
+    const raw = (rs: typeof rows) => playerAgg(metBlack.player, rs, { season: 5, scope: 'regular' });
+    expect(raw(struck).games).toBe(raw(rows).games - 1);
+    // The weekly boards are untouched.
+    expect(statBoardPayload({ ...spec, strikeWithdrawn: false }).footnote).not.toContain('Black');
   });
 
   it('pictures the leader only with a solo photo from the board\'s own season', () => {
