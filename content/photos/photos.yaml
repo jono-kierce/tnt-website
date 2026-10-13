@@ -642,10 +642,61 @@
   season: 4
   caption:
 
+# --- Season 5 leaders boards (Oct 2026): spotlight frames, IDs by fixture -------
+- file: season-5/sharrock-grin.jpg   # TNT Media/S5 Photos/r1/DSC05964.JPG
+  players: [luke-sharrock]
+  season: 5
+  caption:
+
+- file: season-5/sharrock-forehand.jpg   # TNT Media/S5 Photos/r4/DSC06472.JPG
+  players: [luke-sharrock]
+  season: 5
+  caption:
+
+- file: season-5/dickson-backhand.jpg   # TNT Media/S5 Photos/r8/DSC07052.JPG
+  players: [adam-dickson]
+  season: 5
+  caption:
+
+# Round 9 — 13 Oct 2026
+- file: season-5/gorton-jump-serve.jpg   # TNT Media/S5 Photos/r9/DSC07300.JPG
+  players: [jimmy-gorton]
+  season: 5
+  caption:
+
+- file: season-5/orange-brown-handshake.jpg   # TNT Media/S5 Photos/r9/DSC07338.JPG
+  players: [ted-angel, jimmy-gorton]
+  season: 5
+  caption: Ted Angel and Jimmy Gorton shake on it after a 6-0 in round nine
+
+- file: season-5/green-chest-bump.jpg   # TNT Media/S5 Photos/r9/DSC07372.JPG
+  players: [quinn-feikema, angus-hume]
+  season: 5
+  caption:
+
+- file: season-5/kierce-lunge.jpg   # TNT Media/S5 Photos/r9/DSC07410.JPG
+  players: [jonathan-kierce]
+  season: 5
+  caption:
+
+- file: season-5/feikema-kierce-net.jpg   # TNT Media/S5 Photos/r9/DSC07563.JPG
+  players: [quinn-feikema, jonathan-kierce]
+  season: 5
+  caption: Green v White went to a tiebreak in round nine
+
+- file: season-5/navy-walk-off.jpg   # TNT Media/S5 Photos/r9/DSC07665.JPG
+  players: [will-mumme, ed-simpson]
+  season: 5
+  caption: Navy after taking their round-nine tiebreak against Light Blue
+
 # --- Profile pictures (avatar: true) -------------------------------------------
 # Square headshots for the 64-120px avatar tile. Never shown in a gallery, so
 # cutting one from a photo already listed above doesn't show it twice. The
 # comment names the frame each was cut from.
+
+- file: avatars/adam-dickson.jpg   # TNT Media/S5 Photos/r9/DSC07282.JPG (the round-nine shush)
+  players: [adam-dickson]
+  avatar: true
 
 - file: avatars/billy-coutinho.jpg   # season-5/coutinho-leap.JPG
   players: [billy-coutinho]

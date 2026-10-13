@@ -503,6 +503,32 @@ describe('leader boards', () => {
     for (const spec of specs) expect(statBoardPayload(spec).rows.length).toBeGreaterThan(0);
   });
 
+  it('threads a carousel: a fresh frame per board, a joint lead to whoever is unseen', () => {
+    const pictured = new Map<string, number>();
+    const frames = new Map<string, Set<string>>();
+    let heroes = 0;
+    for (const spec of leaderBoards(5)) {
+      const before = new Map(pictured);
+      const b = statBoardPayload(spec, pictured);
+      if (!b.hero) continue;
+      heroes++;
+      const lead = b.rows[0];
+      expect(lead.rank).toBe(1);
+      // No frame twice while the player still has one unused.
+      const shown = frames.get(lead.slug) ?? new Set<string>();
+      const available = playerPhotos(lead.slug).filter((p) => p.season === 5 && p.players.length === 1).length;
+      if (shown.size < available) expect(shown.has(b.hero.photo)).toBe(false);
+      frames.set(lead.slug, shown.add(b.hero.photo));
+      // Nobody level with the leader, with a photo of their own, had been
+      // pictured less often before this board.
+      for (const r of b.rows.filter((r) => r.value === lead.value && leaderPhoto(r.slug, 5))) {
+        expect(before.get(lead.slug) ?? 0).toBeLessThanOrEqual(before.get(r.slug) ?? 0);
+      }
+      expect(pictured.get(lead.slug)).toBe((before.get(lead.slug) ?? 0) + 1);
+    }
+    expect(heroes).toBeGreaterThan(0);
+  });
+
   it('strikes matches against a withdrawn team, and says so', async () => {
     const spec = leaderBoards(5).find((s) => s.id === 'winners-total')!;
     const gone = await withdrawnTeams(5);
@@ -516,7 +542,11 @@ describe('leader boards', () => {
     const metBlack = rows.find((r) => r.season === 5 && r.opponent === 'Black' && !r.scheduled)!;
     const raw = (rs: typeof rows) => playerAgg(metBlack.player, rs, { season: 5, scope: 'regular' });
     expect(raw(struck).games).toBe(raw(rows).games - 1);
-    // The weekly boards are untouched.
+    // Totals only: a rate has no head start to remove, and the per-match
+    // boards have to agree with the weekly ones.
+    expect(leaderBoards(5).filter((s) => s.strikeWithdrawn).map((s) => s.id)).toEqual([
+      'winners-total', 'unforced-errors-total', 'aces-total', 'errors-forced-total',
+    ]);
     expect(statBoardPayload({ ...spec, strikeWithdrawn: false }).footnote).not.toContain('Black');
   });
 

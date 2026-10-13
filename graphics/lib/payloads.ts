@@ -855,9 +855,9 @@ export interface StatBoardSpec {
   /** A transparent cut-out sits flush; a normal photo gets a framed crop. */
   cutout?: boolean;
   /**
-   * Which of the leader's eligible photos to use, wrapping round — so two
-   * boards led by the same player in one carousel don't repeat a frame when
-   * there's a second one to show. Default 0.
+   * Which of the leader's eligible photos to use, wrapping round. Default 0.
+   * Ignored when the board is built as part of a carousel (`Pictured`), which
+   * picks the next unused frame itself.
    */
   photoIndex?: number;
   /** The words beside the leader's big number. Default `metricLabel`. */
@@ -983,7 +983,15 @@ function coverageNote(agg: PlayerAgg, stat: LeaderStat): string | null {
   return `${t.games} of ${agg.games} matches`;
 }
 
-export function statBoardPayload(spec: StatBoardSpec): StatBoardPayload {
+/**
+ * Who a carousel has pictured so far, and how many times: slug → count. Thread
+ * one through a run of boards and a player who leads several of them gets a
+ * different frame each time (while there's one left), and a shared lead is
+ * fronted by whichever tied leader has been on screen least.
+ */
+export type Pictured = Map<string, number>;
+
+export function statBoardPayload(spec: StatBoardSpec, pictured?: Pictured): StatBoardPayload {
   const {
     stat,
     season,
@@ -1046,8 +1054,26 @@ export function statBoardPayload(spec: StatBoardSpec): StatBoardPayload {
   if (rate) notes.push(`Min. ${spec.minGames ?? SITE.perGameMinGames} matches`);
   if (spec.note) notes.push(spec.note);
 
+  // A shared lead is one rank, so who fronts it is presentation. In a carousel
+  // it goes to the tied leader pictured least so far — rank order breaks a
+  // tie, and only someone with a photo to show can take it. The template
+  // pictures rows[0] and prints every row level with it as =1.
+  const seen = (slug: string) => pictured?.get(slug) ?? 0;
+  if (spec.showPhoto && pictured && payloadRows.length > 1) {
+    const front = payloadRows
+      .filter((r) => r.value === payloadRows[0].value && leaderPhoto(r.slug, season))
+      .sort((a, b) => seen(a.slug) - seen(b.slug))[0];
+    if (front && front !== payloadRows[0]) {
+      payloadRows.splice(payloadRows.indexOf(front), 1);
+      payloadRows.unshift(front);
+      payloadRows.forEach((r, i) => (r.rank = i + 1));
+    }
+  }
+
   const leader = payloadRows[0];
-  const photo = spec.showPhoto && leader ? leaderPhoto(leader.slug, season, spec.photoIndex) : null;
+  const index = pictured && leader ? seen(leader.slug) : spec.photoIndex;
+  const photo = spec.showPhoto && leader ? leaderPhoto(leader.slug, season, index) : null;
+  if (photo && pictured) pictured.set(leader.slug, seen(leader.slug) + 1);
 
   return {
     kind: 'stat-board',

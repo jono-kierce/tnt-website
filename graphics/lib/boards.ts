@@ -128,10 +128,15 @@ export function careerBoards(): StatBoardSpec[] {
  * three-set semi would count as one "match" worth of winners times three. A
  * test holds every player's sets to their matches so the label can't drift.
  *
- * Both halves strike matches against a team that withdrew, as the honours'
+ * The totals strike matches against a team that withdrew, as the honours'
  * stat leaders do — a season total is otherwise a head start for whoever met
  * them (S5: Pink, Navy, White and Green played Black before it left). The
- * footnote names the team.
+ * footnote names the team. A per-match rate has no head start to remove, so
+ * those stay on every match and agree with the weekly boards.
+ *
+ * The renderer shoots them as one carousel (`Pictured` in payloads.ts), so a
+ * player leading several boards gets a different frame on each while there
+ * is one, and a joint lead goes to whoever hasn't been pictured yet.
  */
 export function leaderBoards(season: number): StatBoardSpec[] {
   const stats = [
@@ -171,10 +176,6 @@ export function leaderBoards(season: number): StatBoardSpec[] {
       scope: 'regular',
       polarity,
       showPhoto: true,
-      strikeWithdrawn: true,
-      // Second frame where there is one, so a player leading both halves of
-      // a stat isn't pictured identically on consecutive slides.
-      photoIndex: 1,
     },
   ]);
 }

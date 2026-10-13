@@ -574,10 +574,13 @@ if (only.has('scoreboard')) {
 }
 
 async function shootBoards(specs) {
+  // One carousel: a repeat leader gets a fresh frame, a shared lead whoever
+  // hasn't been pictured yet (see `Pictured` in payloads.ts).
+  const pictured = new Map();
   for (const spec of specs) {
     let payload;
     try {
-      payload = statBoardPayload(spec);
+      payload = statBoardPayload(spec, pictured);
     } catch (err) {
       if (err instanceof SealedVotesError) {
         // The error already names the board and says what to do about it.
