@@ -21,6 +21,8 @@ import {
   pairSplitPayload,
   pointsLadderPayload,
   longestMatchesPayload,
+  tiebreakPayload,
+  pointsPlayedPayload,
   mvpSimPayloads,
   statBoardPayload,
   streakBoardPayload,
@@ -41,6 +43,7 @@ import {
   leaderboard,
   seasonRounds as matchRounds,
   strikeWithdrawnMatches,
+  tiebreakSeasons,
 } from '../../src/lib/stats.ts';
 import { SITE, TEAMS } from '../../src/config/site.ts';
 import { getSeasonConfig, withdrawnTeams } from './season-configs.ts';
@@ -1027,5 +1030,45 @@ describe('longest matches', () => {
     const last = p.rows.at(-1)!;
     expect(last).toMatchObject({ featured: true, detached: true });
     expect(last.rank).toBeGreaterThan(8);
+  });
+});
+
+describe('tiebreak record', () => {
+  it('prints tiebreakSeasons() to third place, and names the next tier as chips', async () => {
+    const p = await tiebreakPayload();
+    const all = tiebreakSeasons(rows).filter((t) => t.tiebreaks > 0);
+    expect(p.rows.map((r) => [r.rank, r.team, r.tiebreaks])).toEqual(
+      all.filter((t) => t.rank <= 3).map((t) => [t.rank, t.team, t.tiebreaks])
+    );
+    expect(p.rows.filter((r) => r.featured).map((r) => r.team)).toEqual(['Green']);
+    expect(p.rows[0]).toMatchObject({ when: 'Season 5', pairing: 'Q. Feikema & A. Hume', won: 3, lost: 3, matches: 9 });
+    expect(p.rest).toHaveLength(all.filter((t) => t.rank === 4).length);
+    expect(p.restLabel).toBe('4= · Three each');
+  });
+
+  it("fronts it with a season photo of the record team's present-tense pair", async () => {
+    const p = await tiebreakPayload();
+    expect(p.photo).toMatch(/season-5\/green-chest-bump\.jpg$/);
+    const over = await tiebreakPayload({ photo: 'content/photos/season-5/green-slap.jpg' });
+    expect(over.photo).toMatch(/green-slap\.jpg$/);
+  });
+});
+
+describe('points played record', () => {
+  it("prints pointsPlayedSeasons() with Black's opponents struck, Hume lit on both colours", async () => {
+    const p = await pointsPlayedPayload();
+    expect(p.rows).toHaveLength(6);
+    expect(p.rows[0]).toMatchObject({
+      rank: 1, player: 'Angus Hume', when: 'Season 5', teams: ['Black', 'Green'],
+      points: 590, matches: 9, perMatch: '65.6', featured: true,
+    });
+    expect(p.rows.filter((r) => r.featured)).toHaveLength(1);
+    // Feikema's R4 against Black is struck; Hume's four Black rounds are not.
+    expect(p.rows.find((r) => r.player === 'Quinn Feikema')).toMatchObject({ points: 520, matches: 8 });
+  });
+
+  it("fronts it with the holder's latest solo shot from the record season", async () => {
+    const p = await pointsPlayedPayload();
+    expect(p.photo).toMatch(/season-5\/angus-forehand\.JPG$/);
   });
 });

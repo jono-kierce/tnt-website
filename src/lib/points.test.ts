@@ -8,6 +8,7 @@ import {
   pairSplit,
   playerPoints,
   playerPointsAgg,
+  pointsPlayedSeasons,
   teamPoints,
 } from './points.ts';
 
@@ -220,5 +221,45 @@ describe('longestMatches', () => {
     const all = longestMatches(loadStatRows(), { scope: 'all' });
     expect(all.length).toBeGreaterThan(ranked.length);
     expect(all[0].match.isFinals).toBe(true);
+  });
+});
+
+describe('pointsPlayedSeasons', () => {
+  const rows = loadStatRows();
+  const ranked = pointsPlayedSeasons(rows, (season) => (season === 5 ? ['Black'] : []));
+
+  it('agrees with playerPointsAgg on every player-season when nothing is struck', () => {
+    const unstruck = pointsPlayedSeasons(rows);
+    for (const season of [1, 2, 3, 4, 5]) {
+      for (const a of playerPointsAgg(rows, { season, scope: 'regular' })) {
+        const mine = unstruck.find((r) => r.season === season && r.player === a.player)!;
+        expect([mine.matches, mine.points]).toEqual([a.matches, a.pointsWon + a.pointsLost]);
+      }
+    }
+  });
+
+  it("strikes matches against a withdrawn team, but Black's own players keep theirs", () => {
+    const hume = ranked.find((r) => r.season === 5 && r.player === 'Angus Hume')!;
+    expect(hume).toMatchObject({ teams: ['Black', 'Green'], matches: 9, rank: 1 });
+    // Feikema played Black in R4 — that night comes off.
+    const feikema = ranked.find((r) => r.season === 5 && r.player === 'Quinn Feikema')!;
+    expect(feikema.matches).toBe(8);
+    expect(feikema.points).toBeLessThan(
+      pointsPlayedSeasons(rows).find((r) => r.season === 5 && r.player === 'Quinn Feikema')!.points
+    );
+    // Nobody but Black's own players has a match against Black left in S5.
+    for (const r of ranked.filter((r) => r.season === 5 && !r.teams.includes('Black'))) {
+      const vsBlack = rows.filter(
+        (x) => x.season === 5 && x.player === r.player && x.opponent === 'Black' && !x.isFillIn
+      );
+      expect(r.matches).toBeLessThanOrEqual(9 - vsBlack.length);
+    }
+  });
+
+  it('ranks biggest first with ties sharing', () => {
+    for (let i = 1; i < ranked.length; i++) {
+      expect(ranked[i].points).toBeLessThanOrEqual(ranked[i - 1].points);
+      expect(ranked[i].rank).toBe(ranked[i].points === ranked[i - 1].points ? ranked[i - 1].rank : i + 1);
+    }
   });
 });

@@ -358,3 +358,58 @@ export function longestMatches(rows: StatRow[], opts: PointsOptions = {}): Ranke
   );
   return sorted.map((mp) => ({ ...mp, rank: 1 + sorted.filter((o) => o.total > mp.total).length }));
 }
+
+/** One player's home-and-away season, counted in points. */
+export interface PlayerSeasonPoints {
+  player: string;
+  season: number;
+  /** Teams played for, in playing order — two when a player moved mid-season. */
+  teams: string[];
+  /** Countable matches, own team only. */
+  matches: number;
+  /** Every point played while on court, both sides': `MatchPoints.total` summed. */
+  points: number;
+  perMatch: number;
+  /** Ties share: 1, 2, 2, 4. */
+  rank: number;
+}
+
+/**
+ * Most points played in a home-and-away season, one row per player-season,
+ * biggest first. Fill-in nights are left out — the season panel's rule: that
+ * match was played for another team. A match the points layer refuses
+ * (`countable`) simply isn't in the sum, so an early season with patchy sheets
+ * reads low rather than wrong.
+ *
+ * `withdrawnFor` strikes a match against a withdrawn team from its opponents'
+ * totals — the same ruling as `strikeWithdrawnVotes` (owner, 29 Sep 2026), and
+ * for the same reason: the rest of the field never got those nights. The
+ * withdrawn team's own players keep theirs; they played them. So Hume's S5
+ * counts his four Black rounds and his five Green ones, and Feikema's loses
+ * the R4 he played *against* Black. A move mid-season is not a fill-in.
+ */
+export function pointsPlayedSeasons(
+  rows: StatRow[],
+  withdrawnFor: (season: number) => string[] = () => []
+): PlayerSeasonPoints[] {
+  const acc = new Map<string, Omit<PlayerSeasonPoints, 'perMatch' | 'rank'>>();
+  for (const mp of allMatchPoints(rows, { scope: 'regular' })) {
+    for (const p of playerPoints(mp)) {
+      if (p.isFillIn || p.row.isSingles) continue;
+      if (withdrawnFor(mp.match.season).includes(p.row.opponent)) continue;
+      const key = `${mp.match.season}|${p.player}`;
+      const a =
+        acc.get(key) ??
+        acc
+          .set(key, { player: p.player, season: mp.match.season, teams: [], matches: 0, points: 0 })
+          .get(key)!;
+      if (!a.teams.includes(p.team)) a.teams.push(p.team);
+      a.matches++;
+      a.points += mp.total;
+    }
+  }
+  const sorted = [...acc.values()]
+    .map((a) => ({ ...a, perMatch: a.points / a.matches }))
+    .sort((a, b) => b.points - a.points || a.season - b.season || a.player.localeCompare(b.player));
+  return sorted.map((a) => ({ ...a, rank: 1 + sorted.filter((o) => o.points > a.points).length }));
+}

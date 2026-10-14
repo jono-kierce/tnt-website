@@ -465,10 +465,12 @@ export function lineupPairingName(
 // ---------------------------------------------------------------------------
 
 /**
- * Season ladder. Ranked by wins desc, then games ratio (for:against) desc.
+ * Season ladder. Ranked by wins desc, then games ratio (for:against) desc, then
+ * internal record between the tied teams (see `breakTie`).
 
 /**
- * Season ladder. Ranked by wins desc, then games ratio (for:against) desc.
+ * Season ladder. Ranked by wins desc, then games ratio (for:against) desc, then
+ * internal record between the tied teams (see `breakTie`).
  * `pairings` optionally supplies pairing labels (from teamRoster) per team.
  *
  * `declaredTeams` is the season's full field, for a season that has been drawn
@@ -489,7 +491,8 @@ export function ladder(
   rows: StatRow[] = loadStatRows(),
   pairings?: Record<string, string>,
   declaredTeams?: string[],
-  withdrawnTeams?: string[]
+  withdrawnTeams?: string[],
+  strict = true
 ): LadderRow[] {
   const sides = matchSides(rows, season);
   const gone = new Set(withdrawnTeams ?? []);
@@ -532,11 +535,62 @@ export function ladder(
     rank: 0,
   }));
 
-  table.sort(
-    (a, b) => b.wins - a.wins || b.ratio - a.ratio || a.team.localeCompare(b.team)
+  // Wins, then games ratio; teams level on both go to their internal record.
+  const level = (a: LadderRow, b: LadderRow) =>
+    a.wins === b.wins && Math.abs(a.ratio - b.ratio) < 1e-9;
+  table.sort((a, b) => (level(a, b) ? 0 : b.wins - a.wins || b.ratio - a.ratio));
+  const ordered: LadderRow[] = [];
+  for (let i = 0; i < table.length; ) {
+    let j = i + 1;
+    while (j < table.length && level(table[i], table[j])) j++;
+    ordered.push(...breakTie(season, table.slice(i, j), sides, gone, strict));
+    i = j;
+  }
+  ordered.forEach((row, i) => (row.rank = i + 1));
+  return ordered;
+}
+
+/**
+ * Orders teams level on wins and games ratio by their internal record: wins
+ * in matches between the tied teams only, re-applied to any subset still level
+ * (a mini-league). A group that has played out every meeting and is still
+ * level — a beat b beat c beat a — can't be separated, and that throws rather
+ * than letting the alphabet pick a finals seed. A group that hasn't met yet
+ * (a live season, everyone 0/0/0 in round one) falls back to alphabetical,
+ * as does any group when `strict` is off (insights' mid-season windows).
+ */
+function breakTie(
+  season: number,
+  group: LadderRow[],
+  sides: MatchSide[],
+  gone: Set<string>,
+  strict: boolean
+): LadderRow[] {
+  if (group.length < 2) return group;
+  const names = new Set(group.map((r) => r.team));
+  const internal = sides.filter(
+    (s) =>
+      names.has(s.team) && names.has(s.opponent) && !gone.has(s.team) && !gone.has(s.opponent)
   );
-  table.forEach((row, i) => (row.rank = i + 1));
-  return table;
+  const wins = new Map(group.map((r) => [r.team, 0]));
+  for (const s of internal) if (s.win) wins.set(s.team, wins.get(s.team)! + 1);
+
+  const distinct = [...new Set(wins.values())].sort((a, b) => b - a);
+  if (distinct.length === 1) {
+    const met = new Set(internal.map((s) => [s.team, s.opponent].sort().join('|')));
+    const teams = [...names].sort();
+    const allMet = teams.every((a, i) => teams.slice(i + 1).every((b) => met.has(`${a}|${b}`)));
+    if (allMet && strict) {
+      throw new Error(
+        `Season ${season} ladder: can't separate ${teams.join(', ')} — level on wins, ` +
+          `games ratio and internal record.`
+      );
+    }
+    return [...group].sort((a, b) => a.team.localeCompare(b.team));
+  }
+  return distinct.flatMap((w) =>
+    breakTie(season, group.filter((r) => wins.get(r.team) === w), sides, gone, strict)
+  );
 }
 
 /**
@@ -1787,4 +1841,73 @@ export function records(rows: StatRow[] = loadStatRows()) {
     mostDoubleFaultsCareer: leaderboard('doubleFaults', rows, {}).slice(0, 5),
     longestWinStreaks: winStreaks(rows).slice(0, 5),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Tiebreaks
+// ---------------------------------------------------------------------------
+
+/**
+ * A set that went to a breaker. Three ways the sheet says so: a breaker score
+ * in brackets (`6-5(3)`, `7-6(4)`), a 7-6, or a set left level at five games
+ * or more — the owner's sheet records an unscored breaker as `5-5`/`6-6`, and
+ * that is most of S3 and S4. A level set *below* five is not a breaker: S3 R6
+ * Green v Light Blue reads `1-1`, a night cut short, and `win?` settled it.
+ */
+export const isTiebreakSet = (s: SetScore): boolean =>
+  s.tiebreakFor !== null ||
+  s.tiebreakAgainst !== null ||
+  (s.for === s.against && s.for >= 5) ||
+  (Math.max(s.for, s.against) === 7 && Math.min(s.for, s.against) === 6);
+
+export interface TiebreakSeason {
+  season: number;
+  team: string;
+  /** Home-and-away matches that went to a breaker. */
+  tiebreaks: number;
+  /** Of those, won and lost — off `win?`, never the breaker score. */
+  won: number;
+  lost: number;
+  /** Home-and-away matches played, for "6 of 9". */
+  matches: number;
+  /** Shared on a tie: 1, 2, 2, 4. */
+  rank: number;
+}
+
+/**
+ * Tiebreaks played by each team in each home-and-away season, most first.
+ *
+ * Home and away only: a final runs to three sets, so a team that went deep in
+ * September would lead on format. Played matches only — a forfeit is a 6-0
+ * nobody hit. Matches against a withdrawn team **count**: the strike is a
+ * ladder and MVP ruling, and a breaker against Black was still a breaker.
+ * Every team-season with a played match is listed, zeros included.
+ */
+export function tiebreakSeasons(rows: StatRow[]): TiebreakSeason[] {
+  const by = new Map<string, Omit<TiebreakSeason, 'rank'>>();
+  for (const m of seasonMatches(rows)) {
+    if (!isPlayedMatch(m) || m.isFinals) continue;
+    for (const side of m.sides) {
+      const key = `${m.season}|${side.team}`;
+      const t =
+        by.get(key) ??
+        by
+          .set(key, { season: m.season, team: side.team, tiebreaks: 0, won: 0, lost: 0, matches: 0 })
+          .get(key)!;
+      t.matches++;
+      if (!side.setScores.some(isTiebreakSet)) continue;
+      t.tiebreaks++;
+      if (side.win) t.won++;
+      else t.lost++;
+    }
+  }
+  const sorted = [...by.values()].sort(
+    (a, b) => b.tiebreaks - a.tiebreaks || a.season - b.season || a.team.localeCompare(b.team)
+  );
+  return sorted.map((t, i) => ({
+    ...t,
+    rank: i > 0 && sorted[i - 1].tiebreaks === t.tiebreaks
+      ? sorted.findIndex((x) => x.tiebreaks === t.tiebreaks) + 1
+      : i + 1,
+  }));
 }

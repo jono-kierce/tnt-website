@@ -40,7 +40,7 @@ CSV — which is exactly the round you just added. PNGs land in `graphics/out/`
 |---|---|
 | `--season <n>` | Default `SITE.currentSeason`. |
 | `--round <r>` | A round number, or `QF` / `SF` / `F`. Default: the season's latest — except for `preview`, see below. |
-| `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `leaders`, `draft`, `preview`, `streaks`, `streakstory`, `headline`, `predictions`, `pair`, `rivalry`, `mvpsim`, `pointsladder`, `pairsplit`, `longest`, `finals` — comma-separated. Default `ladder,results,scoreboard,boards`; the rest are once-off posts, so they only render on request. |
+| `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `leaders`, `draft`, `preview`, `streaks`, `streakstory`, `headline`, `predictions`, `pair`, `rivalry`, `mvpsim`, `pointsladder`, `pairsplit`, `longest`, `tiebreaks`, `pointsplayed`, `finals` — comma-separated. Default `ladder,results,scoreboard,boards`; the rest are once-off posts, so they only render on request. |
 | `--pair <a,b>` | The two players for `--only pair` (team-mates) or `--only rivalry` (head to head), comma-separated. |
 | `--sim <path>` | The MVP projection summary CSV, for `--only mvpsim`. Required — there is no default, because the file lives outside this repo. |
 | `--runs <n>` | How many runs that projection was over, for the subtitle. Omitted, it reads "Simulated". |
@@ -455,6 +455,45 @@ always carries the match the post is about.
   can be won on fewer points (S4 R3, Light Blue 40–45 Black).
 - **Unrecorded breakers print level** (`5` over `5`) until the score is
   back-filled; nothing is guessed.
+
+### Tiebreak record — `tiebreaks.html`
+
+```bash
+node graphics/render.mjs --only tiebreaks
+node graphics/render.mjs --only tiebreaks --photos content/photos/season-5/green-slap.jpg
+```
+
+The most tiebreaks played by one team in a home-and-away season, all-time
+(`tiebreakSeasons()` in `stats.ts`), fronted by a photo of the record holders.
+Rows down to third place, ties included; the tier after that prints as team
+chips. Writes `most-tiebreaks-season.png`.
+
+- **A breaker is a breaker score, a 7-6, or a set level at five or more** —
+  the sheet records an unscored breaker as `5-5`. S3 R6's `1-1` is a short
+  night, not a breaker.
+- **Home and away only**, played matches only. Matches against a withdrawn
+  team count — the strike is a ladder and MVP ruling.
+- **The photo is the record season's latest gallery shot tagged with both of
+  the record team's `pair`.** `--photos <file>` overrides it; none found renders
+  on the court-green field and warns.
+
+### Points played record — `points-played.html`
+
+```bash
+node graphics/render.mjs --only pointsplayed
+```
+
+The most points a player has been on court for in a home-and-away season,
+all-time (`pointsPlayedSeasons()` in `points.ts`) — both sides' points, every
+countable match, fill-in nights out. Top six, the record lit and fronting the
+slide in their latest solo shot from that season (`--photos <file>` overrides).
+Writes `most-points-played-season.png`.
+
+- **Matches against a withdrawn team are struck for its opponents** and kept
+  for its own players — the MVP ruling. Feikema's S5 loses his R4 against
+  Black; Hume's keeps his four Black rounds.
+- **A player who moved mid-season** prints both colours, `Black → Green`, with
+  a split bar.
 
 ### Preview — `preview.html`
 

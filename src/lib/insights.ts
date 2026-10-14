@@ -512,7 +512,8 @@ export function stakesInsight(ctx: InsightContext): Insight | null {
     before,
     undefined,
     ctx.declaredTeams,
-    ctx.withdrawnTeams
+    ctx.withdrawnTeams,
+    false // a mid-season window: an unbreakable tie isn't worth failing the build
   );
   if (table.length < 4) return null;
 
@@ -737,7 +738,8 @@ export function dominanceInsight(ctx: InsightContext): Insight | null {
     before,
     undefined,
     ctx.declaredTeams,
-    ctx.withdrawnTeams
+    ctx.withdrawnTeams,
+    false // a mid-season window: an unbreakable tie isn't worth failing the build
   );
 
   // `ratio` is already guarded against a nil `gamesAgainst` — the ladder falls
@@ -906,7 +908,8 @@ export function basementInsight(ctx: InsightContext): Insight | null {
     before,
     undefined,
     ctx.declaredTeams,
-    ctx.withdrawnTeams
+    ctx.withdrawnTeams,
+    false // a mid-season window: an unbreakable tie isn't worth failing the build
   );
   if (table.length < 6) return null;
 

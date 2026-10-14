@@ -40,6 +40,8 @@ import {
   pairSplitPayload,
   pointsLadderPayload,
   longestMatchesPayload,
+  tiebreakPayload,
+  pointsPlayedPayload,
   mvpSimPayloads,
   statBoardPayload,
   streakBoardPayload,
@@ -87,7 +89,7 @@ TNT graphics renderer
   --only <list>    Comma-separated: ladder, results, scoreboard, boards, draft,
                    preview, streaks, streakstory, headline, predictions,
                    pair, rivalry, mvpsim, leaders, pointsladder, pairsplit, longest,
-                   finals.
+                   tiebreaks, pointsplayed, finals.
                    Default: ladder,results,scoreboard,boards
                    — draft, preview, streaks, headline, predictions and pair
                    are once-off posts, so they only render when asked.
@@ -110,6 +112,14 @@ TNT graphics renderer
                    longest is the all-time home-and-away matches with the
                    most points played, --round's longest match lit in gold
                    (and added below the table if it didn't make the top 8).
+                   tiebreaks is the all-time record for tiebreaks played by
+                   one team in a home-and-away season, fronted by a photo of
+                   the record holders (--photos <file> to pick another); it
+                   needs no --season or --round.
+                   pointsplayed is the all-time record for points played by
+                   a player in a home-and-away season, fronted by the record
+                   holder (--photos <file> to pick another); no --season or
+                   --round.
                    pair is two players' record as team-mates; it needs --pair
                    and no --season or --round.
                    preview needs no --round: it defaults to the next round
@@ -188,7 +198,7 @@ if (!Number.isFinite(season)) {
 // `draft` and `preview` are deliberately not in the default set — a draft is a
 // once-a-season post, and a preview is a once-a-week one you ask for the day
 // before, not something every CI push should render.
-const KINDS = ['ladder', 'results', 'scoreboard', 'boards', 'draft', 'preview', 'streaks', 'streakstory', 'headline', 'predictions', 'pair', 'rivalry', 'mvpsim', 'leaders', 'pointsladder', 'pairsplit', 'longest', 'finals'];
+const KINDS = ['ladder', 'results', 'scoreboard', 'boards', 'draft', 'preview', 'streaks', 'streakstory', 'headline', 'predictions', 'pair', 'rivalry', 'mvpsim', 'leaders', 'pointsladder', 'pairsplit', 'longest', 'tiebreaks', 'pointsplayed', 'finals'];
 const only = new Set(
   (argv.only ?? 'ladder,results,scoreboard,boards').split(',').map((s) => s.trim()).filter(Boolean)
 );
@@ -519,6 +529,25 @@ if (only.has('longest')) {
     warnings.push(`longest: no countable home-and-away match in season ${season}, ${round.label} — nothing is highlighted.`);
   }
   await shoot('longest-matches.html', payload, `${stem}-longest-matches.png`);
+}
+
+if (only.has('tiebreaks')) {
+  // All-time record book like streaks: no season, no round. `--photos` here is
+  // one file; the default is the record holders' latest shot in photos.yaml.
+  const payload = await tiebreakPayload({ photo: argv.photos });
+  if (!payload.photo) {
+    warnings.push('tiebreaks: no season photo tagged with the record pair — rendered on the court-green field.');
+  }
+  await shoot('tiebreaks.html', payload, 'most-tiebreaks-season.png');
+}
+
+if (only.has('pointsplayed')) {
+  // All-time record book: no season, no round. `--photos` is one file.
+  const payload = await pointsPlayedPayload({ photo: argv.photos });
+  if (!payload.photo) {
+    warnings.push('pointsplayed: no season photo of the record holder — rendered on the court-green field.');
+  }
+  await shoot('points-played.html', payload, 'most-points-played-season.png');
 }
 
 if (only.has('pairsplit')) {

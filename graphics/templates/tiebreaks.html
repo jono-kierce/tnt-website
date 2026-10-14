@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Tiebreak Record (A / Broadsheet)</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  /* A record-book board fronted by the record holders: the photo takes the
+     top half and fades into the court green, the headline sits on that fade,
+     and the table runs underneath with the record row lit in gold. */
+  .canvas { padding: 0; }
+
+  .photo {
+    position: absolute; z-index: 0; left: 0; right: 0; top: 0; height: 800px;
+    background: linear-gradient(168deg, #14281c 0%, var(--ink) 70%) center 26%/cover no-repeat;
+  }
+  .photo::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(180deg,
+      rgba(5,11,7,0.70) 0%, rgba(5,11,7,0.10) 20%, rgba(5,11,7,0.06) 44%,
+      rgba(10,19,13,0.82) 76%, var(--ink) 100%);
+  }
+
+  .top {
+    position: absolute; z-index: 3; left: var(--safe); right: var(--safe); top: 52px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .top .eyebrow { font-size: 22px; letter-spacing: 0.4em; }
+  .top .mark { width: 60px; color: var(--gold); flex: none; }
+
+  .body {
+    position: absolute; z-index: 3; left: var(--safe); right: var(--safe);
+    top: 548px; bottom: var(--crop);
+    display: flex; flex-direction: column;
+  }
+  .headline { font-size: 78px; line-height: 0.98; max-width: 800px; text-shadow: 0 2px 24px rgba(0,0,0,0.55); }
+  .sub {
+    margin-top: 16px; font-size: 27px; letter-spacing: 0.02em; text-transform: none;
+    color: rgba(244, 241, 232, 0.82);
+  }
+  .rule-gold {
+    height: 2px; margin-top: 22px; flex: none;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 78%, transparent);
+  }
+
+  .rows { flex: 1; display: flex; flex-direction: column; padding-top: 8px; }
+  .row {
+    flex: 1; display: grid; align-items: center;
+    grid-template-columns: 72px 8px 1fr auto 150px; gap: 0 22px;
+    border-top: 1px solid var(--rule); position: relative;
+  }
+  .row:first-child { border-top: 0; }
+  .row > * { position: relative; z-index: 1; }
+  .row.featured + .row { border-top-color: transparent; }
+  .row.featured::before {
+    content: ''; position: absolute; inset: 0 calc(var(--safe) * -1) 0 -18px;
+    background: linear-gradient(90deg, rgba(217,185,106,0.24), rgba(217,185,106,0.06) 64%, rgba(217,185,106,0.02));
+  }
+  .row.featured::after {
+    content: ''; position: absolute; left: -18px; top: 0; bottom: 0; width: 6px; background: var(--gold);
+  }
+
+  .rank {
+    font-family: var(--display); font-weight: 600; font-size: 42px; text-align: center;
+    color: rgba(244, 241, 232, 0.55);
+  }
+  .row.featured .rank { color: var(--gold); font-size: 52px; }
+  .bar { width: 8px; height: 62px; border-radius: 4px; background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  .who { min-width: 0; }
+  .who .team { font-size: 34px; font-weight: 700; line-height: 1.05; white-space: nowrap; }
+  .who .team .s {
+    margin-left: 10px; font-size: 19px; font-weight: 700; letter-spacing: 0.16em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.45);
+  }
+  .who .pair { margin-top: 4px; font-size: 22px; color: rgba(244, 241, 232, 0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row.featured .who .team { font-size: 40px; }
+  .row.featured .who .team .s { color: var(--gold-soft); }
+  .row.featured .who .pair { color: rgba(244, 241, 232, 0.8); }
+
+  .wl { text-align: right; line-height: 1; }
+  .wl .n { font-size: 30px; font-weight: 600; color: rgba(244, 241, 232, 0.78); }
+  .wl .l, .count .l {
+    display: block; margin-top: 6px; font-size: 15px; font-weight: 700;
+    letter-spacing: 0.16em; text-transform: uppercase; color: rgba(244, 241, 232, 0.4);
+  }
+
+  .count { text-align: right; line-height: 1; }
+  .count .n { font-size: 62px; font-weight: 700; color: rgba(244, 241, 232, 0.88); }
+  .count .of { font-size: 26px; font-weight: 600; color: rgba(244, 241, 232, 0.45); margin-left: 4px; }
+  .row.featured .count .n { font-size: 92px; color: var(--gold); }
+  .row.featured .count .of { color: var(--gold-soft); }
+  .row.featured .count .l { color: var(--gold-soft); }
+
+  .rest {
+    flex: none; display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    border-top: 1px solid var(--rule); padding: 18px 0 0;
+  }
+  .rest .label {
+    font-family: var(--display); font-weight: 600; font-size: 18px; letter-spacing: 0.24em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.55); white-space: nowrap;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .chip { display: flex; align-items: center; gap: 8px; font-size: 22px; font-weight: 600; white-space: nowrap; color: rgba(244,241,232,0.78); }
+  .chip i { width: 14px; height: 14px; border-radius: 50%; background: linear-gradient(180deg, var(--team), var(--team-2)); }
+  .chip b { font-weight: 700; color: rgba(244,241,232,0.45); font-size: 17px; letter-spacing: 0.1em; }
+
+  /* `.canvas > footer`, not `footer`: the theme's `.canvas > *` would win. */
+  .canvas > footer {
+    position: absolute; z-index: 3; left: var(--safe); right: var(--safe); bottom: 54px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 21px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+  }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette">
+  <div class="photo" id="photo"></div>
+
+  <div class="top">
+    <div class="eyebrow" id="eyebrow"></div>
+    <div class="mark mark--crest"></div>
+  </div>
+
+  <div class="body">
+    <h1 class="headline" id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="rule-gold"></div>
+    <div class="rows" id="rows"></div>
+    <div class="rest" id="rest"></div>
+  </div>
+
+  <footer><div class="wordmark">Tuesday Night Tennis</div></footer>
+</div>
+
+<script type="module">
+/* Sample data, so this file opens straight in a browser and looks like the
+   real thing. `render.mjs` calls __render() again with the CSV's numbers. */
+const DATA = {
+  eyebrow: 'All-time · Home & away',
+  title: 'Most Tiebreaks in a Season',
+  subtitle: 'Green went to a breaker in 6 of 9 matches',
+  footnote: '',
+  photo: '../../content/photos/season-5/green-chest-bump.jpg',
+  rows: [
+    { rank: 1, team: 'Green', when: 'Season 5', pairing: 'Q. Feikema & A. Hume', tiebreaks: 6, won: 3, lost: 3, matches: 9, featured: true },
+    { rank: 2, team: 'Black', when: 'Season 2', pairing: 'L. Jenkin & J. Papa', tiebreaks: 4, won: 2, lost: 2, matches: 8, featured: false },
+    { rank: 2, team: 'Light Blue', when: 'Season 5', pairing: 'S. Inlander & E. Seamer', tiebreaks: 4, won: 2, lost: 2, matches: 8, featured: false },
+  ],
+  restLabel: '4= · Three each',
+  rest: [
+    { team: 'Red', when: 'S2' }, { team: 'Light Blue', when: 'S3' }, { team: 'Pink', when: 'S4' },
+    { team: 'White', when: 'S4' }, { team: 'Yellow', when: 'S4' }, { team: 'Red', when: 'S5' },
+  ],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+  document.getElementById('subtitle').textContent = d.subtitle;
+  document.getElementById('photo').style.backgroundImage = d.photo
+    ? `url("${d.photo}")` : '';
+
+  document.getElementById('rows').innerHTML = d.rows.map((r) => `
+    <div class="row ${r.featured ? 'featured' : ''}" data-team="${esc(r.team)}">
+      <div class="rank">${r.rank}</div>
+      <div class="bar"></div>
+      <div class="who">
+        <div class="team">${esc(r.team)}<span class="s">${esc(r.when)}</span></div>
+        <div class="pair">${esc(r.pairing)}</div>
+      </div>
+      <div class="wl"><span class="n">${r.won}–${r.lost}</span><span class="l">W–L</span></div>
+      <div class="count"><span class="n">${r.tiebreaks}</span><span class="of">/${r.matches}</span><span class="l">Tiebreaks</span></div>
+    </div>`).join('');
+
+  const rest = document.getElementById('rest');
+  rest.style.display = d.rest.length ? '' : 'none';
+  rest.innerHTML = d.rest.length ? `
+    <div class="label">${esc(d.restLabel)}</div>
+    <div class="chips">${d.rest.map((t) =>
+      `<span class="chip" data-team="${esc(t.team)}"><i></i>${esc(t.team)} <b>${esc(t.when)}</b></span>`).join('')}</div>` : '';
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

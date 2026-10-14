@@ -27,6 +27,7 @@ import {
   strikeWithdrawnMatches,
   strikeWithdrawnVotes,
   teamRoster,
+  tiebreakSeasons,
   type CountingStat,
   type LeaderStat,
   type PlayerAgg,
@@ -48,10 +49,10 @@ import {
   withdrawnTeams,
   seasonFinalsBerths,
 } from './season-configs.ts';
-import { shortName, slugify } from '../../src/config/aliases.ts';
+import { playerSlug, shortName, slugify } from '../../src/config/aliases.ts';
 import { ANALYSTS, type AnalystPredictions } from './predictions.ts';
 import { loadMvpSim } from './mvp-sim.ts';
-import { longestMatches, pairSplit, teamPoints } from '../../src/lib/points.ts';
+import { longestMatches, pairSplit, pointsPlayedSeasons, teamPoints } from '../../src/lib/points.ts';
 import { bracketLayout, type EdgeKind } from '../../src/lib/bracket.ts';
 import type { FinalsSlot } from '../../src/config/seasons/schema.ts';
 import { resolve } from 'node:path';
@@ -2168,5 +2169,162 @@ export async function longestMatchesPayload(
     footnote: '',
     featuredTag: featured ? (round.stage ? ROUND_TITLE[round.stage] : `Round ${round.round}`) : null,
     rows: out,
+  };
+}
+
+export interface TiebreakRowPayload {
+  rank: number;
+  team: string;
+  /** "Season 5" */
+  when: string;
+  pairing: string;
+  tiebreaks: number;
+  won: number;
+  lost: number;
+  matches: number;
+  /** The record holder. */
+  featured: boolean;
+}
+
+export interface TiebreakPayload {
+  kind: 'tiebreaks';
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  footnote: string;
+  /** file:// URL, or null to render on the court-green field. */
+  photo: string | null;
+  rows: TiebreakRowPayload[];
+  /** The next tier down, too many to print as rows: "4= · Three each". */
+  restLabel: string | null;
+  rest: { team: string; when: string }[];
+}
+
+const COUNT_WORD = ['None', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+
+/**
+ * The most tiebreaks played by one team in a home-and-away season
+ * (`tiebreakSeasons()` in stats.ts). Rows down to third place, ties included;
+ * the tier after that is named as chips, because six teams on three would
+ * otherwise push the record off the slide.
+ *
+ * The photo defaults to the latest gallery shot from the record season tagged
+ * with both of the record team's pair — the present-tense `pair`, so S5 Green
+ * is Feikema and Hume. `photo` overrides it with a file path.
+ */
+export async function tiebreakPayload(opts: { photo?: string } = {}): Promise<TiebreakPayload> {
+  const all = tiebreakSeasons(rows).filter((t) => t.tiebreaks > 0);
+  const shown = all.filter((t) => t.rank <= 3);
+  const nextRank = all.find((t) => t.rank > 3)?.rank;
+  const rest = nextRank === undefined ? [] : all.filter((t) => t.rank === nextRank);
+
+  const out: TiebreakRowPayload[] = [];
+  for (const t of shown) {
+    const config = await seasonTeamConfigs(t.season);
+    out.push({
+      rank: t.rank,
+      team: t.team,
+      when: `Season ${t.season}`,
+      pairing: teamRoster(t.team, t.season, rows, config(t.team)).pairingName ?? '',
+      tiebreaks: t.tiebreaks,
+      won: t.won,
+      lost: t.lost,
+      matches: t.matches,
+      featured: t === all[0],
+    });
+  }
+
+  let photo: string | null = null;
+  if (opts.photo) {
+    photo = pathToFileURL(resolve(opts.photo)).href;
+  } else if (all[0]) {
+    const top = all[0];
+    const config = await seasonTeamConfigs(top.season);
+    const pair = (config(top.team)?.pair ??
+      teamRoster(top.team, top.season, rows).core.map((c) => c.player)).map(playerSlug);
+    const shot = playerPhotos(pair[0] ?? '')
+      .filter((p) => p.season === top.season && pair.every((s) => p.players.includes(s)))
+      .at(-1);
+    if (shot) photo = photoUrl(shot.file);
+  }
+
+  const top = all[0];
+  return {
+    kind: 'tiebreaks',
+    eyebrow: 'All-time · Home & away',
+    title: 'Most Tiebreaks in a Season',
+    subtitle: top ? `${top.team} went to a breaker in ${top.tiebreaks} of ${top.matches} matches` : '',
+    footnote: '',
+    photo,
+    rows: out,
+    restLabel: nextRank === undefined ? null : `${nextRank}${rest.length > 1 ? '=' : ''} · ${COUNT_WORD[rest[0].tiebreaks] ?? rest[0].tiebreaks} each`,
+    rest: rest.map((t) => ({ team: t.team, when: `S${t.season}` })),
+  };
+}
+
+export interface PointsPlayedRowPayload {
+  rank: number;
+  player: string;
+  /** "Season 5" */
+  when: string;
+  /** In playing order — two when the player moved mid-season. */
+  teams: string[];
+  points: number;
+  matches: number;
+  /** "73.3" */
+  perMatch: string;
+  featured: boolean;
+}
+
+export interface PointsPlayedPayload {
+  kind: 'points-played';
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  footnote: string;
+  photo: string | null;
+  rows: PointsPlayedRowPayload[];
+}
+
+/**
+ * Most points played in a home-and-away season (`pointsPlayedSeasons()` in
+ * points.ts), with matches against a withdrawn team struck for its opponents
+ * and kept for its own players. The record holder is lit and fronts the slide:
+ * their latest solo shot from that season, else the latest they're tagged in.
+ */
+export async function pointsPlayedPayload(
+  opts: { photo?: string; limit?: number } = {}
+): Promise<PointsPlayedPayload> {
+  const ranked = pointsPlayedSeasons(rows, (season) => withdrawnBySeason.get(season) ?? []);
+  const top = ranked[0];
+
+  let photo: string | null = null;
+  if (opts.photo) {
+    photo = pathToFileURL(resolve(opts.photo)).href;
+  } else if (top) {
+    const mine = playerPhotos(playerSlug(top.player)).filter((p) => p.season === top.season);
+    const shot = mine.filter((p) => p.players.length === 1).at(-1) ?? mine.at(-1);
+    if (shot) photo = photoUrl(shot.file);
+  }
+
+  return {
+    kind: 'points-played',
+    eyebrow: 'All-time · Home & away',
+    title: 'Most Points Played in a Season',
+    subtitle: top
+      ? `${shortName(top.player)}: ${top.points} points across ${top.matches} matches`
+      : '',
+    footnote: '',
+    photo,
+    rows: ranked.slice(0, opts.limit ?? 6).map((r) => ({
+      rank: r.rank,
+      player: r.player,
+      when: `Season ${r.season}`,
+      teams: r.teams,
+      points: r.points,
+      matches: r.matches,
+      perMatch: r.perMatch.toFixed(1),
+      featured: r === top,
+    })),
   };
 }

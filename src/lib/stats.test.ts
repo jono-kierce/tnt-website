@@ -30,6 +30,8 @@ import {
   strikeWithdrawnMatches,
   strikeWithdrawnVotes,
   sealVotes,
+  isTiebreakSet,
+  tiebreakSeasons,
 } from './stats.ts';
 import { redrawnRows } from './testing.ts';
 import { canonicalName, shortName, stripFillIn } from '../config/aliases.ts';
@@ -1737,5 +1739,78 @@ describe('winStreakRun — one streak, match by match', () => {
       raw({ Team: 'Red', Opponent: 'White', Season: '1', Round: '1', Player: 'Foe', 'win?': 'TRUE' }),
     ]);
     expect(winStreakRun('Nope', rows)).toBeNull();
+  });
+});
+
+describe('tiebreakSeasons', () => {
+  const all = tiebreakSeasons(loadStatRows());
+  const find = (season: number, team: string) =>
+    all.find((t) => t.season === season && t.team === team)!;
+
+  it('reads a breaker three ways, and a short level set as none', () => {
+    const [bracketed] = parseScore('6-5(3)');
+    const [level] = parseScore('5-5');
+    const [sevenSix] = parseScore('7-6');
+    const [cutShort] = parseScore('1-1');
+    expect([bracketed, level, sevenSix].every(isTiebreakSet)).toBe(true);
+    expect(isTiebreakSet(cutShort)).toBe(false);
+    expect(isTiebreakSet(parseScore('7-5')[0])).toBe(false);
+  });
+
+  it('has S5 Green on the record six, ahead of everyone', () => {
+    expect(all[0]).toMatchObject({ season: 5, team: 'Green', tiebreaks: 6, won: 3, lost: 3, matches: 9, rank: 1 });
+    expect(all.slice(1, 3).map((t) => [t.season, t.team, t.tiebreaks, t.rank])).toEqual([
+      [2, 'Black', 4, 2],
+      [5, 'Light Blue', 4, 2],
+    ]);
+    expect(all[3].rank).toBe(4);
+  });
+
+  it("keeps S3 R6's 1-1 out, and counts each tiebreak once a side", () => {
+    expect(find(3, 'Green').tiebreaks).toBe(2);
+    expect(find(3, 'Light Blue')).toMatchObject({ tiebreaks: 3, won: 0, lost: 3 });
+    // Each breaker is two team-sides, one winner and one loser.
+    const sides = all.reduce((n, t) => n + t.tiebreaks, 0);
+    expect(sides % 2).toBe(0);
+    expect(all.reduce((n, t) => n + t.won, 0)).toBe(sides / 2);
+  });
+
+  it('is home and away only, and lists a team that never went to a breaker', () => {
+    expect(find(1, 'Green').tiebreaks).toBe(0);
+    // Same match count as the ladder's own input, less any forfeit.
+    for (const t of all) {
+      const sides = matchSides(loadStatRows(), t.season).filter((s) => s.team === t.team && !s.forfeit);
+      expect(t.matches).toBe(sides.length);
+    }
+  });
+});
+
+describe('ladder tiebreak: internal record', () => {
+  const match = (round: number, w: string, l: string) => [
+    raw({ Team: w, Opponent: l, Season: '9', Round: String(round), Score: '6-4', Player: `${w} A`, 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '4' }),
+    raw({ Team: l, Opponent: w, Season: '9', Round: String(round), Score: '4-6', Player: `${l} A`, 'win?': 'FALSE', 'Team Score': '4', 'Opponent Score': '6' }),
+  ];
+
+  it('puts the head-to-head winner ahead when wins and ratio are level', () => {
+    // Zeta and Alpha both 1-1 with 10-10 games; Zeta won their meeting, so it
+    // goes above Alpha despite the alphabet.
+    const rows = normalizeRows([
+      ...match(1, 'Zeta', 'Alpha'), ...match(2, 'Alpha', 'Yankee'), ...match(3, 'Xray', 'Zeta'),
+    ]);
+    expect(ladder(9, rows).map((r) => r.team)).toEqual(['Xray', 'Zeta', 'Alpha', 'Yankee']);
+  });
+
+  it('throws on a circular tie, unless told not to', () => {
+    const rows = normalizeRows([
+      ...match(1, 'Alpha', 'Bravo'), ...match(2, 'Bravo', 'Charlie'), ...match(3, 'Charlie', 'Alpha'),
+    ]);
+    expect(() => ladder(9, rows)).toThrow(/can't separate Alpha, Bravo, Charlie/);
+    expect(ladder(9, rows, undefined, undefined, undefined, false).map((r) => r.team)).toEqual([
+      'Alpha', 'Bravo', 'Charlie',
+    ]);
+  });
+
+  it('falls back to alphabetical for tied teams that have not met', () => {
+    expect(ladder(9, [], undefined, ['Bravo', 'Alpha']).map((r) => r.team)).toEqual(['Alpha', 'Bravo']);
   });
 });

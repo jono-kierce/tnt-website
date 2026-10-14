@@ -113,7 +113,10 @@ no votes so no seal), **pointsladder** and **pairsplit** (teams by share of poin
 the real ladder, and each pair's share of its point-ending shots — both read
 `src/lib/points.ts`), **longest** (the all-time
 home-and-away matches by points played, `--round`'s longest lit — also
-`points.ts`), **leaders** (eight stat boards: winners/UE/aces/errors forced as a
+`points.ts`), **tiebreaks** (most tiebreaks by a team in a home-and-away
+season, fronted by the record pair's photo — `tiebreakSeasons` in `stats.ts`),
+**pointsplayed** (most points a player was on court for in a home-and-away
+season, opponents' matches against a withdrawn team struck — `points.ts`), **leaders** (eight stat boards: winners/UE/aces/errors forced as a
 season total and per match — per-set on the H&A scope, where a match is one
 set) **finals** (the season's bracket as a structure explainer — seeds and
 "winner/loser of" slots, no teams, laid out by `src/lib/bracket.ts` like the
@@ -231,6 +234,11 @@ whose numbers come from outside this repo; see below). **Read
   as before. `check-data` errors on a malformed or impossible value and on a
   match whose rows disagree, and warns on a non-Tuesday or a round spanning two
   dates — both legal, both usually a typo.
+- **Ladder order: wins, games ratio, then internal record** (wins in matches
+  between the tied teams, re-applied to any subset still level). A tied group
+  that has played every meeting and is still level (a beat b beat c beat a)
+  makes `ladder` **throw**; one that hasn't met yet falls back to alphabetical.
+  `insights.ts` passes `strict = false` for its mid-season windows.
 - **Canonical names:** `Lachlan Jenkin` (not Lachie), `Jim Papa` (not James).
   Aliases applied after stripping `(Fill-in)`.
 - **Pairing display order is captain-first, draftee-second.** Set via `pair` in
