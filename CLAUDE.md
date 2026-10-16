@@ -107,7 +107,11 @@ result card, stat board, preview (the round's unplayed fixtures, for the day
 before — no prediction, at most one `insights.ts` line per fixture) and
 scoreboard (the same round's results on one slide, for a night nobody
 photographed — played fixtures only, winner's row first off `win?`). Plus the
-once-off posts, asked for by `--only`: draft, streaks, headline, predictions,
+once-off posts, asked for by `--only`: **players** (slides 2–5 of a match's
+carousel after its result card — one per player, winners/errors forced/UE
+from the match off `matchPlayerLines` in `stats.ts`, photos matched by name
+from `--photos`; a finals result card and these slides take a gold "Finals"
+mark), draft, streaks, headline, predictions,
 pair, **rivalry** (two players' head to head — `rivalryRecord` in `stats.ts`,
 no votes so no seal), **pointsladder** and **pairsplit** (teams by share of points won beside
 the real ladder, and each pair's share of its point-ending shots — both read
@@ -120,7 +124,15 @@ season, opponents' matches against a withdrawn team struck — `points.ts`), **l
 season total and per match — per-set on the H&A scope, where a match is one
 set) **finals** (the season's bracket as a structure explainer — seeds and
 "winner/loser of" slots, no teams, laid out by `src/lib/bracket.ts` like the
-season page) and **mvpsim** (the MVP race as a Monte Carlo projection — the one family
+season page), **finalsfixture** (the same bracket with the final ladder's
+teams in the seed slots — refused while home-and-away fixtures remain, later
+rounds left as "Winner of", since winners are results), **tiepreview** (one seeded
+finals tie as a fight poster — `--tie WC`, four `--photos`, home captain
+first; records and form off the final ladder, the stakes off the bracket
+config; drawn best from player cutouts in `graphics/cutouts/`), **drought**
+(played finals, never won one — `finalsDroughts` in `stats.ts`; `--assume
+WC:Navy` adds a not-yet-entered finals result so both outcomes can be made the
+day before, refused once the real one is in the CSV) and **mvpsim** (the MVP race as a Monte Carlo projection — the one family
 whose numbers come from outside this repo; see below). **Read
 `graphics/README.md` before touching it**; the rules that matter here:
 
@@ -286,7 +298,7 @@ whose numbers come from outside this repo; see below). **Read
 - **Every blank stat cell is `null`, not 0** — coverage is tracked per stat
   (`PlayerAgg.tally[stat].{total,games,sets}`), so a partial finals entry never
   drags an average toward zero. Don't reintroduce `num()` for a stat column.
-- **Finals** live in the CSV with `Round` = `QF`/`SF`/`F` and the scoreline in
+- **Finals** live in the CSV with `Round` = `WC`/`QF`/`SF`/`F` and the scoreline in
   `Score`. They count for win-loss, H2H, streaks and per-set rates; they're
   excluded from the ladder, career totals, the record books and MVP votes
   (`StatScope` in `stats.ts` is the switch — `'regular'`, `'all'` or `'finals'`).
@@ -316,6 +328,15 @@ whose numbers come from outside this repo; see below). **Read
   gate under `playerPhotos`/`seasonPhotos`), so cutting one from a listed
   photo or a pair shot shows nobody twice. A graphic's career board takes
   `leadPhoto()` instead: an 800px crop can't front a 1080px slide.
+- **The raw photo library is `~/Documents/TNT/TNT Media/`** (`S1 Photos` …
+  `S5 Photos`, then a folder per round, e.g. `S5 Photos/r4/`) — the owner's
+  full camera dumps, thousands of frames against the few hundred in
+  `content/photos/`. Look there first when a graphic or a page needs a better
+  frame than the manifest has, and for the night two teams actually met.
+  Identify players by fixture elimination, then the face. **Cutouts** for the
+  posters (`graphics/cutouts/s<n>/<slug>.png`) are made from those frames with
+  `graphics/scripts/cutout.m` (macOS's own subject lift, no download): crop at
+  the knee and centre on the head — see "Cutouts" in `graphics/README.md`.
 - **Photos are served unprocessed.** They go through `public/`, the one
   directory Astro copies byte-for-byte, so `astro:assets` never sees them —
   whatever is on disk is what a visitor downloads into a 200px tile. **Run
@@ -504,17 +525,18 @@ share only a colour), and a label that's nearly always true says nothing.
   `withdrawn: true` in `season-5.ts` — off the ladder, never on a bye, still
   carrying its `pair` so its four rounds print a pairing, and still in
   `draftOrder` because it was drafted. Its matches are struck from its
-  opponents' ladder and MVP tallies; everywhere else they stand. Finals are **AFL-style over all nine** (owner's call, 5 Oct 2026):
-  week one is the 8 v 9 wildcard (played first that night, drawn stacked under
-  EF2 — the bracket's one same-round feed), QF1 1v4, QF2 2v3 (double chance),
-  EF1 6v7 and EF2 5 v WC;
-  SF1 = W EF1 v L QF1, SF2 = L QF2 v W EF2; PF1 = W SF1 v W QF2, PF2 = W QF1 v
-  W SF2 (the crossover — no QF replayed before the GF); then the GF. It's the
-  first bracket with `loserOf` slots. `finalsBerths` is 9, so the ladders draw
-  no finals line ("Every team plays finals") and the "Finals race" insight
-  can't fire. **Open:** the CSV `Round` stages only know `QF`/`SF`/`F`
-  (`FinalsStage`, `check-data`, honours reads `F` as the decider) — S5's
-  `WC`/`EF`/`PF`/`GF` need adding before its first final is entered.
+  opponents' ladder and MVP tallies; everywhere else they stand. Finals are **the usual eight-team knockout plus a
+  wildcard** (owner's call, 14 Oct 2026, replacing the AFL-style double chance
+  drawn up on 5 Oct): 8 v 9 play a wildcard on Thursday 15 Oct and the
+  winner takes QF1 against 1st; QF2 2v7, QF3 3v6, QF4 4v5; SF1 = W QF1 v W QF4,
+  SF2 = W QF2 v W QF3; then the Grand Final (`F`). The wildcard is in the QF
+  column, stacked under QF1 — the bracket's one same-round feed, which
+  `bracketLayout` inserts directly beside the tie it fills. `finalsBerths` is
+  still 9, so the ladders draw no finals line ("Every team plays finals") and
+  the "Finals race" insight can't fire. The wildcard goes into the CSV as
+  `Round` = `WC`: a finals stage like the others, sorted before `QF`
+  (`STAGE_SORT` in `normalize.ts`), headed "Wildcard" on the site and in the
+  graphics. Honours still read only `F` as the decider.
 - All four brackets have full results. Finals **player stats**: S3 has finals
   MVP votes in the CSV (28/28 rows; the derived 4-3-2-1 tally matches the
   recorded Finals MVP). S1, S2 and S4 finals are **scorelines only** — no

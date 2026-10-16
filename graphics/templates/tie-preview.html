@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Finals tie preview</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  /* A fight poster: two halves split on a diagonal, each washed in its team's
+     glow, both pairs standing in them, the title over the top and the tale
+     of the tape underneath. Cutouts are expected cropped at the knee and
+     centred on the player's head (see graphics/README.md) — the slots below
+     place a figure by its head and its height, nothing else. */
+
+  .stage { position: absolute; inset: 0; z-index: 1; overflow: hidden; }
+
+  /* ---- The two halves ---- */
+  .half { position: absolute; inset: 0; }
+  .half.home { clip-path: polygon(0 0, 58% 0, 42% 100%, 0 100%); }
+  .half.away { clip-path: polygon(58% 0, 100% 0, 100% 100%, 42% 100%); }
+  .half::before {
+    content: ''; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse 70% 52% at var(--gx) 46%,
+        color-mix(in srgb, var(--team-glow) 58%, transparent) 0%,
+        color-mix(in srgb, var(--team-glow) 18%, transparent) 46%,
+        transparent 78%),
+      linear-gradient(180deg,
+        color-mix(in srgb, var(--team-glow) 10%, transparent),
+        color-mix(in srgb, var(--team) 26%, transparent) 70%,
+        transparent);
+  }
+  .half.home { --gx: 30%; }
+  .half.away { --gx: 70%; }
+
+  /* Speed lines — fine diagonals in the team's glow, densest at the seam. */
+  .half::after {
+    content: ''; position: absolute; inset: 0; opacity: 0.16;
+    background: repeating-linear-gradient(
+      -70deg,
+      transparent 0 26px,
+      color-mix(in srgb, var(--team-glow) 70%, transparent) 26px 28px);
+    mask-image: linear-gradient(var(--dir), transparent 30%, #000 100%);
+  }
+  .half.home::after { --dir: 90deg; }
+  .half.away::after { --dir: 270deg; }
+
+  /* ---- The seed, huge, behind each pair ---- */
+  .seed {
+    position: absolute; top: 300px;
+    font-family: var(--display); font-weight: 700; font-size: 700px; line-height: 0.8;
+    color: transparent;
+    -webkit-text-stroke: 3px color-mix(in srgb, var(--team-glow) 55%, transparent);
+    letter-spacing: -0.02em;
+  }
+  .half.home .seed { left: 6px; }
+  .half.away .seed { right: 0; }
+
+  /* ---- The seam ---- */
+  .seam {
+    position: absolute; inset: 0; z-index: 2; pointer-events: none;
+    background: linear-gradient(var(--gold), var(--gold)) no-repeat;
+  }
+  .seam svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  /* ---- Figures ---- */
+  .fig {
+    position: absolute; bottom: 300px; z-index: 3;
+    /* centred on the head (the cutout's horizontal centre) */
+    transform: translateX(-50%);
+    filter:
+      drop-shadow(0 0 1px color-mix(in srgb, var(--team-glow) 60%, transparent))
+      drop-shadow(0 0 26px color-mix(in srgb, var(--team-glow) 38%, transparent))
+      drop-shadow(0 30px 40px rgba(0, 0, 0, 0.55));
+  }
+  .fig img { display: block; height: 100%; width: auto; }
+  .fig.mate { z-index: 3; filter:
+      brightness(0.74) saturate(0.88)
+      drop-shadow(0 0 20px color-mix(in srgb, var(--team-glow) 32%, transparent))
+      drop-shadow(12px 0 30px rgba(0, 0, 0, 0.5)); }
+  .fig.cap { z-index: 4; }
+
+  /* A photo that isn't a cutout: a frame dissolving into the poster. */
+  .fig.framed { filter: none; }
+  .fig.framed img {
+    height: 100%; width: auto; aspect-ratio: 3 / 4; object-fit: cover;
+    mask-image: radial-gradient(ellipse 50% 50% at 50% 45%, #000 55%, transparent 100%);
+  }
+
+  /* Slots: x is the head, h the height of the figure box. */
+  .fig.home.cap  { left: 360px; height: 720px; }
+  .fig.home.mate { left: 172px; height: 520px; bottom: 360px; }
+  .fig.away.cap  { left: 735px; height: 720px; }
+  .fig.away.mate { left: 905px; height: 600px; bottom: 350px; }
+
+  /* Legs dissolve into the tale of the tape. */
+  .floor {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 560px; z-index: 5;
+    background: linear-gradient(180deg,
+      transparent 0%, rgba(5, 11, 7, 0.6) 24%, rgba(5, 11, 7, 0.95) 40%, var(--ink-deep) 50%);
+  }
+
+  /* ---- Title ---- */
+  header { position: relative; z-index: 7; flex: none; }
+  .eyebrow { margin-top: -64px; text-align: center; padding-left: 0.44em; }
+  .headline {
+    margin-top: 18px; text-align: center;
+    font-size: 168px; letter-spacing: 0.08em; line-height: 0.9;
+    padding-left: 0.08em; /* letter-spacing trails the last glyph; re-centre */
+    background: linear-gradient(180deg, #f8e6b4 0%, var(--gold) 52%, #a8873e 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.7));
+    white-space: nowrap;
+  }
+  .tag {
+    margin-top: 14px; text-align: center;
+    font-family: var(--display); font-weight: 600; font-size: 26px;
+    letter-spacing: 0.5em; padding-left: 0.5em; text-transform: uppercase;
+    color: var(--paper); text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+  }
+  .tag .dot { color: var(--gold); margin: 0 0.3em; }
+
+  /* ---- Tale of the tape ---- */
+  .tape { position: relative; z-index: 7; margin-top: auto; flex: none; }
+  .sides { display: flex; justify-content: space-between; gap: 40px; }
+  .side { flex: 1; display: flex; gap: 18px; }
+  .side.away { flex-direction: row-reverse; text-align: right; }
+  .side .bar {
+    width: 10px; border-radius: 5px; flex: none;
+    background: linear-gradient(180deg, var(--team-glow), var(--team-2));
+  }
+  .team {
+    font-family: var(--display); font-weight: 700; font-size: 46px; line-height: 1;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--paper);
+  }
+  .names { font-size: 27px; font-weight: 500; letter-spacing: 0.06em; color: rgba(244, 241, 232, 0.78); margin-top: 8px; }
+  .rec { display: flex; gap: 16px; align-items: baseline; margin-top: 12px; }
+  .side.away .rec { justify-content: flex-end; }
+  .rec .wl { font-family: var(--display); font-weight: 700; font-size: 40px; color: var(--gold); line-height: 1; }
+  .rec .lbl { font-size: 20px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(244, 241, 232, 0.5); }
+  .rec .lbl b { color: var(--paper); font-weight: 600; letter-spacing: 0.06em; font-size: 24px; }
+  .form { display: flex; gap: 7px; margin-top: 14px; align-items: center; }
+  .side.away .form { justify-content: flex-end; }
+  .form .k { font-size: 18px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: rgba(244, 241, 232, 0.45); margin: 0 6px; }
+  .chip {
+    width: 34px; height: 34px; border-radius: 6px; display: grid; place-items: center;
+    font-size: 21px; font-weight: 700; letter-spacing: 0;
+    border: 1.5px solid rgba(244, 241, 232, 0.22); color: rgba(244, 241, 232, 0.45);
+  }
+  .chip.w { background: var(--gold); border-color: var(--gold); color: var(--chip-ink); }
+
+  .strip {
+    margin-top: 26px; padding-top: 20px;
+    border-top: 1px solid var(--rule-strong);
+    display: flex; justify-content: space-between; gap: 24px; white-space: nowrap;
+  }
+  .strip > div:last-child { text-align: right; }
+  .strip .k {
+    font-size: 18px; font-weight: 600; letter-spacing: 0.26em; text-transform: uppercase;
+    color: rgba(244, 241, 232, 0.45);
+  }
+  .strip .v {
+    margin-top: 6px; font-size: 27px; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--paper);
+  }
+  .strip .v.gold { color: var(--gold); }
+  .strip .sc { font-family: var(--display); font-weight: 700; letter-spacing: 0.04em; margin-left: 4px; }
+  .strip .n {
+    margin-top: 6px; font-size: 19px; font-weight: 500; letter-spacing: 0.14em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.5);
+  }
+
+  footer {
+    position: relative; z-index: 7; flex: none; margin-bottom: -96px; padding-top: 30px;
+    display: flex; justify-content: center; align-items: center; gap: 18px;
+  }
+  footer .mark { width: 46px; color: var(--gold); }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold); white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette" id="canvas">
+  <div class="stage">
+    <div class="half home" id="halfHome"><div class="seed" id="seedHome"></div></div>
+    <div class="half away" id="halfAway"><div class="seed" id="seedAway"></div></div>
+    <div class="seam" style="background:none">
+      <svg viewBox="0 0 1080 1350" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="seamFade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#d9b96a" stop-opacity="0"/>
+            <stop offset="0.18" stop-color="#d9b96a" stop-opacity="0.9"/>
+            <stop offset="0.7" stop-color="#d9b96a" stop-opacity="0.9"/>
+            <stop offset="0.85" stop-color="#d9b96a" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <line x1="626.4" y1="0" x2="453.6" y2="1350" stroke="url(#seamFade)" stroke-width="3"/>
+      </svg>
+    </div>
+    <div id="figs"></div>
+    <div class="floor"></div>
+  </div>
+
+  <header>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="tag" id="tag"></div>
+  </header>
+
+  <div class="tape">
+    <div class="sides">
+      <div class="side home" id="sideHome"></div>
+      <div class="side away" id="sideAway"></div>
+    </div>
+    <div class="strip" id="strip"></div>
+  </div>
+
+  <footer>
+    <div class="mark mark--crest"></div>
+    <div class="wordmark">Tuesday Night Tennis</div>
+  </footer>
+</div>
+
+<script type="module">
+const DATA = {
+  kind: 'tie-preview',
+  eyebrow: 'Finals · Season 5 · 2026',
+  title: 'Wildcard',
+  tag: '8th v 9th',
+  subtitle: 'Tonight',
+  sides: [
+    {
+      team: 'Orange', seed: '8th', pairing: 'J. Gorton & L. Godden',
+      players: [
+        { name: 'Jimmy Gorton', captain: true, photo: '../cutouts/s5/jimmy-gorton.png', cutout: true },
+        { name: 'Lachy Godden', captain: false, photo: '../cutouts/s5/lachy-godden.png', cutout: true },
+      ],
+      wins: 3, losses: 5, ratio: '0.81',
+      form: [
+        { label: 'R4', opponent: 'Navy', won: true },
+        { label: 'R5', opponent: 'Light Blue', won: false },
+        { label: 'R6', opponent: 'Yellow', won: false },
+        { label: 'R7', opponent: 'Pink', won: true },
+        { label: 'R9', opponent: 'Brown', won: false },
+      ],
+    },
+    {
+      team: 'Navy', seed: '9th', pairing: 'W. Mumme & E. Simpson',
+      players: [
+        { name: 'Will Mumme', captain: true, photo: '../cutouts/s5/will-mumme.png', cutout: true },
+        { name: 'Ed Simpson', captain: false, photo: '../cutouts/s5/ed-simpson.png', cutout: true },
+      ],
+      wins: 2, losses: 6, ratio: '0.68',
+      form: [
+        { label: 'R6', opponent: 'Brown', won: false },
+        { label: 'R7', opponent: 'White', won: false },
+        { label: 'R8', opponent: 'Red', won: false },
+        { label: 'R8', opponent: 'Green', won: false },
+        { label: 'R9', opponent: 'Light Blue', won: true },
+      ],
+    },
+  ],
+  meeting: { label: 'Round 4', winner: 'Orange', sets: [{ a: 6, b: 3, tbA: null, tbB: null }], note: 'B. Coutinho filled in for Orange' },
+  stakes: 'Winner plays Yellow (1st) in QF1',
+  stakesLose: 'Loser’s season is over',
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const tb = (n) => (n === null || n === undefined ? '' : `<span class="tb">${n}</span>`);
+const setText = (s) => `${s.a}${tb(s.tbA)}–${s.b}${tb(s.tbB)}`;
+
+/** As large as the headline goes on one line, down to a floor. */
+function fitHeadline(el, max = 168, min = 90) {
+  for (let size = max; size >= min; size -= 4) {
+    el.style.fontSize = `${size}px`;
+    if (el.scrollWidth <= el.clientWidth) return;
+  }
+}
+
+window.__render = function (d) {
+  const [home, away] = d.sides;
+  document.getElementById('eyebrow').innerHTML =
+    `<span>${esc(d.eyebrow)}</span>`;
+  const title = document.getElementById('title');
+  title.textContent = d.title;
+  fitHeadline(title);
+  document.getElementById('tag').innerHTML =
+    esc(d.tag) + (d.subtitle ? `<span class="dot">·</span>${esc(d.subtitle)}` : '');
+
+  // Halves and their seeds
+  const seed = (el, s) => {
+    el.textContent = /^\d+/.exec(s.seed)?.[0] ?? s.seed;
+  };
+  document.getElementById('halfHome').dataset.team = home.team;
+  document.getElementById('halfAway').dataset.team = away.team;
+  seed(document.getElementById('seedHome'), home);
+  seed(document.getElementById('seedAway'), away);
+
+  // Figures: partner first so the captain stands in front.
+  const figs = [];
+  for (const [where, s] of [['home', home], ['away', away]]) {
+    const [cap, mate] = s.players;
+    for (const [role, p] of [['mate', mate], ['cap', cap]]) {
+      if (!p?.photo) continue;
+      figs.push(`<div class="fig ${where} ${role}${p.cutout ? '' : ' framed'}" data-team="${esc(s.team)}">
+        <img src="${esc(p.photo)}" alt=""></div>`);
+    }
+  }
+  document.getElementById('figs').innerHTML = figs.join('');
+
+  // Tale of the tape
+  const side = (el, s) => {
+    el.dataset.team = s.team;
+    const names = s.players.map((p) => esc(p.name)).join(' &amp; ');
+    const chips = s.form.map((f) => `<div class="chip ${f.won ? 'w' : 'l'}">${f.won ? 'W' : 'L'}</div>`).join('');
+    el.innerHTML = `<div class="bar"></div>
+      <div>
+        <div class="team">${esc(s.team)}</div>
+        <div class="names">${names}</div>
+        <div class="rec"><span class="wl">${s.wins}–${s.losses}</span><span class="lbl">Ratio <b>${esc(s.ratio)}</b></span></div>
+        <div class="form">${el.classList.contains('away') ? chips + '<span class="k">Form</span>' : '<span class="k">Form</span>' + chips}</div>
+      </div>`;
+  };
+  side(document.getElementById('sideHome'), home);
+  side(document.getElementById('sideAway'), away);
+
+  const m = d.meeting;
+  document.getElementById('strip').innerHTML =
+    (m
+      ? `<div><div class="k">Last meeting</div>
+           <div class="v">${esc(m.label)} · ${esc(m.winner)}<span class="sc">${m.sets.map(setText).join(' ')}</span></div>
+           ${m.note ? `<div class="n">${esc(m.note)}</div>` : ''}</div>`
+      : '<div><div class="k">Last meeting</div><div class="v">First meeting</div></div>') +
+    `<div><div class="k">On the line</div>
+       <div class="v gold">${esc(d.stakes)}</div>
+       <div class="n">${esc(d.stakesLose)}</div></div>`;
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

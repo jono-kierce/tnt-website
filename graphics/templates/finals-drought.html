@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Finals drought</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  /* Everyone who has played finals and never won one. The longest wait is
+     pictured; the rest are a table of team-coloured chips, one per final
+     lost, so the length of the wait reads before the number does. The losing
+     record is red, not gold — same rule as a 'low' stat board. */
+
+  header { flex: none; position: relative; z-index: 4; }
+  .eyebrow { margin-top: -64px; }
+  header .mark { position: absolute; right: 0; top: -34px; width: 92px; color: var(--gold); }
+  .headline { font-size: 112px; margin-top: 20px; letter-spacing: 0.06em; }
+  .sub { margin-top: 14px; }
+  .sub:empty { display: none; }
+  .rule-gold {
+    height: 2px; margin-top: 22px; width: 62%;
+    background: linear-gradient(90deg, var(--gold), rgba(217,185,106,0.06) 85%, transparent);
+  }
+
+  /* ---- The feature: the longest wait, pictured ---- */
+  .feature { position: relative; flex: none; height: 330px; z-index: 3; }
+  .feature .glow {
+    position: absolute; right: -64px; top: -150px; width: 620px; height: 560px; z-index: 0;
+    background: radial-gradient(ellipse 50% 50% at 55% 50%,
+      color-mix(in srgb, var(--team-glow) 16%, transparent),
+      color-mix(in srgb, var(--team-glow) 5%, transparent) 55%, transparent 75%);
+  }
+  .feature .pic {
+    position: absolute; right: -40px; bottom: -6px; height: 470px; z-index: 1;
+    filter:
+      drop-shadow(0 18px 30px rgba(0, 0, 0, 0.45));
+    mask-image: linear-gradient(180deg, #000 70%, transparent 98%);
+  }
+  .feature .pic.framed {
+    filter: none; aspect-ratio: 3 / 4; object-fit: cover;
+    mask-image: radial-gradient(ellipse 50% 50% at 50% 45%, #000 55%, transparent 100%);
+  }
+  .feature .txt { position: relative; z-index: 2; padding-top: 36px; max-width: 620px; }
+  .feature .kick {
+    font-size: 22px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase;
+    color: var(--gold);
+  }
+  .feature .name {
+    font-family: var(--display); font-weight: 700; font-size: 54px; line-height: 1.02;
+    letter-spacing: 0.03em; margin-top: 10px; text-transform: uppercase;
+  }
+  .feature .rec {
+    font-family: var(--display); font-weight: 700; font-size: 150px; line-height: 0.85;
+    color: var(--tone-3); margin-top: 14px; letter-spacing: -0.01em;
+    text-shadow: 0 6px 30px rgba(0, 0, 0, 0.6);
+  }
+  .feature .chips { margin-top: 18px; }
+
+  /* ---- Chips: one per final played ---- */
+  .chips { display: flex; gap: 8px; flex-wrap: nowrap; }
+  .chip {
+    height: 32px; padding: 0 11px; border-radius: 6px; display: inline-flex; align-items: center;
+    font-size: 18px; font-weight: 700; letter-spacing: 0.08em; white-space: nowrap;
+    background: linear-gradient(180deg, var(--team), var(--team-2)); color: var(--team-ink);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  }
+  .chip.fill { background: transparent; color: var(--paper); box-shadow: inset 0 0 0 1.5px var(--team-glow); border: 1px dashed var(--team-glow); }
+  .chip.current { box-shadow: 0 0 0 2px var(--gold), 0 0 14px rgba(217, 185, 106, 0.5); }
+
+  /* ---- The table ---- */
+  .table { flex: 1; display: flex; flex-direction: column; margin-top: 18px; position: relative; z-index: 3; }
+  .row {
+    flex: 1; max-height: 70px; display: flex; align-items: center; gap: 20px;
+    border-top: 1px solid var(--rule); padding: 0 4px;
+  }
+  .row:last-child { border-bottom: 1px solid var(--rule); }
+  .rk {
+    width: 58px; flex: none; font-family: var(--display); font-weight: 600; font-size: 30px;
+    color: rgba(244, 241, 232, 0.5); font-variant-numeric: tabular-nums;
+  }
+  .who { flex: 1; min-width: 0; }
+  .who .nm { font-size: 31px; font-weight: 600; letter-spacing: 0.02em; line-height: 1.05; white-space: nowrap; }
+  .who .note {
+    font-size: 17px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--gold); margin-top: 3px;
+  }
+  .row .chips { flex: none; }
+  .row .chip { height: 28px; font-size: 16px; padding: 0 9px; }
+  .row .rec {
+    width: 92px; flex: none; text-align: right;
+    font-family: var(--display); font-weight: 700; font-size: 38px; line-height: 1;
+    color: color-mix(in srgb, var(--tone-3) 82%, var(--paper));
+  }
+
+
+  footer {
+    flex: none; position: relative; z-index: 3; margin-bottom: -84px; padding-top: 22px;
+    display: flex; justify-content: space-between; align-items: baseline; gap: 24px;
+  }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold); white-space: nowrap;
+  }
+  .footnote { font-size: 18px; letter-spacing: 0.12em; text-align: right; }
+  footer:has(.footnote:empty) { justify-content: center; }
+  .footnote:empty { display: none; }
+</style>
+</head>
+<body>
+<div class="canvas grain vignette" id="canvas">
+  <div class="mark mark--crest watermark"></div>
+  <header>
+    <div class="mark mark--crest"></div>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="sub" id="sub"></div>
+    <div class="rule-gold"></div>
+  </header>
+
+  <div class="feature" id="feature"></div>
+  <div class="table" id="table"></div>
+
+  <footer>
+    <div class="wordmark">Tuesday Night Tennis</div>
+    <div class="footnote" id="footnote"></div>
+  </footer>
+</div>
+
+<script type="module">
+const DATA = {
+  kind: 'finals-drought',
+  eyebrow: 'Finals · All-time',
+  title: 'Still Waiting',
+  subtitle: '',
+  feature: {
+    rank: '=1', player: 'Declan Croucher', record: '0–4', note: null,
+    joint: 'Joint No. 1 with W. Mumme',
+    photo: '../cutouts/s4/declan-croucher.png', cutout: true,
+    chips: [
+      { label: 'S1 QF', team: 'Pink', fillIn: false, current: false },
+      { label: 'S2 QF', team: 'White', fillIn: false, current: false },
+      { label: 'S3 QF', team: 'Green', fillIn: false, current: false },
+      { label: 'S4 QF', team: 'Green', fillIn: false, current: false },
+    ],
+  },
+  rows: [
+    { rank: '=1', player: 'Will Mumme', record: '0–4', note: null, chips: [
+      { label: 'S1 QF', team: 'Green', fillIn: false, current: false },
+      { label: 'S2 QF', team: 'Navy', fillIn: false, current: false },
+      { label: 'S3 QF', team: 'Light Blue', fillIn: false, current: false },
+      { label: 'S5 WC', team: 'Navy', fillIn: false, current: true } ] },
+    { rank: '=3', player: 'Shayl Inlander', record: '0–3', note: 'Next: QF3 v Brown', chips: [
+      { label: 'S1 QF', team: 'Pink', fillIn: false, current: false },
+      { label: 'S3 QF', team: 'Navy', fillIn: false, current: false },
+      { label: 'S4 QF', team: 'Light Blue', fillIn: false, current: false } ] },
+    { rank: '=3', player: 'Quinn Feikema', record: '0–3', note: 'Next: QF2 v Red', chips: [
+      { label: 'S2 QF', team: 'White', fillIn: false, current: false },
+      { label: 'S3 QF', team: 'Light Blue', fillIn: false, current: false },
+      { label: 'S4 QF', team: 'Red', fillIn: false, current: false } ] },
+    { rank: '5', player: 'Archie Littlejohn', record: '0–2', note: null, chips: [
+      { label: 'S1 QF', team: 'Black', fillIn: false, current: false },
+      { label: 'S2 QF', team: 'Navy', fillIn: false, current: false } ] },
+    { rank: '=6', player: 'Conor Paraskevas', record: '0–1', note: null, chips: [{ label: 'S2 QF', team: 'Black', fillIn: false, current: false }] },
+    { rank: '=6', player: 'Jim Papa', record: '0–1', note: null, chips: [{ label: 'S3 SF', team: 'Black', fillIn: false, current: false }] },
+    { rank: '=6', player: 'Adam Dickson', record: '0–1', note: 'Next: QF3 v Light Blue', chips: [{ label: 'S4 QF', team: 'Green', fillIn: false, current: false }] },
+    { rank: '=6', player: 'Will Burgess', record: '0–1', note: null, chips: [{ label: 'S4 QF', team: 'Red', fillIn: false, current: false }] },
+  ],
+  footnote: '',
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const chips = (cs) => `<div class="chips">${cs.map((c) =>
+  `<span class="chip${c.fillIn ? ' fill' : ''}${c.current ? ' current' : ''}" data-team="${esc(c.team)}">${esc(c.label)}</span>`).join('')}</div>`;
+
+window.__render = function (d) {
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = d.title;
+  document.getElementById('sub').textContent = d.subtitle;
+
+  const f = d.feature;
+  const lastTeam = f.chips.at(-1)?.team ?? '';
+  const feature = document.getElementById('feature');
+  feature.dataset.team = lastTeam;
+  feature.innerHTML = `
+    <div class="glow"></div>
+    ${f.photo ? `<img class="pic${f.cutout ? '' : ' framed'}" src="${esc(f.photo)}" alt="">` : ''}
+    <div class="txt">
+      <div class="kick">${esc(f.joint ?? 'The longest wait')}</div>
+      <div class="name">${esc(f.player)}</div>
+      <div class="rec">${esc(f.record)}</div>
+      ${chips(f.chips)}
+    </div>`;
+
+  document.getElementById('table').innerHTML = d.rows.map((r) => `
+    <div class="row">
+      <div class="rk">${esc(r.rank)}</div>
+      <div class="who"><div class="nm">${esc(r.player)}</div>${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}</div>
+      ${chips(r.chips)}
+      <div class="rec">${esc(r.record)}</div>
+    </div>`).join('');
+
+  document.getElementById('footnote').textContent = d.footnote ?? '';
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

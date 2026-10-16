@@ -1,5 +1,5 @@
 /** Finals stage, as written in the CSV's Round column. */
-export type FinalsStage = 'QF' | 'SF' | 'F';
+export type FinalsStage = 'WC' | 'QF' | 'SF' | 'F';
 
 /** One set of a match, from one team's point of view. */
 export interface SetScore {
@@ -36,7 +36,7 @@ export interface StatRow {
   round: number;
   /** Finals stage, or null for a home-and-away round. */
   stage: FinalsStage | null;
-  /** Display label: "5", "QF", "SF", "Final". */
+  /** Display label: "5", "WC", "QF", "SF", "Final". */
   roundLabel: string;
   isFinals: boolean;
   /**

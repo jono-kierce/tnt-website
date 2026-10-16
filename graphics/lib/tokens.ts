@@ -46,6 +46,51 @@ export const BRAND = {
   goldSoft: '#efd9a3',
 };
 
+/** WCAG relative luminance of a `#rrggbb`. */
+function luminance(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * The team colour as a light source on the dark canvas: unchanged when it
+ * already reads (Orange, Pink, Yellow), mixed toward white until it does when
+ * it doesn't. Navy's own #26346f is a hole in the page, not a glow — a rim
+ * light or a wash in it is invisible, which is the one place a poster needs
+ * the team to show.
+ */
+export function glowColor(hex: string, floor = 0.16): string {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex;
+  // Lift lightness in HSL rather than mixing in white: white greys a dark
+  // colour out (Navy goes lavender), HSL keeps it the same blue, brighter.
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l0 = (max + min) / 2;
+  const d = max - min;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l0 - 1));
+  const h =
+    d === 0 ? 0
+    : max === r ? ((g - b) / d + 6) % 6
+    : max === g ? (b - r) / d + 2
+    : (r - g) / d + 4;
+  const hsl = (l: number) => {
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs((h % 2) - 1));
+    const m = l - c / 2;
+    const [r1, g1, b1] =
+      h < 1 ? [c, x, 0] : h < 2 ? [x, c, 0] : h < 3 ? [0, c, x]
+      : h < 4 ? [0, x, c] : h < 5 ? [x, 0, c] : [c, 0, x];
+    return '#' + [r1, g1, b1].map((v) => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('');
+  };
+  let l = l0;
+  while (l < 0.9 && luminance(hsl(l)) < floor) l += 0.01;
+  return l === l0 ? hex : hsl(l);
+}
+
 export function tokensCss(): string {
   const teamBlocks = Object.values(TEAMS)
     .map(
@@ -54,6 +99,7 @@ export function tokensCss(): string {
         `  --team: ${t.color};\n` +
         `  --team-2: ${t.color2};\n` +
         `  --team-ink: ${t.ink};\n` +
+        `  --team-glow: ${glowColor(t.color)};\n` +
         `}`
     )
     .join('\n');
@@ -83,6 +129,7 @@ export function tokensCss(): string {
   --team: #8b8f99;
   --team-2: #4a4e57;
   --team-ink: #0d0d0d;
+  --team-glow: #a4a8b0;
 }
 
 /* --- Team palette — one block per entry in TEAMS ------------------------- */

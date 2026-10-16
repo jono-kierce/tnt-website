@@ -23,6 +23,7 @@
   --team: #8b8f99;
   --team-2: #4a4e57;
   --team-ink: #0d0d0d;
+  --team-glow: #a4a8b0;
 }
 
 /* --- Team palette — one block per entry in TEAMS ------------------------- */
@@ -30,49 +31,59 @@
   --team: #ff2d9b;
   --team-2: #e6007e;
   --team-ink: #0d0d0d;
+  --team-glow: #ff2d9b;
 }
 [data-team="Navy"] {
   --team: #26346f;
   --team-2: #161f45;
   --team-ink: #f5f5f0;
+  --team-glow: #556ac5;
 }
 [data-team="Orange"] {
   --team: #f26522;
   --team-2: #c74a10;
   --team-ink: #0d0d0d;
+  --team-glow: #f26522;
 }
 [data-team="Light Blue"] {
   --team: #44b8e8;
   --team-2: #2b8fc4;
   --team-ink: #0d0d0d;
+  --team-glow: #44b8e8;
 }
 [data-team="Green"] {
   --team: #2fae5f;
   --team-2: #1c7a40;
   --team-ink: #0d0d0d;
+  --team-glow: #2fae5f;
 }
 [data-team="Black"] {
   --team: #8b8f99;
   --team-2: #4a4e57;
   --team-ink: #0d0d0d;
+  --team-glow: #8b8f99;
 }
 [data-team="Red"] {
   --team: #e23b3b;
   --team-2: #b32020;
   --team-ink: #f5f5f0;
+  --team-glow: #e23b3b;
 }
 [data-team="Yellow"] {
   --team: #eac53b;
   --team-2: #c9a11c;
   --team-ink: #0d0d0d;
+  --team-glow: #eac53b;
 }
 [data-team="White"] {
   --team: #e8e8e0;
   --team-2: #b8b8ae;
   --team-ink: #0d0d0d;
+  --team-glow: #e8e8e0;
 }
 [data-team="Brown"] {
   --team: #8a5a34;
   --team-2: #5c3a1f;
   --team-ink: #f5f5f0;
+  --team-glow: #99643a;
 }

@@ -32,9 +32,13 @@ function bool(v: string | undefined): boolean {
 /**
  * Finals sort after every home-and-away round. The gap is deliberate: it leaves
  * room for a season that ever runs more than nine rounds.
+ *
+ * `WC` is the 8 v 9 wildcard (S5 onward): played before the quarter-finals,
+ * since its winner goes into one, so it sorts first.
  */
-const STAGE_SORT: Record<FinalsStage, number> = { QF: 100, SF: 101, F: 102 };
+const STAGE_SORT: Record<FinalsStage, number> = { WC: 100, QF: 101, SF: 102, F: 103 };
 const STAGE_LABEL: Record<FinalsStage, string> = {
+  WC: 'WC',
   QF: 'QF',
   SF: 'SF',
   F: 'Final',
@@ -42,7 +46,7 @@ const STAGE_LABEL: Record<FinalsStage, string> = {
 
 /**
  * The Round column holds either a home-and-away round number or a finals stage
- * — `QF`, `SF`, `F`. Anything else is treated as a regular round for sorting
+ * — `WC`, `QF`, `SF`, `F`. Anything else is treated as a regular round for sorting
  * purposes; `check-data` is what tells you about a typo.
  */
 /**
@@ -119,7 +123,7 @@ export function parseRound(v: string | undefined): {
  * else — the rest of the site consumes clean `StatRow`s.
  *
  * Two of those quirks matter most for finals: the Round column may hold a stage
- * (`QF`/`SF`/`F`) instead of a number, and every counting stat is nullable, so a
+ * (`WC`/`QF`/`SF`/`F`) instead of a number, and every counting stat is nullable, so a
  * finals match entered as a scoreline with no stats contributes to win-loss and
  * head-to-head without dragging anyone's averages toward zero.
  */

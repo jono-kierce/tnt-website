@@ -109,6 +109,29 @@
   .side.won .set.lost { color: rgba(239, 217, 163, 0.45); }
   .side.won { border-top-color: var(--gold); }
   .side.lost .names { color: rgba(244, 241, 232, 0.74); }
+
+  /* Finals: the same card with a gold "Finals" mark where the season eyebrow
+     sits, the stage and the round line in gold, and a second hairline under
+     the panel's rule. Everything else — the photo, the scoreboard, the
+     winner's wash — stays exactly as a Tuesday, so it still reads as one set. */
+  .finals-mark { display: none; }
+  .canvas.finals .topbar .eyebrow { display: none; }
+  .canvas.finals .finals-mark {
+    display: flex; align-items: center; gap: 22px;
+    font-family: var(--display); font-weight: 700; font-size: 46px;
+    letter-spacing: 0.32em; text-transform: uppercase; line-height: 1;
+    color: var(--gold);
+  }
+  .canvas.finals .finals-mark::before {
+    content: ''; width: 46px; height: 2px; background: var(--gold);
+  }
+  .canvas.finals .topbar { align-items: center; }
+  .canvas.finals .topbar .stage { color: var(--gold-soft); }
+  .canvas.finals .panel-head .sub { color: var(--gold); }
+  .canvas.finals .panel::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 7px;
+    height: 1px; background: var(--rule-strong);
+  }
 </style>
 </head>
 <body>
@@ -118,6 +141,7 @@
 
   <div class="topbar">
     <div class="eyebrow" id="eyebrow"></div>
+    <div class="finals-mark">Finals</div>
     <div class="stage" id="stage"></div>
   </div>
 
@@ -137,6 +161,7 @@
 const DATA = {
   eyebrow: 'Season 4 · 2025',
   roundLabel: 'Grand Final',
+  finals: true,
   photo: null,
   sides: [
     { team: 'Pink',  pairing: 'L. Sharrock & A. Hume', seed: 1, won: true,
@@ -157,11 +182,14 @@ const setHtml = (s) =>
 window.__render = function (d) {
   const canvas = document.getElementById('canvas');
   canvas.classList.toggle('no-photo', !d.photo);
+  canvas.classList.toggle('finals', !!d.finals);
   document.getElementById('photo').style.backgroundImage = d.photo ? `url("${d.photo}")` : '';
 
   document.getElementById('eyebrow').textContent = d.eyebrow;
   document.getElementById('stage').textContent = d.roundLabel;
-  document.getElementById('round').textContent = d.roundLabel;
+  // A finals card gives the eyebrow's slot to the "Finals" mark, so the season
+  // moves down to the round line.
+  document.getElementById('round').textContent = d.finals ? `${d.roundLabel} · ${d.eyebrow}` : d.roundLabel;
 
   document.getElementById('sides').innerHTML = d.sides.map((s) => `
     <div class="side ${s.won ? 'won' : 'lost'}" data-team="${esc(s.team)}">

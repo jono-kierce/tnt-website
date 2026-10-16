@@ -29,6 +29,9 @@ node graphics/render.mjs --season 4 --round F --photos ./photos/2025-11-04/
 node graphics/render.mjs --only preview               # next Tuesday's fixtures
 node graphics/render.mjs --only scoreboard           # the round's results, one slide
 node graphics/render.mjs --only finals              # the season's finals format, no teams
+node graphics/render.mjs --only finalsfixture       # the same bracket with the final ladder's teams
+node graphics/render.mjs --only tiepreview --tie WC --photos a.png,b.png,c.png,d.png  # one finals tie as a poster
+node graphics/render.mjs --round WC --only results,players --photos ./photos/wc/   # a finals carousel per match
 node graphics/render.mjs --help
 ```
 
@@ -39,8 +42,9 @@ CSV — which is exactly the round you just added. PNGs land in `graphics/out/`
 | Flag | |
 |---|---|
 | `--season <n>` | Default `SITE.currentSeason`. |
-| `--round <r>` | A round number, or `QF` / `SF` / `F`. Default: the season's latest — except for `preview`, see below. |
-| `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `leaders`, `draft`, `preview`, `streaks`, `streakstory`, `headline`, `predictions`, `pair`, `rivalry`, `mvpsim`, `pointsladder`, `pairsplit`, `longest`, `tiebreaks`, `pointsplayed`, `finals` — comma-separated. Default `ladder,results,scoreboard,boards`; the rest are once-off posts, so they only render on request. |
+| `--round <r>` | A round number, or `WC` / `QF` / `SF` / `F`. Default: the season's latest — except for `preview`, see below. |
+| `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `leaders`, `draft`, `preview`, `streaks`, `streakstory`, `headline`, `predictions`, `pair`, `rivalry`, `mvpsim`, `pointsladder`, `pairsplit`, `longest`, `tiebreaks`, `pointsplayed`, `finals`, `finalsfixture`, `tiepreview`, `drought`, `players` — comma-separated. Default `ladder,results,scoreboard,boards`; the rest are once-off posts, so they only render on request. |
+| `--tie <id>` | The finals tie for `--only tiepreview`, by its id in the season config (`WC`, `QF2`…). Default `WC`. |
 | `--pair <a,b>` | The two players for `--only pair` (team-mates) or `--only rivalry` (head to head), comma-separated. |
 | `--sim <path>` | The MVP projection summary CSV, for `--only mvpsim`. Required — there is no default, because the file lives outside this repo. |
 | `--runs <n>` | How many runs that projection was over, for the subtitle. Omitted, it reads "Simulated". |
@@ -124,6 +128,7 @@ graphics/
   scripts/
     fetch-fonts.mjs    vendors the webfonts (run when a family changes)
     build-assets.mjs   logo -> templates/_assets.css (run when the logo changes)
+    cutout.m           macOS subject-lift: a match photo -> transparent PNG
   templates/
     _tokens.css        GENERATED — canvas, brand, one block per team
     _fonts.css         GENERATED — @font-face for the vendored files
@@ -139,7 +144,10 @@ graphics/
     points-ladder.html
     pair-split.html
     longest-matches.html
-    finals-format.html
+    finals-format.html  the bracket: format (--only finals) and fixture (--only finalsfixture)
+    tie-preview.html    one seeded finals tie as a fight poster (--only tiepreview)
+    finals-drought.html played finals, never won one (--only drought)
+  cutouts/             transparent player PNGs for the posters, by season (see Cutouts)
     fonts/             vendored .woff2 (committed)
   out/                 rendered PNGs — gitignored
 ```
@@ -235,6 +243,42 @@ Season 4's Round 9 has a `5-5` where nobody recorded the breaker: neither side
 won that set, so a card that inferred a winner from the scoreline would show
 none at all. The winning side gets a gold spine and wash that owe nothing to
 the numbers.
+
+A **finals** card (any `WC`/`QF`/`SF`/`F` round) takes a gold "— Finals" mark
+where the season eyebrow sits, with the stage and the round line in gold and a
+second hairline under the panel's rule. Nothing else changes, so a finals night
+still reads as the same set as a Tuesday.
+
+### Player slides — `player-slide.html`
+
+Slides 2–5 of a match's carousel, after its result card: one per player,
+winners first and captain first within a side. The photo owns the right of the
+frame and dissolves into the field with the team's glow behind it; the name and
+three numbers from the match stack down the left — winners, errors forced,
+unforced errors. No scoreline: slide 1 has just printed it.
+
+```bash
+node graphics/render.mjs --round WC --only results,players --photos ./photos/wc/
+```
+
+- **Numbers come from `matchPlayerLines` in `stats.ts`**: the match values,
+  where each sits among the four on court, and his home-and-away season rate
+  per set. The payload only labels them.
+- **The line under a number** is a tag when he's at one end of the court —
+  "Most on court" / "Joint most" in gold for winners and errors forced,
+  "Fewest on court" in gold or "Most on court" in red for unforced errors —
+  and otherwise his season rate ("Season rate 4.2", "… a set" when the match
+  ran past one set).
+- **A match with no player stats** (a scoreline-only final) gets no slides, and
+  the CLI names it. A blank stat prints "–", never 0.
+- **Photos come from the same `--photos` folder as the result cards**, matched
+  by the player's slug (`jonathan-kierce.jpg`) or surname (`kierce-lunge.jpg`).
+  Two players sharing a surname on court match on the slug only. Anyone without
+  one falls back to his season photo from the manifest, and the CLI warns that
+  it isn't from the match.
+- Files are `s5-rWC-match1-orange-v-yellow-2-jimmy-gorton.png`, beside the
+  match's own `…-match1-orange-v-yellow.png`. Nothing reads votes, so a sealed
+  season is no obstacle.
 
 ### Stat board — `stat-board.html`
 
@@ -394,6 +438,92 @@ node graphics/render.mjs --only streakstory --photos "cover.jpg,,s5.jpg"
 - Photos default to the manifest: the player's latest in the run's last season
   for the cover, his first (solo preferred) in each chapter's season.
   `--photos` overrides them slide by slide, cover first.
+
+### Tie preview — `tie-preview.html`
+
+One seeded finals tie as a fight poster — the post for the day before the
+wildcard or a quarter-final. The two halves split on a gold diagonal, each
+washed in its team's glow with the seed ghosted huge behind the pair; the
+captain stands in front, the partner behind and dimmed. Underneath: record and
+games ratio off the final ladder, the last five home-and-away results as form
+chips, the night they met in the home and away (with any fill-in named, since
+"Orange won 6–3" means less when Godden wasn't playing), and what's on the
+line.
+
+```bash
+C=graphics/cutouts/s5
+node graphics/render.mjs --only tiepreview --tie WC \
+  --photos "$C/jimmy-gorton.png,$C/lachy-godden.png,$C/will-mumme.png,$C/ed-simpson.png"
+```
+
+- **Seeds and records come off `ladderWithPairings`**, the same ladder the
+  site prints; a test holds each side's wins and ratio to the ladder payload.
+  Form chips are the matches that ladder counts — a result against a withdrawn
+  team isn't one, so the chips add up to the record printed beside them.
+- **What's at stake comes from the bracket config**: the tie this one's winner
+  feeds, and whoever is already seeded into it; "Loser's season is over"
+  unless some tie takes the loser.
+- **Refused** while home-and-away fixtures remain, and for any tie fed by
+  another tie's result (SF, F, QF1 after a wildcard) — that's a result.
+- **No prediction**, like the weekly preview: posted the day before, a
+  percentage reads as a tip.
+- **Photos are four, home captain first**: home captain, home partner, away
+  captain, away partner. A `.png` is drawn as a free-standing cutout; anything
+  else as a frame dissolving into the poster (it works, but cutouts are the
+  point). Missing entries fall back to the player's own photos for the season.
+- Navy's own colour is invisible as a light on this canvas, so the washes and
+  rim light use `--team-glow` — generated in `_tokens.css`, the team colour with
+  its HSL lightness lifted until it reads. A light team keeps its colour as is.
+
+### Finals drought — `finals-drought.html`
+
+Everyone who has played a final and never won one — "Still Waiting". The
+longest wait is pictured with his record in red and a chip per final lost; the
+rest are a table of the same chips, so the length of a wait reads before the
+number does. Anyone still in this season's bracket gets a gold "Next: QF3 v
+Brown" line, and a chip from this season gets a gold edge. No tagline by
+default (`--subhead` adds one).
+
+```bash
+node graphics/render.mjs --only drought --player "Declan Croucher" \
+  --photos graphics/cutouts/s4/declan-croucher.png
+node graphics/render.mjs --only drought --assume WC:Orange ...   # as if Orange win the wildcard
+```
+
+- **Counted in `finalsRecords` / `finalsDroughts` (stats.ts)**: fill-in finals
+  count, forfeits don't, the result is `win?`. Players who never reached a
+  final aren't on it — that's a different list.
+- **`--assume <tie>:<winner>`** adds one result that isn't in the CSV yet, so
+  the post for each outcome can be ready before the night. It's four rows off
+  the season config's pairs with no score or stats — this board reads only who
+  played and who won. **Refused once that tie is in the CSV**, so a guess can
+  never be rendered over the real result. The filename says which outcome was
+  assumed (`s5-finals-drought-if-orange-win-wc.png`); the graphic doesn't, because
+  by the time it's posted it isn't an assumption.
+
+### Cutouts — `cutouts/`
+
+Transparent PNGs of players, made with `scripts/cutout.m` (macOS's built-in
+subject lift — the same model Photos uses; build line in the file's header).
+Raw frames come from the owner's library at `~/Documents/TNT/TNT Media/S<n>
+Photos/r<round>/`, which has far more than `content/photos/` does — a whole
+night per folder, so the frame from the night two teams actually met is often
+there. Identify players the usual way (fixture elimination, then the face —
+never the kit alone). The owner can also cut one in Canva if the model makes a
+mess of a racket or a net.
+
+The tie-preview slots place a figure by **its head and its height** and nothing
+else, so a cutout has to follow two conventions:
+
+1. **Cropped at the knee** (mid-thigh to knee). The legs dissolve into the
+   panel below, and a knee crop keeps faces near the same size across a
+   standing, a crouching and a stretching player.
+2. **Centred on the head**: pad the narrower side with transparency until the
+   head sits at the PNG's horizontal centre. A racket or a raised fist then
+   hangs off one side without dragging the player off his mark.
+
+Named by slug under the season: `cutouts/s5/jimmy-gorton.png`. ~1600px tall is
+plenty (a captain is drawn 720px tall at 2×).
 
 ### Points ladder — `points-ladder.html`
 

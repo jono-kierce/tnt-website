@@ -32,12 +32,15 @@ import {
   sealVotes,
   isTiebreakSet,
   tiebreakSeasons,
+  finalsRecords,
+  finalsDroughts,
+  matchPlayerLines,
 } from './stats.ts';
 import { redrawnRows } from './testing.ts';
 import { canonicalName, shortName, stripFillIn } from '../config/aliases.ts';
 import { SITE } from '../config/site.ts';
 import { allSeasonConfigs } from '../config/seasons/index.ts';
-import type { FinalsSlot } from '../config/seasons/schema.ts';
+import { withdrawnTeams, type FinalsSlot } from '../config/seasons/schema.ts';
 
 /** Helper to build a raw CSV record object. */
 function raw(o: Partial<Record<string, string>>): Record<string, string> {
@@ -768,13 +771,16 @@ describe('finals rows', () => {
       finalRow({ Round: 'QF', Score: '6-2', 'Team Score': '6', 'Opponent Score': '2' }),
       finalRow({ Round: 'SF', Score: '6-2 6-3', 'Team Score': '12', 'Opponent Score': '5' }),
       finalRow(),
+      // S5's 8 v 9 wildcard: a final, and played before the quarter-finals.
+      finalRow({ Round: 'wc', Score: '6-3', 'Team Score': '6', 'Opponent Score': '3' }),
     ]);
-    expect(rows.map((r) => r.roundLabel)).toEqual(['9', 'QF', 'SF', 'Final']);
-    expect(rows.map((r) => r.isFinals)).toEqual([false, true, true, true]);
-    expect(rows.map((r) => r.sets)).toEqual([1, 1, 2, 3]);
-    // Sorting by round puts the finals last, in order.
+    expect(rows.map((r) => r.roundLabel)).toEqual(['9', 'QF', 'SF', 'Final', 'WC']);
+    expect(rows.map((r) => r.stage)).toEqual([null, 'QF', 'SF', 'F', 'WC']);
+    expect(rows.map((r) => r.isFinals)).toEqual([false, true, true, true, true]);
+    expect(rows.map((r) => r.sets)).toEqual([1, 1, 2, 3, 1]);
+    // Sorting by round puts the finals last, in order — wildcard first.
     const sorted = [...rows].sort((a, b) => a.round - b.round);
-    expect(sorted.map((r) => r.roundLabel)).toEqual(['9', 'QF', 'SF', 'Final']);
+    expect(sorted.map((r) => r.roundLabel)).toEqual(['9', 'WC', 'QF', 'SF', 'Final']);
   });
 
   it('counts sets won and lost from the scoreline', () => {
@@ -972,7 +978,9 @@ describe('finals data matches the brackets', () => {
 
   for (const cfg of allSeasonConfigs()) {
     const season = cfg.season;
-    const seeds = ladder(season, rows).map((r) => r.team);
+    // Seeded off the ladder the site prints — a withdrawn team (S5 Black) off
+    // it and its matches struck — or eighth and ninth come out wrong.
+    const seeds = ladder(season, rows, undefined, undefined, withdrawnTeams(cfg)).map((r) => r.team);
     const csvRows = rows.filter((r) => r.season === season && r.isFinals);
 
     const winners = new Map<string, string>();
@@ -1198,8 +1206,12 @@ describe('start times', () => {
 describe('the real S5 draw', () => {
   const rows = loadStatRows();
 
+  // The draw is the home and away. Finals run on their own nights (the
+  // wildcard was a Thursday) and needn't carry a time.
+  const homeAway = rows.filter((r) => !r.isFinals);
+
   it('every S5 match has a start time, on a Tuesday night, at 6:30 or later', () => {
-    const matches = seasonMatches(rows, 5);
+    const matches = seasonMatches(homeAway, 5);
     // Drawn as 45 — five rounds of four and five of five, nine each for ten
     // teams. Black withdrew after round four and the back half was redrawn
     // around the remaining nine, which is why this is 40 (the 36-match round
@@ -1216,7 +1228,7 @@ describe('the real S5 draw', () => {
 
   // Drawn over ten Tuesdays; the redraw finished the round robin in nine.
   it('runs nine Tuesdays, one round each, 18 Aug to 13 Oct 2026', () => {
-    const rounds = seasonRounds(rows, 5);
+    const rounds = seasonRounds(homeAway, 5);
     expect(rounds.map((r) => r.date)).toEqual([
       '2026-08-18', '2026-08-25', '2026-09-01', '2026-09-08', '2026-09-15',
       '2026-09-22', '2026-09-29', '2026-10-06', '2026-10-13',
@@ -1230,7 +1242,7 @@ describe('the real S5 draw', () => {
 
   it('is a nine-team draw from round five, Black having withdrawn', () => {
     const byRound = new Map<number, Set<string>>();
-    for (const m of seasonMatches(rows, 5)) {
+    for (const m of seasonMatches(homeAway, 5)) {
       const teams = byRound.get(m.round) ?? new Set<string>();
       for (const side of m.sides) teams.add(side.team);
       byRound.set(m.round, teams);
@@ -1250,7 +1262,7 @@ describe('the real S5 draw', () => {
   });
 
   it('starts each round at 6:30 and never double-books a slot', () => {
-    for (const r of seasonRounds(rows, 5)) {
+    for (const r of seasonRounds(homeAway, 5)) {
       const starts = r.matches.map((m) => m.start!).sort();
       expect(starts[0].slice(11)).toBe('18:30');
       expect(new Set(starts).size, `R${r.roundLabel} has two matches at once`).toBe(
@@ -1663,10 +1675,11 @@ describe('rivalryRecord — two players across the net', () => {
   });
 
   it('never counts a match the two played as team-mates', () => {
-    // 26 matches together across S1, S2 and S4; across the net only once, in
-    // S5 R4. A fold keyed on "both appear in this match" would count all 27.
+    // 26 matches together across S1, S2 and S4; across the net only twice, in
+    // S5 R4 and the S5 wildcard. A fold keyed on "both appear in this match"
+    // would count all 28.
     const SG = rivalryRecord('Ed Simpson', 'Jimmy Gorton', all)!;
-    expect(SG.matches.map((m) => `S${m.season} ${m.roundLabel}`)).toEqual(['S5 4']);
+    expect(SG.matches.map((m) => `S${m.season} ${m.roundLabel}`)).toEqual(['S5 4', 'S5 WC']);
   });
 
   it('returns null for two players who have never met', () => {
@@ -1812,5 +1825,82 @@ describe('ladder tiebreak: internal record', () => {
 
   it('falls back to alphabetical for tied teams that have not met', () => {
     expect(ladder(9, [], undefined, ['Bravo', 'Alpha']).map((r) => r.team)).toEqual(['Alpha', 'Bravo']);
+  });
+});
+
+describe('finals records', () => {
+  const all = loadStatRows();
+  const records = finalsRecords(all);
+
+  it('counts every played finals row exactly once', () => {
+    const finalsRows = all.filter((r) => isPlayed(r) && r.isFinals && !r.isSingles);
+    expect(records.reduce((n, r) => n + r.appearances.length, 0)).toBe(finalsRows.length);
+    for (const r of records) expect(r.wins + r.losses).toBe(r.appearances.length);
+  });
+
+  it('takes the result from win?, counts fill-ins and skips forfeits', () => {
+    const rows = normalizeRows([
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: 'QF', Score: '6-4', Player: 'a', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '4' }),
+      raw({ Team: 'Red', Opponent: 'White', Season: '1', Round: 'QF', Score: '4-6', Player: 'b (Fill-in)', 'win?': 'FALSE', 'Team Score': '4', 'Opponent Score': '6' }),
+      // A level set nobody broke: `win?` is the only authority.
+      raw({ Team: 'White', Opponent: 'Red', Season: '1', Round: 'SF', Score: '5-5', Player: 'a', 'win?': 'FALSE', 'Team Score': '5', 'Opponent Score': '5' }),
+      raw({ Team: 'Red', Opponent: 'White', Season: '1', Round: 'SF', Score: '5-5', Player: 'b', 'win?': 'TRUE', 'Team Score': '5', 'Opponent Score': '5' }),
+      raw({ Team: 'Red', Opponent: 'White', Season: '1', Round: 'F', Score: 'forfeit', Player: 'b', 'win?': 'TRUE', 'Team Score': '6', 'Opponent Score': '0' }),
+    ]);
+    const [a, b] = ['a', 'b'].map((p) => finalsRecords(rows).find((r) => r.player === p)!);
+    expect([a.wins, a.losses]).toEqual([1, 1]);
+    expect([b.wins, b.losses]).toEqual([1, 1]);
+    expect(b.appearances.map((x) => [x.stage, x.fillIn])).toEqual([['QF', true], ['SF', false]]);
+  });
+
+  it('lists the winless, most losses first, nobody who has won one', () => {
+    const droughts = finalsDroughts(all);
+    expect(droughts.every((r) => r.wins === 0 && r.losses > 0)).toBe(true);
+    for (let i = 1; i < droughts.length; i++) {
+      expect(droughts[i - 1].losses).toBeGreaterThanOrEqual(droughts[i].losses);
+    }
+    // A premiership winner is never on it; somebody with only losses is.
+    expect(droughts.some((r) => r.player === 'Jonathan Kierce')).toBe(false);
+    expect(droughts.find((r) => r.player === 'Declan Croucher')?.losses).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('matchPlayerLines — one player\'s night', () => {
+  const real = loadStatRows();
+  const match = (season: number, round: number, team: string) =>
+    seasonMatches(real, season).find((m) => m.round === round && m.sides.some((s) => s.team === team))!;
+
+  it('reads S5 R9 White v Green, winning side first', () => {
+    const lines = matchPlayerLines(match(5, 9, 'Green'), real);
+    expect(lines.map((l) => l.team)).toEqual(['White', 'White', 'Green', 'Green']);
+    const kierce = lines.find((l) => l.player === 'Jonathan Kierce')!;
+    expect(kierce.won).toBe(true);
+    expect(kierce.stats.winners).toMatchObject({ value: 12, standing: 'most', joint: false });
+    expect(kierce.stats.errorsForced).toMatchObject({ value: 0, standing: 'fewest', joint: false });
+    expect(kierce.stats.unforcedErrors).toMatchObject({ value: 7, standing: 'fewest', joint: false });
+    const feikema = lines.find((l) => l.player === 'Quinn Feikema')!;
+    expect(feikema.stats.errorsForced).toMatchObject({ value: 3, standing: 'most', joint: false });
+    expect(feikema.stats.unforcedErrors).toMatchObject({ value: 10, standing: 'most', joint: true });
+    // Neither end of the court: no standing at all.
+    expect(feikema.stats.winners.standing).toBeNull();
+  });
+
+  it('takes the season rate from the same window as a season stat panel', () => {
+    const kierce = matchPlayerLines(match(5, 9, 'Green'), real).find((l) => l.player === 'Jonathan Kierce')!;
+    const agg = playerAgg('Jonathan Kierce', real, { season: 5, scope: 'regular' });
+    expect(kierce.stats.winners.seasonPerSet).toBe(perSet(agg, 'winners'));
+  });
+
+  it('leaves a scoreline-only final blank rather than zero', () => {
+    const lines = matchPlayerLines(seasonMatches(real, 4).find((m) => m.stage === 'F')!, real);
+    expect(lines).toHaveLength(4);
+    for (const l of lines) {
+      expect(l.stats.winners).toMatchObject({ value: null, standing: null });
+    }
+  });
+
+  it('has nothing to say about a forfeit', () => {
+    const forfeit = seasonMatches(real, 5).find((m) => m.forfeit)!;
+    expect(matchPlayerLines(forfeit, real)).toEqual([]);
   });
 });

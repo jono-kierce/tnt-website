@@ -14,6 +14,7 @@ import {
   seasonLadder,
   seasonMvp,
   seasonRoundList,
+  fixtures,
   seasonRosters,
 } from '../../../lib/site-data.ts';
 import { getSeasonConfig } from '../../../config/seasons/index.ts';
@@ -40,10 +41,15 @@ const honours = cfg?.honours ?? [];
 const podiumMedals = ['🥇', '🥈', '🥉'];
 const rounds = seasonRoundList(season);
 const openRound = defaultScheduleRound(season);
-// No match in the bracket has a result yet: seeds are reading off the live,
-// still-moving ladder, so the whole draw is a projection, not a fixture.
-const finalsIsProjected = (cfg?.finals ?? []).length > 0
+// No match in the bracket has a result yet. While home-and-away fixtures are
+// still to play, the seeds read off a moving ladder and the whole draw is a
+// projection; once the last of them is in, the ladder is final and the
+// bracket is the fixture.
+const finalsUnplayed = (cfg?.finals ?? []).length > 0
   && !(cfg?.finals ?? []).some((r) => r.matches.some((m) => m.result));
+const ladderFinal = rounds.length > 0
+  && !fixtures.some((r) => r.season === season && !r.isFinals);
+const finalsIsProjected = finalsUnplayed && !ladderFinal;
 const pairings = Object.fromEntries(
   Object.entries(seasonRosters(season)).map(([team, r]) => [team, r.pairingName])
 );
@@ -140,6 +146,11 @@ const pairings = Object.fromEntries(
       <p class="muted finenote mb-16">
         Projected bracket — seeds are off the current ladder and will keep
         moving as the season is played. Not a fixture yet.
+      </p>
+    )}
+    {finalsUnplayed && ladderFinal && (
+      <p class="muted finenote mb-16">
+        Seeds are off the final home-and-away ladder.
       </p>
     )}
     <FinalsBracket finals={cfg?.finals ?? []} ladder={table} />

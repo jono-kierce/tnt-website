@@ -26,6 +26,9 @@ import {
   draftPayload,
   eyebrowLabel,
   finalsFormatPayload,
+  finalsFixturePayload,
+  tiePreviewPayload,
+  finalsDroughtPayload,
   ladderPayload,
   latestRound,
   nextPreviewRound,
@@ -33,6 +36,7 @@ import {
   previewPayload,
   resolveRound,
   resultCardPayloads,
+  playerSlidePayloads,
   rows as allRows,
   scoreboardPayload,
   pairBoardPayload,
@@ -70,6 +74,8 @@ const { values: argv } = parseArgs({
     subhead: { type: 'string' },
     eyebrow: { type: 'string' },
     pair: { type: 'string' },
+    tie: { type: 'string' },
+    assume: { type: 'string' },
     player: { type: 'string' },
     sim: { type: 'string' },
     runs: { type: 'string' },
@@ -84,12 +90,12 @@ if (argv.help) {
 TNT graphics renderer
 
   --season <n>     Season to render. Default: SITE.currentSeason (${SITE.currentSeason}).
-  --round <r>      Round number, or QF / SF / F. Default: the season's latest
+  --round <r>      Round number, or WC / QF / SF / F. Default: the season's latest
                    round in the CSV.
   --only <list>    Comma-separated: ladder, results, scoreboard, boards, draft,
                    preview, streaks, streakstory, headline, predictions,
                    pair, rivalry, mvpsim, leaders, pointsladder, pairsplit, longest,
-                   tiebreaks, pointsplayed, finals.
+                   tiebreaks, pointsplayed, finals, finalsfixture.
                    Default: ladder,results,scoreboard,boards
                    — draft, preview, streaks, headline, predictions and pair
                    are once-off posts, so they only render when asked.
@@ -120,6 +126,10 @@ TNT graphics renderer
                    a player in a home-and-away season, fronted by the record
                    holder (--photos <file> to pick another); no --season or
                    --round.
+                   players is slides 2–5 of each match's carousel: one per
+                   player, winners first, captain first, with his winners,
+                   errors forced and unforced errors from the match. Finals
+                   rounds take the gold "Finals" mark, like the result card.
                    pair is two players' record as team-mates; it needs --pair
                    and no --season or --round.
                    preview needs no --round: it defaults to the next round
@@ -129,6 +139,10 @@ TNT graphics renderer
                    matched to a fixture by name — "pink-v-white.jpg", any name
                    containing both team colours, or "match1.jpg" positionally.
                    A fixture with no photo renders on the scrim and warns.
+                   The same folder feeds --only players: a file is matched to
+                   a player by slug ("jonathan-kierce.jpg") or surname
+                   ("kierce-lunge.jpg"); anyone without one falls back to his
+                   season photo from the manifest, with a warning.
   --career         Also render the all-time boards.
   --no-cut         Draw the ladder without the finals cut: no line, no
                    greyed-out rows, and no "Top 8 play finals" subtitle.
@@ -177,6 +191,36 @@ Finals format (--only finals) — the season's bracket as a structure explainer:
                    seeds and "winner of / loser of" slots, no teams. Needs no
                    --round. --headline overrides the title ("The New Finals").
 
+Finals fixture (--only finalsfixture) — the same bracket with each seed slot
+                   naming the team that finished there on the final ladder.
+                   Refused until home-and-away is over. --headline overrides the
+                   title ("Finals Fixture"); --subhead sets the footer note.
+
+Tie preview (--only tiepreview) — one seeded finals tie as a poster: both
+                   pairs pictured, records and form off the final ladder, the
+                   night they met in the home and away, what's at stake.
+  --tie <id>       The tie, by its id in the season config. Default: WC.
+  --photos <list>  Four images, comma-separated: home captain, home partner,
+                   away captain, away partner. A .png is drawn as a cutout
+                   (knee-cropped, centred on the head — see graphics/cutouts/);
+                   anything else as a fading frame. Blank or missing entries
+                   fall back to the player's own photos for the season.
+                   --headline overrides the title; --subhead says when it's
+                   on, after the seeds ("Tonight", a date). Omitted, the
+                   seeds print alone.
+
+Finals drought (--only drought) — everyone who has played finals and never
+                   won one, the longest wait pictured, with who's still in
+                   this season's bracket and who they play next.
+  --assume <t:w>   Add one finals result that isn't in the CSV yet, e.g.
+                   WC:Navy ("if Navy win the wildcard"), so a board for each
+                   outcome can be made the day before. Refused once that tie
+                   is in the CSV. The filename says which outcome it assumed;
+                   the graphic doesn't.
+  --player <name>  Who to picture. Default: the top of the list.
+  --photos <path>  Their photo; a .png is drawn as a cutout. Default: their
+                   lead photo from the manifest.
+
 Headline card (--only headline) — an ad-hoc news/banter post:
 
   --headline <s>   The big headline (required for the headline card).
@@ -198,7 +242,7 @@ if (!Number.isFinite(season)) {
 // `draft` and `preview` are deliberately not in the default set — a draft is a
 // once-a-season post, and a preview is a once-a-week one you ask for the day
 // before, not something every CI push should render.
-const KINDS = ['ladder', 'results', 'scoreboard', 'boards', 'draft', 'preview', 'streaks', 'streakstory', 'headline', 'predictions', 'pair', 'rivalry', 'mvpsim', 'leaders', 'pointsladder', 'pairsplit', 'longest', 'tiebreaks', 'pointsplayed', 'finals'];
+const KINDS = ['ladder', 'results', 'scoreboard', 'boards', 'draft', 'preview', 'streaks', 'streakstory', 'headline', 'predictions', 'pair', 'rivalry', 'mvpsim', 'leaders', 'pointsladder', 'pairsplit', 'longest', 'tiebreaks', 'pointsplayed', 'finals', 'finalsfixture', 'tiepreview', 'drought', 'players'];
 const only = new Set(
   (argv.only ?? 'ladder,results,scoreboard,boards').split(',').map((s) => s.trim()).filter(Boolean)
 );
@@ -210,7 +254,7 @@ if (unknown.length) {
 
 // A draft happens before a ball is hit, so it needs no round — and a season
 // that has only been drafted has no rows to infer one from.
-const needsRound = ['ladder', 'results', 'scoreboard', 'boards', 'leaders', 'pointsladder', 'pairsplit', 'longest'].some((k) => only.has(k));
+const needsRound = ['ladder', 'results', 'players', 'scoreboard', 'boards', 'leaders', 'pointsladder', 'pairsplit', 'longest'].some((k) => only.has(k));
 const latest = latestRound(season);
 if (needsRound && !latest && argv.round === undefined) {
   // A season whose draw is in the CSV but whose first night hasn't happened is
@@ -272,6 +316,29 @@ function matchPhotos(dir, cards) {
       byStem.get(String(i + 1));
     if (hit) out[card.slug] = pathToFileURL(resolve(dir, hit)).href;
   });
+  return out;
+}
+
+/**
+ * Match each player slide to a photo from the night, by name: a file whose
+ * name contains the player's slug (`jonathan-kierce.jpg`) wins, then one that
+ * contains his surname (`wc-kierce-lunge.jpg`). Surnames shared on court
+ * (Ed and Charlie Simpson) only match on the full slug.
+ */
+function playerPhotoMap(dir, slides) {
+  const files = readdirSync(dir).filter((f) => IMAGE_EXT.has(extname(f).toLowerCase())).sort();
+  const stem = (f) => basename(f, extname(f)).toLowerCase();
+  const surname = (slug) => slug.split('-').at(-1);
+  const out = {};
+  for (const s of slides) {
+    const shared = slides.some(
+      (o) => o.match === s.match && o.playerSlug !== s.playerSlug && surname(o.playerSlug) === surname(s.playerSlug)
+    );
+    const hit =
+      files.find((f) => stem(f).includes(s.playerSlug)) ??
+      (shared ? undefined : files.find((f) => stem(f).split(/[^a-z]+/).includes(surname(s.playerSlug))));
+    if (hit) out[s.playerSlug] = pathToFileURL(resolve(dir, hit)).href;
+  }
   return out;
 }
 
@@ -499,6 +566,70 @@ if (only.has('predictions')) {
   }
 }
 
+if (only.has('finalsfixture')) {
+  // The same bracket with the final ladder's teams in the seed slots. Refused
+  // (and reported) while home-and-away fixtures are still to play.
+  try {
+    await shoot(
+      'finals-format.html',
+      await finalsFixturePayload(season, { title: argv.headline, footnote: argv.subhead }),
+      `s${season}-finals-fixture.png`
+    );
+  } catch (err) {
+    console.warn(`  skip finals fixture: ${err.message}`);
+  }
+}
+
+if (only.has('tiepreview')) {
+  // A once-off poster for one finals tie. Refused (and reported) while the
+  // seeds aren't settled, or for a tie fed by another tie's result.
+  const tie = argv.tie ?? 'WC';
+  const photos = (argv.photos ?? '').split(',').map((p) => p.trim() || undefined);
+  for (const p of photos) if (p && !existsSync(p)) warnings.push(`--photos: no such file "${p}" — using the default.`);
+  try {
+    await shoot(
+      'tie-preview.html',
+      await tiePreviewPayload(season, tie, {
+        photos: photos.map((p) => (p && existsSync(p) ? p : undefined)),
+        title: argv.headline,
+        subtitle: argv.subhead,
+      }),
+      `s${season}-${tie.toLowerCase()}-preview.png`
+    );
+  } catch (err) {
+    console.warn(`  skip tie preview: ${err.message}`);
+  }
+}
+
+if (only.has('drought')) {
+  let assume;
+  if (argv.assume) {
+    const [tie, winner] = argv.assume.split(':').map((x) => x.trim());
+    if (!tie || !winner) {
+      console.error(`--assume wants <tie>:<winning team>, e.g. WC:Navy — got "${argv.assume}".`);
+      process.exit(1);
+    }
+    assume = { tie, winner };
+  }
+  try {
+    await shoot(
+      'finals-drought.html',
+      await finalsDroughtPayload(season, {
+        assume,
+        player: argv.player,
+        photo: argv.photos,
+        title: argv.headline,
+        subtitle: argv.subhead,
+      }),
+      assume
+        ? `s${season}-finals-drought-if-${assume.winner.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-win-${assume.tie.toLowerCase()}.png`
+        : `s${season}-finals-drought.png`
+    );
+  } catch (err) {
+    console.warn(`  skip finals drought: ${err.message}`);
+  }
+}
+
 if (only.has('finals')) {
   // The bracket's shape off the season config — no match data, so no round.
   await shoot(
@@ -587,6 +718,32 @@ if (only.has('results')) {
       );
     }
     await shoot('result-card.html', card, `${stem}-match${i + 1}-${card.slug}.png`);
+  }
+}
+
+if (only.has('players')) {
+  // Slides 2–5 of each match's carousel, after its result card. The photos
+  // come from the same --photos folder as the cards, matched by player name.
+  let { slides, unrecorded } = await playerSlidePayloads(season, round);
+  for (const m of unrecorded) {
+    warnings.push(`players: ${m} has no player stats in the CSV — no player slides.`);
+  }
+  if (argv.photos) {
+    const dir = resolve(process.cwd(), argv.photos);
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+      warnings.push(`--photos ${argv.photos} is not a folder; player slides use the manifest.`);
+    } else {
+      ({ slides } = await playerSlidePayloads(season, round, { photos: playerPhotoMap(dir, slides) }));
+    }
+  }
+  for (const s of slides) {
+    const name = `${s.player.first} ${s.player.last}`;
+    if (!s.photo) {
+      warnings.push(`players: no photo of ${name} — rendered on the court-green field. Drop "${s.playerSlug}.jpg" into --photos.`);
+    } else if (!s.photoFromMatch) {
+      warnings.push(`players: ${name} is pictured from the manifest, not this match. Drop "${s.playerSlug}.jpg" into --photos.`);
+    }
+    await shoot('player-slide.html', s, `${stem}-match${s.matchIndex}-${s.match}-${s.slide}-${s.playerSlug}.png`);
   }
 }
 

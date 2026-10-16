@@ -21,10 +21,10 @@ import type { FinalsMatch, FinalsRound, FinalsSlot } from '../config/seasons/sch
  * middle of their round with the elimination finals outside them, so each loser
  * drops a single row into the semi it's sent to.
  *
- * A tie can also feed one in its *own* round — S5's wildcard is played first
- * on the night of the qualifying and elimination finals, and its winner fills
- * a side of EF2. That tie stacks directly under (an `away` slot) or over (a
- * `home` slot) the one it feeds, joined by a short vertical `stacked` edge.
+ * A tie can also feed one in its *own* round — S5's wildcard (8 v 9) is
+ * played on quarter-final night, and its winner fills 1st's quarter. That tie
+ * stacks directly under (an `away` slot) or over (a `home` slot) the one it
+ * feeds, joined by a short vertical `stacked` edge.
  */
 
 export type EdgeKind = 'winner' | 'loser';
@@ -192,23 +192,38 @@ export function bracketLayout(finals: FinalsRound[], opts: LayoutOptions = {}): 
   // Anchor in declared order first, then let what it feeds sort it, twice —
   // the second pass settles any order the first pass only half fixed.
   finals[anchor].matches.forEach((m, i) => pos.set(m.id, i + 0.5));
+  const anchorIds = finals[anchor].matches.map((m) => m.id);
+  // A tie whose only exit is into this same round: it doesn't sort by what
+  // follows, it hangs off the tie it feeds.
+  const stackedOn = (id: string) =>
+    outOf(id).some((e) => colOf.get(e.to)! > anchor)
+      ? undefined
+      : outOf(id).find((e) => colOf.get(e.to) === anchor);
   for (let pass = 0; pass < 2; pass++) {
     forward();
-    const ids = finals[anchor].matches.map((m) => m.id);
-    const key = (id: string, depth = 0): number => {
+    const key = (id: string): number => {
       const outs = outOf(id).filter((e) => colOf.get(e.to)! > anchor);
-      if (outs.length) return mean(outs.map((e) => pos.get(e.to)!));
-      // A tie feeding one in this same round sorts right next to it: before
-      // it to fill the top row, after it to fill the bottom.
-      const stacked = outOf(id).find((e) => colOf.get(e.to) === anchor);
-      if (stacked && depth < ids.length) {
-        return key(stacked.to, depth + 1) + (stacked.slot === 'home' ? -1e-3 : 1e-3);
-      }
-      return declared.get(id)! + 0.5;
+      return outs.length ? mean(outs.map((e) => pos.get(e.to)!)) : declared.get(id)! + 0.5;
     };
-    [...ids]
-      .sort((a, b) => key(a) - key(b) || declared.get(a)! - declared.get(b)!)
-      .forEach((id, i) => pos.set(id, i + 0.5));
+    const order = anchorIds
+      .filter((id) => !stackedOn(id))
+      .sort((a, b) => key(a) - key(b) || declared.get(a)! - declared.get(b)!);
+    // Then each stacked tie goes directly over (filling `home`) or under
+    // (filling `away`) its target — inserted, not sorted, because sorting on
+    // the target's key lands it beside whichever tie shares that key (S5's
+    // wildcard ended up under QF4, the line to QF1 running straight through
+    // it). Repeat so a chain of them resolves; anything left over queues last.
+    let pending = anchorIds.filter((id) => stackedOn(id));
+    for (let guard = 0; pending.length && guard < anchorIds.length; guard++) {
+      pending = pending.filter((id) => {
+        const e = stackedOn(id)!;
+        const at = order.indexOf(e.to);
+        if (at < 0) return true;
+        order.splice(e.slot === 'home' ? at : at + 1, 0, id);
+        return false;
+      });
+    }
+    [...order, ...pending].forEach((id, i) => pos.set(id, i + 0.5));
   }
   forward();
   // Earlier rounds line up with the row they feed, so a wildcard runs straight

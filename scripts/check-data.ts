@@ -68,7 +68,7 @@ for (const [k, teams] of byRound) {
 // 2b. Finals rows. The scoreline is the source of truth for how many sets were
 //     played, so an unreadable one silently becomes a one-set match — which
 //     would quietly inflate that player's per-set rates. Catch it here.
-const STAGES = new Set(['QF', 'SF', 'F']);
+const STAGES = new Set(['WC', 'QF', 'SF', 'F']);
 const rawRows = readCsvFile(CSV_PATH);
 
 for (const raw of rawRows) {

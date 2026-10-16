@@ -22,49 +22,45 @@ describe('bracketLayout — a straight knockout (S4)', () => {
   });
 });
 
-describe('bracketLayout — AFL-style (S5)', () => {
+describe('bracketLayout — a knockout with a wildcard (S5)', () => {
   const finals = getSeasonConfig(5)!.finals!;
   const l = bracketLayout(finals);
 
-  it('puts the qualifying finals in the middle, the eliminations outside them', () => {
-    // The wildcard is week one too, played first: it stacks under EF2, the tie
-    // its winner joins.
-    expect(order(l, 0)).toEqual(['EF1', 'QF1', 'QF2', 'EF2', 'WC']);
-    expect(order(l, 1)).toEqual(['SF1', 'SF2']);
-    expect(order(l, 2)).toEqual(['PF1', 'PF2']);
-  });
-
-  it('drops each qualifying loser a single row into its semi', () => {
-    for (const [qf, sf] of [['QF1', 'SF1'], ['QF2', 'SF2']]) {
-      const e = l.edges.find((x) => x.from === qf && x.kind === 'loser')!;
-      expect(e.to).toBe(sf);
-      expect(Math.abs(posOf(l, sf) - posOf(l, qf))).toBeLessThanOrEqual(0.5);
-    }
-  });
-
-  it('marks only the qualifying finals as a double chance', () => {
-    const dc = l.columns.flatMap((c) => c.ties).filter((t) => t.doubleChance);
-    expect(dc.map((t) => t.match.id).sort()).toEqual(['QF1', 'QF2']);
-  });
-
-  it('stacks the wildcard directly under the tie it feeds', () => {
+  it('keeps the wildcard in the quarter-final round, stacked under QF1', () => {
+    // 8 v 9 is played on quarter-final night and its winner meets 1st, so it
+    // hangs directly under QF1 — not beside QF4, which shares QF1's semi.
+    expect(order(l, 0)).toEqual(['QF1', 'WC', 'QF4', 'QF2', 'QF3']);
     const e = l.edges.find((x) => x.from === 'WC')!;
-    expect(e.stacked).toBe(true);
-    expect(e.slot).toBe('away');
-    expect(posOf(l, 'WC') - posOf(l, 'EF2')).toBeCloseTo(1);
+    expect(e).toMatchObject({ to: 'QF1', slot: 'away', stacked: true });
+    expect(posOf(l, 'WC') - posOf(l, 'QF1')).toBeCloseTo(1);
   });
 
-  it('never lets one tie fill both sides of the next round', () => {
-    // The preliminary-final crossover: a QF winner meets the semi winner from
-    // the other side, so the QF isn't replayed a fortnight later.
-    for (const m of finals.flatMap((r) => r.matches)) {
-      const refs = [m.home, m.away].map((s) =>
-        'winnerOf' in s ? s.winnerOf : 'loserOf' in s ? s.loserOf : null
-      );
-      if (refs[0] && refs[1]) expect(refs[0]).not.toBe(refs[1]);
-    }
-    expect(l.edges.find((e) => e.from === 'QF1' && e.kind === 'winner')!.to).toBe('PF2');
-    expect(l.edges.find((e) => e.from === 'QF2' && e.kind === 'winner')!.to).toBe('PF1');
+  it('is otherwise the usual 1v8 / 4v5 and 2v7 / 3v6 knockout', () => {
+    expect(order(l, 1)).toEqual(['SF1', 'SF2']);
+    expect(posOf(l, 'SF1')).toBeCloseTo((posOf(l, 'QF1') + posOf(l, 'QF4')) / 2);
+    expect(posOf(l, 'SF2')).toBeCloseTo((posOf(l, 'QF2') + posOf(l, 'QF3')) / 2);
+    expect(l.doubleChance).toBe(false);
+    expect(l.edges.every((e) => e.kind === 'winner')).toBe(true);
+  });
+});
+
+describe('bracketLayout — a stacked tie', () => {
+  it('sits beside the tie it feeds even when another tie shares that one\'s key', () => {
+    const l = bracketLayout([
+      {
+        name: 'R1',
+        matches: [
+          { id: 'A', home: { seed: 1 }, away: { winnerOf: 'X' } },
+          { id: 'X', home: { seed: 8 }, away: { seed: 9 } },
+          { id: 'B', home: { seed: 4 }, away: { seed: 5 } },
+          { id: 'Y', home: { seed: 6 }, away: { seed: 7 } },
+          { id: 'C', home: { winnerOf: 'Y' }, away: { seed: 2 } },
+        ],
+      },
+      { name: 'R2', matches: [{ id: 'S', home: { winnerOf: 'A' }, away: { winnerOf: 'B' } }, { id: 'T', home: { winnerOf: 'C' }, away: { seed: 3 } }] },
+    ]);
+    // X fills A's bottom row, so it goes under A; Y fills C's top row, so over C.
+    expect(order(l, 0)).toEqual(['A', 'X', 'B', 'Y', 'C']);
   });
 });
 

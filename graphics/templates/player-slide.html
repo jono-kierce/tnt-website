@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Player slide (A / Broadsheet)</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  /* Slides 2–5 of a match carousel, after the result card. The photo owns the
+     right of the frame and dissolves into the court-green field with the
+     team's glow behind it; the name and three numbers stack down the left.
+     No scoreline — slide 1 has just printed it. */
+  .canvas { padding: 0; }
+
+  .glow {
+    position: absolute; z-index: 0; width: 1000px; height: 1000px;
+    right: -360px; top: 160px; border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--team-glow) 34%, transparent) 0%, transparent 62%);
+  }
+  /* Two masks intersected: fade in from the left so the column reads, fade
+     out at the foot so the frame doesn't end on a hard edge. */
+  .photo {
+    position: absolute; z-index: 1; right: 0; top: 0; width: 760px; height: 100%;
+    object-fit: cover; object-position: 50% 30%;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 42%), linear-gradient(180deg, #000 70%, transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-composite: intersect;
+  }
+  .canvas.no-photo .photo { display: none; }
+  .ghost {
+    display: none; position: absolute; z-index: 1;
+    width: 560px; right: 40px; top: 380px; color: var(--paper); opacity: 0.05;
+  }
+  .canvas.no-photo .ghost { display: block; }
+
+  /* The result card's topbar, gold for finals, so the carousel reads as one. */
+  .topbar {
+    position: absolute; z-index: 3; left: var(--safe); right: var(--safe); top: 74px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .topbar .eyebrow { font-size: 23px; letter-spacing: 0.4em; }
+  .finals-mark { display: none; }
+  .canvas.finals .topbar .eyebrow { display: none; }
+  .canvas.finals .finals-mark {
+    display: flex; align-items: center; gap: 22px;
+    font-family: var(--display); font-weight: 700; font-size: 46px;
+    letter-spacing: 0.32em; text-transform: uppercase; line-height: 1;
+    color: var(--gold);
+  }
+  .canvas.finals .finals-mark::before { content: ''; width: 46px; height: 2px; background: var(--gold); }
+  .stage {
+    font-family: var(--display); font-weight: 600; font-size: 27px;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--paper);
+  }
+  .canvas.finals .stage { color: var(--gold-soft); }
+
+  .col { position: absolute; z-index: 3; left: var(--safe); top: 330px; width: 470px; }
+  .first {
+    font-size: 32px; font-weight: 500; letter-spacing: 0.3em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.7);
+  }
+  .last {
+    font-family: var(--display); font-weight: 700; font-size: 88px; line-height: 0.95;
+    text-transform: uppercase; letter-spacing: 0.02em; white-space: nowrap;
+  }
+  .teamline {
+    margin-top: 22px; padding-bottom: 36px; border-bottom: 2px solid var(--gold);
+    display: flex; align-items: center; gap: 16px;
+  }
+  .teamline .bar { width: 56px; height: 10px; border-radius: 5px; background: linear-gradient(90deg, var(--team), var(--team-2)); }
+  .teamline .t {
+    font-size: 26px; font-weight: 600; letter-spacing: 0.22em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.7);
+  }
+
+  .stat {
+    padding: 30px 0 28px; border-bottom: 1px solid var(--rule);
+    display: grid; grid-template-columns: 170px 1fr; align-items: center; column-gap: 26px;
+  }
+  .stat .n { font-size: 128px; font-weight: 700; line-height: 0.85; text-align: right; }
+  .stat .l { font-size: 30px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; }
+  .stat .c {
+    margin-top: 8px; font-size: 23px; font-weight: 500; letter-spacing: 0.12em;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.55);
+  }
+  .stat.good .n { color: var(--gold-soft); }
+  .stat.good .c { color: var(--gold); }
+  /* Leading the court in unforced errors isn't an honour. */
+  .stat.bad .c { color: #ff6b5e; }
+</style>
+</head>
+<body>
+<div class="canvas grain" id="canvas">
+  <div class="glow"></div>
+  <img class="photo" id="photo" alt="">
+  <div class="mark mark--crest ghost"></div>
+
+  <div class="topbar">
+    <div class="eyebrow" id="eyebrow"></div>
+    <div class="finals-mark">Finals</div>
+    <div class="stage" id="stage"></div>
+  </div>
+
+  <div class="col">
+    <div class="first" id="first"></div>
+    <div class="last" id="last"></div>
+    <div class="teamline"><div class="bar"></div><div class="t" id="team"></div></div>
+    <div id="stats"></div>
+  </div>
+</div>
+
+<script type="module">
+const DATA = {
+  finals: true,
+  eyebrow: 'Season 5 · 2026',
+  roundLabel: 'Wildcard',
+  photo: null,
+  player: { first: 'Jonathan', last: 'Kierce', team: 'White', fillIn: false },
+  stats: [
+    { label: 'Winners', value: '12', tag: 'Most on court', tone: 'good', context: 'Season rate 5.9' },
+    { label: 'Errors forced', value: '0', tag: null, tone: null, context: 'Season rate 3.0' },
+    { label: 'Unforced errors', value: '7', tag: 'Fewest on court', tone: 'good', context: 'Season rate 6.3' },
+  ],
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+window.__render = function (d) {
+  const canvas = document.getElementById('canvas');
+  canvas.dataset.team = d.player.team;
+  canvas.classList.toggle('finals', !!d.finals);
+  canvas.classList.toggle('no-photo', !d.photo);
+  const img = document.getElementById('photo');
+  if (d.photo) img.src = d.photo; else img.removeAttribute('src');
+
+  document.getElementById('eyebrow').textContent = d.eyebrow ?? '';
+  document.getElementById('stage').textContent = d.roundLabel;
+  document.getElementById('first').textContent = d.player.first;
+  const last = document.getElementById('last');
+  last.textContent = d.player.last;
+  // A long surname shrinks to the column rather than running into the photo.
+  last.style.fontSize = '';
+  const room = last.parentElement.clientWidth;
+  if (last.scrollWidth > room) last.style.fontSize = `${Math.floor(88 * room / last.scrollWidth)}px`;
+  document.getElementById('team').textContent = d.player.fillIn ? `Fill-in for ${d.player.team}` : d.player.team;
+
+  document.getElementById('stats').innerHTML = d.stats.map((s) => `
+    <div class="stat ${s.tone ?? ''}">
+      <div class="n">${esc(s.value)}</div>
+      <div><div class="l">${esc(s.label)}</div><div class="c">${esc(s.tag ?? s.context ?? '')}</div></div>
+    </div>`).join('');
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

@@ -8,7 +8,7 @@
  * A ladder derived twice is a ladder that can disagree with itself.
  */
 
-import { loadStatRows, parseRound } from '../../src/lib/normalize.ts';
+import { loadStatRows, normalizeRows, parseRound } from '../../src/lib/normalize.ts';
 import {
   isPartial,
   isPlayedMatch,
@@ -23,6 +23,10 @@ import {
   streakEndLabel,
   pairRecord,
   rivalryRecord,
+  finalsDroughts,
+  matchPlayerLines,
+  MATCH_LINE_STATS,
+  seasonMatches,
   sealVotes,
   strikeWithdrawnMatches,
   strikeWithdrawnVotes,
@@ -38,7 +42,7 @@ import { STREAK_NOTES } from './streak-notes.ts';
 import { withdrawnTeams as withdrawnOf } from '../../src/config/seasons/schema.ts';
 import { insightsFor } from '../../src/lib/insights.ts';
 import { formatDate, formatDateLong, formatTime } from '../../src/lib/datetime.ts';
-import type { MatchSide, SetScore, StatRow } from '../../src/lib/types.ts';
+import type { FinalsStage, MatchSide, SetScore, StatRow } from '../../src/lib/types.ts';
 import { SITE, isVotesSealed } from '../../src/config/site.ts';
 import { PHOTOS_DIR, leadPhoto, playerPhotos, type Photo } from '../../src/lib/photos.ts';
 import {
@@ -90,11 +94,11 @@ export function eyebrowLabel(season: number): string {
  * with the site about where finals sit.
  */
 export interface RoundRef {
-  /** As typed: "9", "QF", "F". */
+  /** As typed: "9", "WC", "QF", "F". */
   input: string;
   /** Sort key — finals sort after every home-and-away round. */
   round: number;
-  stage: 'QF' | 'SF' | 'F' | null;
+  stage: FinalsStage | null;
   /** For a card or a headline: "Round 9", "Grand Final". */
   label: string;
   /** For a filename: "r09", "rF". */
@@ -107,6 +111,7 @@ export interface RoundRef {
  * was, not how many there were that night.
  */
 const STAGE_MATCH_LABEL = {
+  WC: 'Wildcard',
   QF: 'Qualifying Final',
   SF: 'Semi Final',
   F: 'Grand Final',
@@ -293,6 +298,8 @@ export interface ResultCardPayload {
   kind: 'result';
   eyebrow: string;
   roundLabel: string;
+  /** A finals tie — the card takes the gold "Finals" mark. */
+  finals: boolean;
   /** Absolute path to the background photo, or null for scrim-only. */
   photo: string | null;
   /** Winner first. */
@@ -385,6 +392,7 @@ export async function resultCardPayloads(
       kind: 'result',
       eyebrow: eyebrowLabel(season),
       roundLabel: round.label,
+      finals: round.stage !== null,
       photo: opts.photos?.[slug] ?? null,
       sides: [side(win), side(lose)],
       slug,
@@ -400,6 +408,134 @@ export async function resultCardPayloads(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Player slides — one per player, after a match's result card
+// ---------------------------------------------------------------------------
+
+export interface PlayerSlideStat {
+  label: string;
+  /** Printed as is: "12", or "–" when the stat wasn't recorded. */
+  value: string;
+  /** "Most on court", "Joint fewest"… null when he sits at neither end. */
+  tag: string | null;
+  /** Gold for a good end of the court, red for leading the errors. */
+  tone: 'good' | 'bad' | null;
+  /** The line under a number with no tag: his season rate. */
+  context: string | null;
+}
+
+export interface PlayerSlidePayload {
+  kind: 'player-slide';
+  finals: boolean;
+  /** "Season 5 · 2026" — shown only off a finals round, where the mark isn't. */
+  eyebrow: string;
+  roundLabel: string;
+  player: { first: string; last: string; team: string; fillIn: boolean };
+  /** file:// URL, or null for the court-green field. */
+  photo: string | null;
+  /** False when the photo is a fallback from the manifest, not from this match. */
+  photoFromMatch: boolean;
+  stats: PlayerSlideStat[];
+  /** The result card's slug — `white-v-green` — so the slides file beside it. */
+  match: string;
+  /** 1-based, the same numbering as the result cards. */
+  matchIndex: number;
+  /** 2–5: the result card is slide 1. */
+  slide: number;
+  playerSlug: string;
+}
+
+const LINE_LABEL = { winners: 'Winners', errorsForced: 'Errors forced', unforcedErrors: 'Unforced errors' };
+
+/**
+ * Four slides per match: one per player, winners first, captain first within
+ * a side. The numbers and where each sits on court come from
+ * `matchPlayerLines` (stats.ts); this only labels them. A match with no
+ * player stats recorded — a scoreline-only final — is left out and named in
+ * `unrecorded`, since four slides of dashes say nothing.
+ *
+ * `photos` maps a player slug to an image from the night; anyone missing one
+ * falls back to his latest solo photo of the season, flagged
+ * `photoFromMatch: false` so the CLI can say so.
+ */
+export async function playerSlidePayloads(
+  season: number,
+  round: RoundRef,
+  opts: { photos?: Record<string, string> } = {}
+): Promise<{ slides: PlayerSlidePayload[]; unrecorded: string[] }> {
+  const cards = await resultCardPayloads(season, round);
+  const matches = seasonMatches(rows, season).filter((m) => m.round === round.round);
+  const teamConfig = await seasonTeamConfigs(season);
+  const slides: PlayerSlidePayload[] = [];
+  const unrecorded: string[] = [];
+
+  cards.forEach((card, i) => {
+    const teams = card.sides.map((s) => s.team);
+    const m = matches.find((x) => teams.every((t) => x.sides.some((s) => s.team === t)));
+    if (!m) return;
+    const lines = matchPlayerLines(m, rows);
+    if (!lines.some((l) => MATCH_LINE_STATS.some((k) => l.stats[k].value !== null))) {
+      unrecorded.push(card.slug);
+      return;
+    }
+    // Captain first: the order of the season config's `pair`, CSV order after.
+    const at = (l: (typeof lines)[number]) => {
+      const n = teamConfig(l.team)?.pair?.indexOf(l.player) ?? -1;
+      return n < 0 ? 99 : n;
+    };
+    const ordered = [...lines].sort((a, b) => Number(b.won) - Number(a.won) || at(a) - at(b));
+    const multiSet = m.sides[0].setScores.length > 1;
+
+    ordered.forEach((l, j) => {
+      const slug = playerSlug(l.player);
+      const words = l.player.split(' ');
+      const given = opts.photos?.[slug];
+      const shot = given ? null : leaderPhoto(slug, season);
+      slides.push({
+        kind: 'player-slide',
+        finals: round.stage !== null,
+        eyebrow: eyebrowLabel(season),
+        roundLabel: round.label,
+        player: {
+          first: words.slice(0, -1).join(' '),
+          last: words.at(-1)!,
+          team: l.team,
+          fillIn: l.isFillIn,
+        },
+        photo: given ?? (shot ? photoUrl(shot.file) : null),
+        photoFromMatch: Boolean(given),
+        stats: MATCH_LINE_STATS.map((k) => {
+          const v = l.stats[k];
+          // Leading the court is good for winners and errors forced; for
+          // unforced errors the good end is the other one.
+          const good = k === 'unforcedErrors' ? 'fewest' : 'most';
+          const tagged = v.standing === good || (k === 'unforcedErrors' && v.standing === 'most');
+          const tag = tagged
+            ? v.joint
+              ? `Joint ${v.standing}`
+              : `${v.standing === 'most' ? 'Most' : 'Fewest'} on court`
+            : null;
+          return {
+            label: LINE_LABEL[k],
+            value: v.value === null ? '–' : String(v.value),
+            tag,
+            tone: tagged ? (v.standing === good ? 'good' : 'bad') : null,
+            context:
+              v.seasonPerSet === null
+                ? null
+                : `Season rate ${v.seasonPerSet.toFixed(1)}${multiSet ? ' a set' : ''}`,
+          };
+        }),
+        match: card.slug,
+        matchIndex: i + 1,
+        slide: j + 2,
+        playerSlug: slug,
+      });
+    });
+  });
+  return { slides, unrecorded };
+}
+
 export const seasonYear = (season: number): number | undefined =>
   SITE.seasonYears[season];
 
@@ -413,6 +549,7 @@ export const seasonYear = (season: number): number | undefined =>
  * are the same round seen from either side of Tuesday night.
  */
 const ROUND_TITLE = {
+  WC: 'Wildcard',
   QF: 'Qualifying Finals',
   SF: 'Semi Finals',
   F: 'The Final',
@@ -645,6 +782,20 @@ const FINALS_GEOMETRY = {
   slot: 35,
   port: 14,
   lane: 9,
+  /** A tie's row height — `slot` is derived from it. */
+  row: 52,
+} as const;
+
+/**
+ * The fixture's taller rows: a team row carries a colour, a seed and a
+ * pairing, not just "1st". Unit unchanged, so five rows still fill the field;
+ * the gap between two stacked ties narrows to ~26px.
+ */
+const FIXTURE_GEOMETRY = {
+  ...FINALS_GEOMETRY,
+  /** 8px padding + 1px border + half a 62px row. */
+  slot: 40,
+  row: 62,
 } as const;
 
 export interface FinalsSlotPayload {
@@ -652,10 +803,15 @@ export interface FinalsSlotPayload {
   seed: string | null;
   kind: EdgeKind | null;
   from: string | null;
+  /** The fixture only: the team sitting in that seed on the final ladder. */
+  team?: string;
+  pairing?: string;
 }
 
 export interface FinalsTiePayload {
   id: string;
+  /** Set into the tie's top border: the config's `label`, else its id. */
+  tag: string;
   col: number;
   pos: number;
   doubleChance: boolean;
@@ -664,11 +820,13 @@ export interface FinalsTiePayload {
 }
 
 export interface FinalsFormatPayload {
-  kind: 'finals-format';
+  kind: 'finals-format' | 'finals-fixture';
   eyebrow: string;
   title: string;
+  /** Replaces the winner/loser key in the footer; null keeps the key. */
+  footnote: string | null;
   /** FINALS_GEOMETRY plus the tie width, which depends on how many rounds share the frame. */
-  geometry: typeof FINALS_GEOMETRY & { width: number };
+  geometry: { [K in keyof typeof FINALS_GEOMETRY]: number } & { width: number };
   rounds: string[];
   span: number;
   ties: FinalsTiePayload[];
@@ -694,31 +852,86 @@ export async function finalsFormatPayload(
   season: number,
   opts: { title?: string } = {}
 ): Promise<FinalsFormatPayload> {
+  return bracketPayload(season, FINALS_GEOMETRY, {
+    kind: 'finals-format',
+    title: opts.title ?? 'The New Finals',
+    footnote: null,
+  });
+}
+
+/**
+ * The same bracket as a fixture: every seed slot names the team that finished
+ * there, off the same ladder the site and the ladder graphic print. Refused
+ * until the home-and-away season is over — before that, the seeds are a
+ * projection, and a posted fixture that changes next week is worse than none.
+ *
+ * Later rounds stay "Winner QF1": a winner is a result, and the results
+ * belong to the result cards and the scoreboard.
+ */
+export async function finalsFixturePayload(
+  season: number,
+  opts: { title?: string; footnote?: string } = {}
+): Promise<FinalsFormatPayload> {
+  if (rows.some((r) => r.season === season && !r.isFinals && r.scheduled)) {
+    throw new Error(
+      `Season ${season} still has home-and-away fixtures to play — the finals seeds aren't settled yet.`
+    );
+  }
+  const teamConfig = await seasonTeamConfigs(season);
+  const table = ladderWithPairings(
+    season,
+    rows.filter((r) => !r.isFinals),
+    teamConfig,
+    await declaredTeams(season),
+    await withdrawnTeams(season)
+  );
+  return bracketPayload(season, FIXTURE_GEOMETRY, {
+    kind: 'finals-fixture',
+    title: opts.title ?? 'Finals Fixture',
+    footnote: opts.footnote ?? null,
+    seed: (n) => {
+      const l = table[n - 1];
+      return l ? { team: l.team, pairing: l.pairingName } : null;
+    },
+  });
+}
+
+async function bracketPayload(
+  season: number,
+  g: { [K in keyof typeof FINALS_GEOMETRY]: number },
+  opts: {
+    kind: FinalsFormatPayload['kind'];
+    title: string;
+    footnote: string | null;
+    seed?: (n: number) => { team: string; pairing: string } | null;
+  }
+): Promise<FinalsFormatPayload> {
   const finals = (await getSeasonConfig(season))?.finals;
   if (!finals?.length) {
     throw new Error(`Season ${season} has no finals bracket in src/config/seasons/season-${season}.ts.`);
   }
-  const g = FINALS_GEOMETRY;
   const width = Math.floor((g.frame - (finals.length - 1) * g.gap) / finals.length);
   const layout = bracketLayout(finals, { slot: g.slot / g.unit, port: g.port / g.unit });
 
   const slot = (s: FinalsSlot): FinalsSlotPayload =>
     'seed' in s
-      ? { seed: ordinal(s.seed), kind: null, from: null }
+      ? { seed: ordinal(s.seed), kind: null, from: null, ...(opts.seed?.(s.seed) ?? {}) }
       : 'winnerOf' in s
         ? { seed: null, kind: 'winner', from: s.winnerOf }
         : { seed: null, kind: 'loser', from: s.loserOf };
 
   return {
-    kind: 'finals-format',
+    kind: opts.kind,
     eyebrow: `Finals · ${eyebrowLabel(season)}`,
-    title: opts.title ?? 'The New Finals',
+    title: opts.title,
+    footnote: opts.footnote,
     geometry: { ...g, width },
     rounds: finals.map((r) => r.name),
     span: layout.span,
     ties: layout.columns.flatMap((c) =>
       c.ties.map((t) => ({
         id: t.match.id,
+        tag: t.match.label ?? t.match.id,
         col: t.col,
         pos: t.pos,
         doubleChance: t.doubleChance,
@@ -1380,7 +1593,7 @@ export type StreakStorySlide =
   | StreakRecordSlide;
 
 const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
-const FINALS_ROUND = { QF: 'Qualifying Final', SF: 'Semi Final', F: 'Grand Final' } as const;
+const FINALS_ROUND = { WC: 'Wildcard', QF: 'Qualifying Final', SF: 'Semi Final', F: 'Grand Final' } as const;
 
 const photoUrl = (file: string) => pathToFileURL(resolve(PHOTOS_DIR, file)).href;
 
@@ -2326,5 +2539,400 @@ export async function pointsPlayedPayload(
       perMatch: r.perMatch.toFixed(1),
       featured: r === top,
     })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tie preview — one finals tie as a fight poster
+// ---------------------------------------------------------------------------
+
+export interface TiePlayerPayload {
+  name: string;
+  captain: boolean;
+  /** file:// URL, or null for no picture. */
+  photo: string | null;
+  /** A transparent PNG: drawn free-standing rather than as a faded frame. */
+  cutout: boolean;
+}
+
+export interface TieFormPayload {
+  /** "R7". */
+  label: string;
+  opponent: string;
+  won: boolean;
+}
+
+export interface TieSidePayload {
+  team: string;
+  /** "8th". */
+  seed: string;
+  /** Captain first, as the ladder prints it. */
+  pairing: string;
+  players: TiePlayerPayload[];
+  wins: number;
+  losses: number;
+  /** Games ratio, rounded for print — the ladder's own number. */
+  ratio: string;
+  /** The last few home-and-away results, oldest first. */
+  form: TieFormPayload[];
+}
+
+export interface TiePreviewPayload {
+  kind: 'tie-preview';
+  eyebrow: string;
+  title: string;
+  /** "8th v 9th". */
+  tag: string;
+  /** When it's on — "Tonight", a date. Empty prints the tag alone. */
+  subtitle: string;
+  sides: [TieSidePayload, TieSidePayload];
+  /** Their home-and-away meeting this season, winner's sets first. */
+  meeting: {
+    label: string;
+    winner: string;
+    sets: RivalrySetPayload[];
+    /** "B. Coutinho filled in for Orange" — a line-up that wasn't the pair. */
+    note: string | null;
+  } | null;
+  /** "Winner plays Yellow (1st) in QF1". */
+  stakes: string;
+  /** "Loser's season is over", or where a double chance sends them. */
+  stakesLose: string;
+}
+
+const TIE_TITLE: Record<string, string> = {
+  WC: 'Wildcard',
+  QF: 'Quarter Final',
+  SF: 'Semi Final',
+  F: 'Grand Final',
+};
+
+/**
+ * One seeded finals tie — the wildcard, or any first-round tie whose slots are
+ * both ladder positions — as a poster: both pairs pictured, their records off
+ * the final ladder, their form, the night they met in the home and away, and
+ * what's at stake. Refused while home-and-away fixtures remain (the seeds
+ * aren't settled) and for a tie fed by another tie's result (that's a result,
+ * and results belong to the result cards).
+ *
+ * `photos` is four paths, home captain first: home captain, home partner, away
+ * captain, away partner. A `.png` is taken as a cutout. Missing ones fall back
+ * to the player's own photos for the season.
+ */
+export async function tiePreviewPayload(
+  season: number,
+  tieId: string,
+  opts: { photos?: (string | undefined)[]; title?: string; subtitle?: string; formLength?: number } = {}
+): Promise<TiePreviewPayload> {
+  if (rows.some((r) => r.season === season && !r.isFinals && r.scheduled)) {
+    throw new Error(
+      `Season ${season} still has home-and-away fixtures to play — the finals seeds aren't settled yet.`
+    );
+  }
+  const finals = (await getSeasonConfig(season))?.finals ?? [];
+  const ties = finals.flatMap((r) => r.matches);
+  const tie = ties.find((m) => m.id === tieId);
+  if (!tie) {
+    throw new Error(
+      `Season ${season} has no finals tie "${tieId}" (has: ${ties.map((m) => m.id).join(', ') || 'none'}).`
+    );
+  }
+  if (!('seed' in tie.home) || !('seed' in tie.away)) {
+    throw new Error(`${tieId} is fed by another tie's result — it can't be previewed off the ladder.`);
+  }
+
+  const teamConfig = await seasonTeamConfigs(season);
+  const gone = await withdrawnTeams(season);
+  const table = ladderWithPairings(
+    season,
+    rows.filter((r) => !r.isFinals),
+    teamConfig,
+    await declaredTeams(season),
+    gone
+  );
+  const atSeed = (n: number) => {
+    const l = table[n - 1];
+    if (!l) throw new Error(`Season ${season}'s ladder has no ${ordinal(n)} for ${tieId}.`);
+    return l;
+  };
+
+  // Home-and-away results only, and none against a withdrawn team — the same
+  // matches the ladder's record is built from, so the chips add up to it.
+  const homeAway = seasonMatches(rows, season).filter(
+    (m) => isPlayedMatch(m) && !m.isFinals && !m.sides.some((s) => gone.includes(s.team))
+  );
+
+  const photo = (path: string | undefined, name: string): { photo: string | null; cutout: boolean } => {
+    if (path) return { photo: pathToFileURL(resolve(path)).href, cutout: /\.png$/i.test(path) };
+    const shot = leaderPhoto(playerSlug(name), season);
+    return { photo: shot ? photoUrl(shot.file) : null, cutout: false };
+  };
+
+  const side = (seed: number, offset: number): TieSidePayload => {
+    const l = atSeed(seed);
+    const pair =
+      teamConfig(l.team)?.pair ?? teamRoster(l.team, season, rows).core.map((c) => c.player);
+    const form = homeAway
+      .filter((m) => m.sides.some((s) => s.team === l.team))
+      .slice(-(opts.formLength ?? 5))
+      .map((m) => {
+        const other = m.sides.find((s) => s.team !== l.team)!;
+        return { label: `R${m.round}`, opponent: other.team, won: m.winner === l.team };
+      });
+    return {
+      team: l.team,
+      seed: ordinal(seed),
+      pairing: l.pairingName,
+      players: pair.slice(0, 2).map((name, i) => ({
+        name,
+        captain: i === 0,
+        ...photo(opts.photos?.[offset + i], name),
+      })),
+      wins: l.wins,
+      losses: l.losses,
+      ratio: l.ratio.toFixed(2),
+      form,
+    };
+  };
+  const home = side(tie.home.seed, 0);
+  const away = side(tie.away.seed, 2);
+
+  const met = homeAway.filter((m) =>
+    [home.team, away.team].every((t) => m.sides.some((s) => s.team === t))
+  ).at(-1);
+  let meeting: TiePreviewPayload['meeting'] = null;
+  if (met) {
+    const won = met.sides.find((s) => s.team === met.winner) ?? met.sides[0];
+    const fillIns = met.sides.flatMap((s) =>
+      s.players.filter((p) => p.isFillIn).map((p) => `${shortName(p.player)} filled in for ${s.team}`)
+    );
+    meeting = {
+      label: `Round ${met.round}`,
+      winner: won.team,
+      sets: won.setScores.map((s) => ({
+        a: s.for,
+        b: s.against,
+        tbA: s.tiebreakFor,
+        tbB: s.tiebreakAgainst,
+      })),
+      note: fillIns.length ? fillIns.join(' · ') : null,
+    };
+  }
+
+  // Where the winner goes — the tie this one feeds — and whether the loser
+  // gets a second life anywhere.
+  const next = ties.find((m) =>
+    [m.home, m.away].some((s) => 'winnerOf' in s && s.winnerOf === tieId)
+  );
+  let stakes = 'Winner goes through';
+  if (next) {
+    const waiting = [next.home, next.away].find((s) => 'seed' in s);
+    stakes =
+      waiting && 'seed' in waiting
+        ? `Winner plays ${atSeed(waiting.seed).team} (${ordinal(waiting.seed)}) in ${next.id}`
+        : `Winner goes to ${next.id}`;
+  }
+  const second = ties.find((m) =>
+    [m.home, m.away].some((s) => 'loserOf' in s && s.loserOf === tieId)
+  );
+  const stakesLose = second ? `Loser goes to ${second.id}` : 'Loser’s season is over';
+
+  return {
+    kind: 'tie-preview',
+    eyebrow: `Finals · ${eyebrowLabel(season)}`,
+    title: opts.title ?? TIE_TITLE[tieId.replace(/\d+$/, '')] ?? tie.label ?? tieId,
+    tag: `${home.seed} v ${away.seed}`,
+    subtitle: opts.subtitle ?? '',
+    sides: [home, away],
+    meeting,
+    stakes,
+    stakesLose,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Finals drought — played finals, never won one
+// ---------------------------------------------------------------------------
+
+export interface DroughtChipPayload {
+  /** "S1 QF". */
+  label: string;
+  team: string;
+  fillIn: boolean;
+  /** Played in the season the board is about — drawn with a gold edge. */
+  current: boolean;
+}
+
+export interface DroughtRowPayload {
+  /** "1", or "=1" for a shared place. */
+  rank: string;
+  player: string;
+  /** "0–4". */
+  record: string;
+  chips: DroughtChipPayload[];
+  /** "Next: QF2 v Red" for a player still in this season's finals. */
+  note: string | null;
+}
+
+export interface FinalsDroughtPayload {
+  kind: 'finals-drought';
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  /** The pictured player, out of the table. */
+  feature: DroughtRowPayload & { photo: string | null; cutout: boolean; joint: string | null };
+  rows: DroughtRowPayload[];
+  /** Only when a fill-in final is on the board. */
+  footnote: string;
+}
+
+/**
+ * Four rows for a finals tie that hasn't been entered yet, as if `winner` had
+ * won it: the line-ups are the season config's pairs, the stage the tie's id
+ * (digits stripped), and no score or stats — `finalsRecords` reads only who
+ * played and `win?`. For the post that has to be ready before the night it
+ * describes. Refused once the real result is in the CSV, so a hypothetical
+ * can never be rendered over a fact.
+ */
+async function assumedResult(season: number, tieId: string, winner: string): Promise<StatRow[]> {
+  const ties = ((await getSeasonConfig(season))?.finals ?? []).flatMap((r) => r.matches);
+  const tie = ties.find((m) => m.id === tieId);
+  if (!tie) throw new Error(`Season ${season} has no finals tie "${tieId}".`);
+  if (!('seed' in tie.home) || !('seed' in tie.away)) {
+    throw new Error(`--assume only works on a tie between two seeds; ${tieId} is fed by another tie.`);
+  }
+  const teamConfig = await seasonTeamConfigs(season);
+  const table = ladderWithPairings(
+    season,
+    rows.filter((r) => !r.isFinals),
+    teamConfig,
+    await declaredTeams(season),
+    await withdrawnTeams(season)
+  );
+  const teams = [tie.home.seed, tie.away.seed].map((n) => table[n - 1]?.team);
+  if (teams.some((t) => !t)) throw new Error(`${tieId}'s seeds aren't on the ladder yet.`);
+  if (!teams.includes(winner)) {
+    throw new Error(`--assume: ${winner} isn't in ${tieId} (${teams.join(' v ')}).`);
+  }
+  const stage = tieId.replace(/\d+$/, '');
+  if (rows.some((r) => r.season === season && r.stage === stage && teams.includes(r.team) && !r.scheduled)) {
+    throw new Error(`${tieId} is already in the CSV — drop --assume and use the real result.`);
+  }
+  const raws = teams.flatMap((team, i) => {
+    const opponent = teams[1 - i]!;
+    const pair = teamConfig(team!)?.pair ?? [];
+    if (pair.length < 2) throw new Error(`Season ${season} config has no pair for ${team}.`);
+    return pair.map((player) => ({
+      Team: team!, Opponent: opponent, Season: String(season), Round: stage,
+      Player: player, 'win?': team === winner ? 'TRUE' : 'FALSE',
+    }));
+  });
+  return normalizeRows(raws);
+}
+
+/**
+ * Everyone who has played finals and never won one, the longest wait
+ * pictured. `finalsDroughts` in stats.ts does the counting; this ranks for
+ * print (a shared place reads "=1"), pulls the pictured player out of the
+ * table, and notes who on the list is still in this season's bracket and who
+ * they play next.
+ *
+ * `assume` adds one finals result that isn't in the CSV yet — see
+ * `assumedResult` — so the board for either outcome can be made the day
+ * before. The board itself never says it was assumed: by the time it's
+ * posted, it isn't.
+ */
+export async function finalsDroughtPayload(
+  season: number,
+  opts: {
+    assume?: { tie: string; winner: string };
+    player?: string;
+    photo?: string;
+    title?: string;
+    subtitle?: string;
+  } = {}
+): Promise<FinalsDroughtPayload> {
+  const data = opts.assume
+    ? [...rows, ...(await assumedResult(season, opts.assume.tie, opts.assume.winner))]
+    : rows;
+  const droughts = finalsDroughts(data);
+  if (!droughts.length) throw new Error('Nobody has lost every final they played.');
+
+  // This season's bracket: who's seeded where, and who has already gone out.
+  const ties = ((await getSeasonConfig(season))?.finals ?? []).flatMap((r) => r.matches);
+  const teamConfig = await seasonTeamConfigs(season);
+  const gone = await withdrawnTeams(season);
+  const homeAwayDone = !data.some((r) => r.season === season && !r.isFinals && r.scheduled);
+  const table = homeAwayDone
+    ? ladderWithPairings(season, data.filter((r) => !r.isFinals), teamConfig, await declaredTeams(season), gone)
+    : [];
+  const seasonFinals = data.filter((r) => r.season === season && r.isFinals && !r.scheduled);
+  const out = new Set(seasonFinals.filter((r) => !r.win).map((r) => r.team));
+  const teamOf = (player: string) =>
+    table.find((l) => !gone.includes(l.team) && teamConfig(l.team)?.pair?.includes(player))?.team;
+  const seedTie = (team: string) => {
+    const seed = table.findIndex((l) => l.team === team) + 1;
+    const tie = ties.find((m) => [m.home, m.away].some((s) => 'seed' in s && s.seed === seed));
+    if (!tie) return null;
+    const other = [tie.home, tie.away].find((s) => !('seed' in s && s.seed === seed))!;
+    const played = seasonFinals.some((r) => r.team === team && r.stage === tie.id.replace(/\d+$/, ''));
+    const opponent =
+      'seed' in other ? table[other.seed - 1]?.team : 'winnerOf' in other ? `winner of ${other.winnerOf}` : null;
+    return { tie, opponent, played };
+  };
+  const noteFor = (player: string): string | null => {
+    const team = teamOf(player);
+    if (!team || out.has(team)) return null;
+    const next = seedTie(team);
+    if (!next) return null;
+    return next.played ? 'Still alive' : `Next: ${next.tie.id} v ${next.opponent}`;
+  };
+
+  const rankOf = (losses: number) => {
+    const first = droughts.findIndex((d) => d.losses === losses) + 1;
+    const shared = droughts.filter((d) => d.losses === losses).length > 1;
+    return `${shared ? '=' : ''}${first}`;
+  };
+  const toRow = (d: (typeof droughts)[number]): DroughtRowPayload => ({
+    rank: rankOf(d.losses),
+    player: d.player,
+    record: `0–${d.losses}`,
+    chips: d.appearances.map((a) => ({
+      label: `S${a.season} ${a.stage}`,
+      team: a.team,
+      fillIn: a.fillIn,
+      current: a.season === season,
+    })),
+    note: noteFor(d.player),
+  });
+
+  const lead = opts.player ? droughts.find((d) => d.player === opts.player) : droughts[0];
+  if (!lead) throw new Error(`${opts.player} isn't on the list — they've won a final, or never played one.`);
+  const tied = droughts.filter((d) => d !== lead && d.losses === lead.losses);
+  let photo: string | null = null;
+  let cutout = false;
+  if (opts.photo) {
+    photo = pathToFileURL(resolve(opts.photo)).href;
+    cutout = /\.png$/i.test(opts.photo);
+  } else {
+    const shot = leadPhoto(lead.slug);
+    if (shot) photo = photoUrl(shot.file);
+  }
+
+  return {
+    kind: 'finals-drought',
+    eyebrow: 'Finals · All-time',
+    title: opts.title ?? 'Still Waiting',
+    subtitle: opts.subtitle ?? '',
+    feature: {
+      ...toRow(lead),
+      photo,
+      cutout,
+      joint: tied.length ? `Joint No. 1 with ${tied.map((t) => shortName(t.player)).join(' & ')}` : null,
+    },
+    rows: droughts.filter((d) => d !== lead).map(toRow),
+    footnote: droughts.some((d) => d.appearances.some((x) => x.fillIn))
+      ? 'Dashed: played as a fill-in. A final in borrowed colours still counts.'
+      : '',
   };
 }

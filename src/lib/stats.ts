@@ -1317,6 +1317,72 @@ export function pairRecord(
 }
 
 // ---------------------------------------------------------------------------
+// Finals records — every player's finals, one line per match
+// ---------------------------------------------------------------------------
+
+export interface FinalsAppearance {
+  season: number;
+  stage: FinalsStage;
+  /** The team he played for that night — a fill-in's borrowed colours. */
+  team: string;
+  /** From `win?`, never from the scoreline. */
+  won: boolean;
+  fillIn: boolean;
+}
+
+export interface FinalsRecord {
+  player: string;
+  slug: string;
+  wins: number;
+  losses: number;
+  /** Oldest first, in playing order within a season. */
+  appearances: FinalsAppearance[];
+}
+
+/**
+ * Every player who has played a final, with his record across them. Fill-in
+ * nights count — a finals win in borrowed colours is still a finals win — and
+ * forfeits don't, the same rule `isPlayed` applies everywhere else: nobody
+ * played. Players who never reached a final aren't here at all; that's a
+ * different list from "reached them and lost".
+ */
+export function finalsRecords(rows: StatRow[]): FinalsRecord[] {
+  const by = new Map<string, FinalsRecord>();
+  const finals = rows
+    .filter((r) => isPlayed(r) && r.isFinals && !r.isSingles && r.stage)
+    .sort((a, b) => a.season - b.season || a.round - b.round);
+  for (const r of finals) {
+    const rec =
+      by.get(r.player) ??
+      by.set(r.player, { player: r.player, slug: r.slug, wins: 0, losses: 0, appearances: [] }).get(r.player)!;
+    r.win ? rec.wins++ : rec.losses++;
+    rec.appearances.push({
+      season: r.season,
+      stage: r.stage!,
+      team: r.team,
+      won: r.win,
+      fillIn: r.isFillIn,
+    });
+  }
+  return [...by.values()];
+}
+
+/**
+ * The players who have played finals and never won one — most losses first,
+ * then whoever has waited longest (earliest first final), then by name.
+ */
+export function finalsDroughts(rows: StatRow[]): FinalsRecord[] {
+  return finalsRecords(rows)
+    .filter((r) => r.wins === 0)
+    .sort(
+      (a, b) =>
+        b.losses - a.losses ||
+        a.appearances[0].season - b.appearances[0].season ||
+        a.player.localeCompare(b.player)
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Rivalries — two players on opposite sides of the net
 // ---------------------------------------------------------------------------
 
@@ -1910,4 +1976,73 @@ export function tiebreakSeasons(rows: StatRow[]): TiebreakSeason[] {
       ? sorted.findIndex((x) => x.tiebreaks === t.tiebreaks) + 1
       : i + 1,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// One player's night — the finals player slides
+// ---------------------------------------------------------------------------
+
+/** The three numbers a player slide prints, in print order. */
+export const MATCH_LINE_STATS = ['winners', 'errorsForced', 'unforcedErrors'] as const;
+export type MatchLineStat = (typeof MATCH_LINE_STATS)[number];
+
+export interface MatchLineValue {
+  /** As recorded for this match. null = not recorded, never 0. */
+  value: number | null;
+  /**
+   * Where the value sits among everyone on court with the stat recorded: the
+   * biggest number (`most`), the smallest (`fewest`), or neither. Needs at
+   * least two recorded values, and a court that's all level is neither — a
+   * "most" that everybody shares says nothing.
+   */
+  standing: 'most' | 'fewest' | null;
+  /** Shared with someone else on court. */
+  joint: boolean;
+  /**
+   * The player's home-and-away rate per set that season — own team, no
+   * fill-ins, the same window a season stat panel shows. null when unrecorded.
+   */
+  seasonPerSet: number | null;
+}
+
+export interface PlayerMatchLine {
+  player: string;
+  team: string;
+  isFillIn: boolean;
+  won: boolean;
+  stats: Record<MatchLineStat, MatchLineValue>;
+}
+
+/**
+ * Every player's line from one match, winning side first, CSV order within a
+ * side. A fixture, a forfeit and the SINGLES GAME sentinel have no lines.
+ * Standings compare match totals, so a three-set final compares like with like.
+ */
+export function matchPlayerLines(m: MatchRecord, rows: StatRow[]): PlayerMatchLine[] {
+  if (!isPlayedMatch(m) || m.isSingles) return [];
+  const sides = [...m.sides].sort((a, b) => Number(b.win) - Number(a.win));
+  const court = sides.flatMap((s) => s.players);
+
+  const standing = (stat: MatchLineStat, v: number | null) => {
+    const vals = court.map((r) => r[stat]).filter((x): x is number => x !== null);
+    if (v === null || vals.length < 2) return { standing: null, joint: false };
+    const hi = Math.max(...vals);
+    const lo = Math.min(...vals);
+    if (hi === lo) return { standing: null, joint: false };
+    const at = v === hi ? 'most' : v === lo ? 'fewest' : null;
+    return { standing: at, joint: at !== null && vals.filter((x) => x === v).length > 1 } as const;
+  };
+
+  return sides.flatMap((side) =>
+    side.players.map((r) => {
+      const agg = playerAgg(r.player, rows, { season: m.season, scope: 'regular' });
+      const stats = Object.fromEntries(
+        MATCH_LINE_STATS.map((stat) => [
+          stat,
+          { value: r[stat], ...standing(stat, r[stat]), seasonPerSet: perSet(agg, stat) },
+        ])
+      ) as Record<MatchLineStat, MatchLineValue>;
+      return { player: r.player, team: side.team, isFillIn: r.isFillIn, won: side.win, stats };
+    })
+  );
 }

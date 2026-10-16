@@ -6,6 +6,9 @@ import {
   SealedVotesError,
   draftPayload,
   finalsFormatPayload,
+  finalsFixturePayload,
+  tiePreviewPayload,
+  finalsDroughtPayload,
   ladderPayload,
   latestRound,
   nextPreviewRound,
@@ -13,6 +16,7 @@ import {
   previewPayload,
   resolveRound,
   resultCardPayloads,
+  playerSlidePayloads,
   rows,
   scoreboardPayload,
   seasonRounds,
@@ -93,6 +97,12 @@ describe('result card scorelines', () => {
     // side that prints it — nothing here inverts a score to get the other view.
     expect(line(c.sides[1].sets)).toBe('4 6^3');
     expect(c.sides[0].won).toBe(true);
+  });
+
+  it('marks a finals card, and only a finals card', async () => {
+    expect((await card(4, 'F')).finals).toBe(true);
+    expect((await card(4, 'QF')).finals).toBe(true);
+    expect((await card(4, '9')).finals).toBe(false);
   });
 
   it('renders the Season 3 grand final, 6-0 0-6 6-4', async () => {
@@ -180,15 +190,85 @@ describe('ladder payload', () => {
 
   it('builds the finals format off the season bracket', async () => {
     const p = await finalsFormatPayload(5);
-    expect(p.rounds).toHaveLength(4);
-    expect(p.ties.filter((t) => t.doubleChance).map((t) => t.id).sort()).toEqual(['QF1', 'QF2']);
-    // The wildcard plays first in week one and drops straight into EF2.
+    expect(p.rounds).toEqual(['Quarter Finals', 'Semi Finals', 'Final']);
+    expect(p.ties.some((t) => t.doubleChance)).toBe(false);
+    // The wildcard is played on quarter-final night and drops straight into QF1.
     expect(p.ties.find((t) => t.id === 'WC')!.col).toBe(0);
     expect(p.edges.filter((e) => e.stacked)).toHaveLength(1);
-    // Four rounds share the 952px frame.
+    // Three rounds share the 952px frame.
     expect(p.rounds.length * p.geometry.width + (p.rounds.length - 1) * p.geometry.gap).toBeLessThanOrEqual(952);
     // Seeds and references only: a structure post names no team.
     expect(JSON.stringify(p.ties)).not.toMatch(/Navy|Pink|Yellow|Green/);
+  });
+
+  it('fills the finals fixture off the same ladder the ladder graphic prints', async () => {
+    const p = await finalsFixturePayload(5);
+    const ladder = await ladderPayload(5, resolveRound('9'));
+    const seeded = p.ties.flatMap((t) => [t.home, t.away]).filter((s) => s.team);
+    // Every one of the nine teams, each exactly once, at its ladder position.
+    expect(seeded).toHaveLength(ladder.rows.length);
+    for (const s of seeded) {
+      const row = ladder.rows.find((r) => r.team === s.team)!;
+      expect(s.seed).toBe(`${row.rank}${['th', 'st', 'nd', 'rd'][row.rank] ?? 'th'}`);
+      expect(s.pairing).toBe(row.pairing);
+    }
+    // Results aren't the fixture's business: later rounds stay references.
+    expect(p.ties.filter((t) => t.col > 0).every((t) => !t.home.team && !t.away.team)).toBe(true);
+  });
+
+  it('previews a seeded tie off the final ladder, never recounting it', async () => {
+    const p = await tiePreviewPayload(5, 'WC');
+    const ladder = await ladderPayload(5, resolveRound('9'));
+    const [home, away] = p.sides;
+    // 8 v 9, each side's record exactly what the ladder prints.
+    for (const [side, rank] of [[home, 8], [away, 9]] as const) {
+      const row = ladder.rows.find((r) => r.rank === rank)!;
+      expect(side.team).toBe(row.team);
+      expect(`${side.wins}`).toBe(`${row.wins}`);
+      expect(side.ratio).toBe(row.ratio);
+      expect(side.players[0].captain).toBe(true);
+      // Form chips are ladder matches: a win over a withdrawn team isn't one.
+      expect(side.form.every((f) => f.opponent !== 'Black')).toBe(true);
+    }
+    expect(p.tag).toBe('8th v 9th');
+    // The wildcard feeds QF1, where 1st is waiting.
+    expect(p.stakes).toBe(`Winner plays ${ladder.rows[0].team} (1st) in QF1`);
+    expect(p.stakesLose).toMatch(/season is over/);
+  });
+
+  it('refuses a tie fed by another tie\'s result', async () => {
+    await expect(tiePreviewPayload(5, 'QF1')).rejects.toThrow(/fed by another tie/);
+    await expect(tiePreviewPayload(5, 'XX')).rejects.toThrow(/no finals tie/);
+  });
+
+  it('lists the finals-winless, and can assume a result that isn\'t in yet', async () => {
+    const real = await finalsDroughtPayload(5);
+    const everyone = [real.feature, ...real.rows];
+    // Ranked by losses, a shared place printed as one.
+    const losses = everyone.map((r) => Number(r.record.split('–')[1]));
+    expect([...losses].sort((a, b) => b - a)).toEqual(losses);
+    expect(everyone.every((r) => r.record.startsWith('0–'))).toBe(true);
+    expect(everyone.every((r) => r.chips.length === Number(r.record.split('–')[1]))).toBe(true);
+
+    // Once the real wildcard is in the CSV, assuming one is refused — and the
+    // rest of this test, which needs it unplayed, has nothing to check.
+    if (rows.some((r) => r.season === 5 && r.stage === 'WC' && !r.scheduled)) {
+      await expect(finalsDroughtPayload(5, { assume: { tie: 'WC', winner: 'Navy' } })).rejects.toThrow(/already in the CSV/);
+      return;
+    }
+    // Navy (Mumme's team) losing the wildcard puts him on 0-4 with his S5 loss
+    // lit as this season's; winning it takes him off the board altogether.
+    const lose = await finalsDroughtPayload(5, { assume: { tie: 'WC', winner: 'Orange' } });
+    const mumme = [lose.feature, ...lose.rows].find((r) => r.player === 'Will Mumme')!;
+    const before = everyone.find((r) => r.player === 'Will Mumme')!;
+    expect(mumme.chips).toHaveLength(before.chips.length + 1);
+    expect(mumme.chips.at(-1)).toMatchObject({ label: 'S5 WC', team: 'Navy', current: true });
+    expect(mumme.note).toBeNull(); // he's out
+    const win = await finalsDroughtPayload(5, { assume: { tie: 'WC', winner: 'Navy' } });
+    expect([win.feature, ...win.rows].some((r) => r.player === 'Will Mumme')).toBe(false);
+
+    await expect(finalsDroughtPayload(5, { assume: { tie: 'WC', winner: 'Red' } })).rejects.toThrow(/isn't in WC/);
+    await expect(finalsDroughtPayload(5, { assume: { tie: 'QF1', winner: 'Yellow' } })).rejects.toThrow(/two seeds/);
   });
 
   it('gives the ladder as it stood mid-season', async () => {
@@ -1070,5 +1150,39 @@ describe('points played record', () => {
   it("fronts it with the holder's latest solo shot from the record season", async () => {
     const p = await pointsPlayedPayload();
     expect(p.photo).toMatch(/season-5\/angus-forehand\.JPG$/);
+  });
+});
+
+describe('player slides', () => {
+  it('gives each player of S5 R9 White v Green a slide, winners and captains first', async () => {
+    const { slides } = await playerSlidePayloads(5, resolveRound('9'));
+    const match = slides.filter((s) => s.match === 'white-v-green');
+    expect(match.map((s) => s.player.last)).toEqual(['Kierce', 'Virgona', 'Feikema', 'Hume']);
+    expect(match.map((s) => s.slide)).toEqual([2, 3, 4, 5]);
+    // The same numbering as the result cards, so the slides file beside theirs.
+    const cards = await resultCardPayloads(5, resolveRound('9'));
+    expect(match[0].matchIndex).toBe(cards.findIndex((c) => c.slug === 'white-v-green') + 1);
+    expect(match[0].finals).toBe(false);
+
+    const [w, ef, ue] = match[0].stats;
+    expect(w).toMatchObject({ label: 'Winners', value: '12', tag: 'Most on court', tone: 'good' });
+    expect(ef).toMatchObject({ value: '0', tag: null, tone: null });
+    expect(ef.context).toMatch(/^Season rate \d+\.\d$/);
+    expect(ue).toMatchObject({ value: '7', tag: 'Fewest on court', tone: 'good' });
+    // Leading the errors is tagged too, in red.
+    expect(match[2].stats[2]).toMatchObject({ value: '10', tag: 'Joint most', tone: 'bad' });
+  });
+
+  it('leaves out a final with no player stats and names it', async () => {
+    const { slides, unrecorded } = await playerSlidePayloads(4, resolveRound('F'));
+    expect(slides).toEqual([]);
+    expect(unrecorded).toEqual(['pink-v-white']);
+  });
+
+  it('marks a finals slide and says "a set" when the match ran past one', async () => {
+    const { slides } = await playerSlidePayloads(1, resolveRound('SF'));
+    const seamer = slides.find((s) => s.player.last === 'Seamer')!;
+    expect(seamer.finals).toBe(true);
+    expect(seamer.stats[0].context).toMatch(/a set$/);
   });
 });

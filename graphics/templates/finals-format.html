@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>TNT — Finals Format (Broadsheet)</title>
+<title>TNT — Finals Format / Fixture (Broadsheet)</title>
 <link rel="stylesheet" href="./_tokens.css">
 <link rel="stylesheet" href="./_fonts.css">
 <link rel="stylesheet" href="./_assets.css">
 <link rel="stylesheet" href="./_base.css">
 <link rel="stylesheet" href="./_theme.css">
 <style>
-  /* The season's finals bracket as a structure, not a fixture: seeds and
-     "winner of / loser of" slots, the same layout the season page draws
-     (src/lib/bracket.ts). Rounds run left to right; solid lines carry winners,
-     dashed ones carry a qualifying-final loser into its semi. A tie feeding
-     one in its own round (the wildcard) stacks under it, joined straight down. */
+  /* The season's finals bracket, the same layout the season page draws
+     (src/lib/bracket.ts). Two posts share it: the format (seeds and "winner
+     of / loser of" slots, no teams) and the fixture (each seed slot naming
+     the team that finished there). Rounds run left to right; solid lines
+     carry winners, dashed ones carry a qualifying-final loser into its semi.
+     A tie feeding one in its own round (the wildcard) stacks under it, joined
+     straight down. */
   header { flex: none; }
   .headline { font-size: 76px; margin-top: 14px; }
   .rule-gold {
@@ -58,7 +60,7 @@
   .tie.double .tag { color: var(--gold); }
   /* Fixed row height: the lines land on these rows (`slot` in the payload). */
   .row {
-    height: 52px; padding: 0 14px;
+    height: var(--row, 52px); padding: 0 14px;
     display: flex; flex-direction: column; justify-content: center;
   }
   .row + .row { border-top: 1px solid var(--rule); }
@@ -70,6 +72,23 @@
   }
   .kind.loser { color: var(--loser); }
   .from { font-size: 27px; font-weight: 600; line-height: 1.05; margin-top: 3px; }
+
+  /* The fixture's team row: colour bar, then seed + colour over the pairing. */
+  .row.team { flex-direction: row; justify-content: flex-start; align-items: center; gap: 12px; }
+  .row.team .bar {
+    width: 7px; height: 40px; border-radius: 4px; flex: none;
+    background: linear-gradient(180deg, var(--team), var(--team-2));
+  }
+  .row.team .who { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .row.team .tname { font-size: 26px; font-weight: 600; line-height: 1; white-space: nowrap; }
+  .row.team .sd {
+    font-family: var(--display); font-weight: 600; font-size: 15px;
+    letter-spacing: 0.12em; color: var(--gold); margin-right: 6px;
+  }
+  .row.team .pair {
+    font-size: 18px; line-height: 1.1; color: rgba(244, 241, 232, 0.62);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
 
 
   footer {
@@ -100,7 +119,7 @@
 
   <footer>
     <div class="wordmark">Tuesday Night Tennis</div>
-    <div class="footnote key"><span></span>Winner <span class="loser"></span>Loser</div>
+    <div class="footnote key" id="key"><span></span>Winner <span class="loser"></span>Loser</div>
   </footer>
 </div>
 
@@ -144,7 +163,11 @@ const DATA = {
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-const slot = (s) => s.seed
+const slot = (s) => s.team
+  ? `<div class="row team" data-team="${esc(s.team)}"><div class="bar"></div><div class="who">
+       <div class="tname"><span class="sd">${esc(s.seed)}</span>${esc(s.team)}</div>
+       <div class="pair">${esc(s.pairing)}</div></div></div>`
+  : s.seed
   ? `<div class="row"><div class="seed">${esc(s.seed)}</div></div>`
   : `<div class="row"><div class="kind ${s.kind}">${s.kind === 'loser' ? 'Loser' : 'Winner'}</div><div class="from">${esc(s.from)}</div></div>`;
 
@@ -156,6 +179,12 @@ window.__render = function (d) {
 
   document.getElementById('eyebrow').textContent = d.eyebrow;
   document.getElementById('title').textContent = d.title;
+  document.documentElement.style.setProperty('--row', `${g.row ?? 52}px`);
+  // The winner/loser key only means something when a loser line is drawn;
+  // otherwise the footer carries the payload's footnote, or nothing.
+  const key = document.getElementById('key');
+  if (d.footnote) key.textContent = d.footnote;
+  else if (!d.edges.some((e) => e.kind === 'loser')) key.textContent = '';
 
   document.getElementById('heads').innerHTML = d.rounds
     .map((r, c) => `<div class="head" style="left:${x(c)}px;width:${g.width}px">${esc(r)}</div>`)
@@ -180,7 +209,7 @@ window.__render = function (d) {
     `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${paths}</svg>` +
     d.ties.map((t) => `
       <div class="tie${t.doubleChance ? ' double' : ''}" style="left:${x(t.col)}px;top:${(t.pos * g.unit).toFixed(1)}px;width:${g.width}px">
-        <div class="tag">${esc(t.id)}</div>
+        <div class="tag">${esc(t.tag ?? t.id)}</div>
         ${slot(t.home)}${slot(t.away)}
       </div>`).join('');
 

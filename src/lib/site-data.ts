@@ -171,6 +171,7 @@ export function defaultScheduleRound(season: number): SeasonRound | null {
 
 /** Heading for the round, e.g. "Round 7", "Qualifying Finals", "The Final". */
 const ROUND_HEADING: Record<string, string> = {
+  WC: 'Wildcard',
   QF: 'Qualifying Finals',
   SF: 'Semi Finals',
   F: 'The Final',

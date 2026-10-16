@@ -144,7 +144,9 @@ describe('points across the CSV', () => {
     const won = table.reduce((t, r) => t + r.won, 0);
     expect(table.reduce((t, r) => t + r.lost, 0)).toBe(won);
     expect(won).toBe(
-      all.filter((mp) => mp.match.season === 5).reduce((t, mp) => t + mp.total, 0)
+      all
+        .filter((mp) => mp.match.season === 5 && !mp.match.isFinals)
+        .reduce((t, mp) => t + mp.total, 0)
     );
     expect(table.map((r) => r.share)).toEqual([...table.map((r) => r.share)].sort((a, b) => b - a));
     // White 6-2 Pink in R6 is in there: 32 won, 21 lost.

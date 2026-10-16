@@ -13,12 +13,12 @@ import type { SeasonConfig } from './schema.ts';
  * 40 fixtures across the season rather than the 45 originally drawn, and the
  * round robin is done by 13 Oct — round ten (20 Oct) was dropped.
  *
- * `finals` below is the bracket *shape* only — no `result` on any match yet,
- * so seed slots resolve against the live in-progress ladder and `winnerOf` /
- * `loserOf` slots show "Winner of …" / "Loser of …" until each tie is played.
- * S5 is the first AFL-style bracket: all nine teams, a double chance for the
- * top four, and a wildcard for eighth and ninth. Add `result`
- * to a match as finals are played; `honours` gets filled at season's end.
+ * `finals` below is the bracket *shape*, with a `result` only on the wildcard
+ * so far. Seed slots resolve against the ladder and `winnerOf` slots show
+ * "Winner of …" until each tie is played. It's the usual eight-team knockout
+ * with one addition: ninth gets in through an 8 v 9 wildcard, played on
+ * Thursday 15 Oct, two days after round nine. Add `result` to a match as
+ * finals are played; `honours` gets filled at season's end.
  */
 const season5: SeasonConfig = {
   season: 5,
@@ -66,54 +66,43 @@ const season5: SeasonConfig = {
 
   honours: [],
 
-  // AFL-style, over all nine teams: everybody plays finals, and where you
-  // finish decides how many lives you get.
+  // The usual knockout — 1 v 8, 2 v 7, 3 v 6, 4 v 5, then semis and a final —
+  // except that eighth isn't in it yet: eighth and ninth play a wildcard on
+  // Thursday 15 Oct, and the winner takes 1st's QF. (Owner's call, 14 Oct
+  // 2026, replacing the AFL-style double chance drawn up on 5 Oct.)
   //
-  //   Week 1  Wildcard          8 v 9, played first on the night — loser out.
-  //           Qualifying        1 v 4, 2 v 3 — the double chance: the winners
-  //                             skip a week into the prelims, the losers drop
-  //                             into a semi.
-  //           Elimination       6 v 7, 5 v the wildcard — loser out.
-  //   Week 2  Semis             loser 1v4 v winner 6v7; loser 2v3 v winner 5vWC.
-  //   Week 3  Preliminaries     each QF winner meets the semi winner from the
-  //                             *other* side, so no QF is replayed before the GF.
-  //   Week 4  Grand Final
-  //
-  // Seeds are off the live ladder, so this fills in as S5 is played. Each
-  // tie's home/away is the order its feeders sit on the page (SF1 lists the
-  // 6v7 winner first, because that tie draws above 1v4), so no two lines cross
-  // where they arrive. The ids double as the CSV's `Round` stage once a tie
-  // is played (digits stripped: WC, QF, EF, SF, PF, GF).
+  // The wildcard is in the QF round rather than a column of its own because
+  // it's the same step of the bracket — its winner goes straight into a QF, two
+  // days later rather than the same night; `bracketLayout` stacks it under QF1, the
+  // tie its winner fills. Its id doubles as the CSV's `Round` stage once it is
+  // played, like the others (digits stripped: WC, QF, SF, F).
   finals: [
     {
-      name: 'Qualifying & Elimination',
-      // WC is played first on the night; its winner takes EF2's second slot.
-      // It draws stacked under EF2, the tie it feeds.
+      name: 'Quarter Finals',
       matches: [
-        { id: 'WC', label: 'WC · 8 v 9', home: { seed: 8 }, away: { seed: 9 } },
-        { id: 'QF1', label: 'QF1 · 1 v 4', home: { seed: 1 }, away: { seed: 4 } },
-        { id: 'QF2', label: 'QF2 · 2 v 3', home: { seed: 2 }, away: { seed: 3 } },
-        { id: 'EF1', label: 'EF1 · 6 v 7', home: { seed: 6 }, away: { seed: 7 } },
-        { id: 'EF2', label: 'EF2 · 5 v WC', home: { seed: 5 }, away: { winnerOf: 'WC' } },
+        { id: 'QF1', label: 'QF1 · 1 v WC', home: { seed: 1 }, away: { winnerOf: 'WC' } },
+        {
+          id: 'WC',
+          label: 'WC · Wildcard 8 v 9',
+          home: { seed: 8 }, // Orange
+          away: { seed: 9 }, // Navy
+          result: { winner: 'home', homeScore: ['6'], awayScore: ['3'] },
+        },
+        { id: 'QF2', label: 'QF2 · 2 v 7', home: { seed: 2 }, away: { seed: 7 } },
+        { id: 'QF3', label: 'QF3 · 3 v 6', home: { seed: 3 }, away: { seed: 6 } },
+        { id: 'QF4', label: 'QF4 · 4 v 5', home: { seed: 4 }, away: { seed: 5 } },
       ],
     },
     {
       name: 'Semi Finals',
       matches: [
-        { id: 'SF1', label: 'SF1', home: { winnerOf: 'EF1' }, away: { loserOf: 'QF1' } },
-        { id: 'SF2', label: 'SF2', home: { loserOf: 'QF2' }, away: { winnerOf: 'EF2' } },
+        { id: 'SF1', label: 'SF1', home: { winnerOf: 'QF1' }, away: { winnerOf: 'QF4' } },
+        { id: 'SF2', label: 'SF2', home: { winnerOf: 'QF2' }, away: { winnerOf: 'QF3' } },
       ],
     },
     {
-      name: 'Preliminary Finals',
-      matches: [
-        { id: 'PF1', label: 'PF1', home: { winnerOf: 'SF1' }, away: { winnerOf: 'QF2' } },
-        { id: 'PF2', label: 'PF2', home: { winnerOf: 'QF1' }, away: { winnerOf: 'SF2' } },
-      ],
-    },
-    {
-      name: 'Grand Final',
-      matches: [{ id: 'GF', label: 'GF', home: { winnerOf: 'PF1' }, away: { winnerOf: 'PF2' } }],
+      name: 'Final',
+      matches: [{ id: 'F', label: 'Grand Final', home: { winnerOf: 'SF1' }, away: { winnerOf: 'SF2' } }],
     },
   ],
 };

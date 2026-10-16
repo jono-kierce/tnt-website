@@ -61,7 +61,9 @@ const heading = match.isFinals
     ? 'The Final'
     : match.roundLabel === 'SF'
       ? 'Semi Final'
-      : 'Qualifying Final'
+      : match.roundLabel === 'WC'
+        ? 'Wildcard'
+        : 'Qualifying Final'
   : `Round ${match.roundLabel}`;
 
 const title = `${match.sides[0].team} v ${match.sides[1].team} — ${heading}`;

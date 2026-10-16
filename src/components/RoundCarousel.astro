@@ -42,6 +42,7 @@ const heading = (r: SeasonRound) =>
   r.stage === 'F' ? 'The Final'
   : r.stage === 'SF' ? 'Semi Finals'
   : r.stage === 'QF' ? 'Qualifying Finals'
+  : r.stage === 'WC' ? 'Wildcard'
   : `Round ${r.roundLabel}`;
 
 /** Short label for the round strip — the whole season has to fit across it. */
