@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Finals tie: screen print</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  /* Screen print on paper — the one light tie poster. Each pair stands on a
+     block of its colour, breaking out of the top of it; the blocks step down
+     the page on a diagonal, home first. Same payload as tie-preview.html.
+     Cutouts are placed by head and height (see "Cutouts" in
+     graphics/README.md). */
+
+  :root {
+    --paper-bg: #efe7d5;
+    --print-ink: #102017;
+    --print-gold: #a8823a;
+    --grain: 0.16;
+    --grain-blend: multiply;
+  }
+  body { background: var(--paper-bg); }
+  .canvas {
+    background:
+      radial-gradient(ellipse 90% 70% at 50% 40%, #f6f0e2, var(--paper-bg) 70%, #e2d8c2 100%);
+    color: var(--print-ink);
+  }
+
+  /* ---- Blocks ---- */
+  .block { position: absolute; z-index: 1; background: var(--team); }
+  .block::before {
+    /* halftone, heavier toward one corner */
+    content: ''; position: absolute; inset: 0;
+    background-image: radial-gradient(circle, rgba(0, 0, 0, 0.22) 1.7px, transparent 2.3px);
+    background-size: 10px 10px;
+    mask-image: linear-gradient(var(--tone), transparent 10%, #000 100%);
+  }
+  .block::after {
+    /* the misregistered second pass */
+    content: ''; position: absolute; inset: 0; transform: translate(9px, 9px);
+    border: 3px solid var(--print-ink); z-index: -1;
+  }
+  .block.home { left: 64px; top: 352px; width: 540px; height: 372px; --tone: 160deg; }
+  .block.away { right: 64px; top: 772px; width: 540px; height: 372px; --tone: 200deg; }
+
+  /* The figures sit in a box the size of their block, cut at its foot and
+     free to break out of its top. */
+  .figs { position: absolute; z-index: 2; clip-path: inset(-600px -200px 0 -200px); }
+  .figs.home { left: 64px; top: 352px; width: 540px; height: 372px; }
+  .figs.away { right: 64px; top: 772px; width: 540px; height: 372px; }
+  .fig { position: absolute; bottom: -10px; transform: translateX(-50%); }
+  .fig img { display: block; height: 100%; width: auto; }
+  .fig.cap { z-index: 2; filter: drop-shadow(9px 9px 0 rgba(16, 32, 23, 0.88)); }
+  .fig.mate { z-index: 1; filter: saturate(0.8) contrast(0.95) drop-shadow(7px 7px 0 rgba(16, 32, 23, 0.55)); }
+  .fig.framed { filter: none; }
+  .fig.framed img { aspect-ratio: 3 / 4; object-fit: cover;
+    mask-image: linear-gradient(#000 70%, transparent); }
+  /* x is the head within the block, h the height: the partner to the
+     outside, so a captain's raised racket can't cross his face. */
+  .fig.cap  { left: 66%; height: 520px; }
+  .fig.mate { left: 27%; height: 452px; bottom: 0; }
+
+  /* ---- Type ---- */
+  .canvas > header { position: relative; z-index: 5; flex: none; }
+  .eyebrow { color: var(--print-gold); font-size: 22px; margin-top: -58px; }
+  .headline {
+    margin-top: 10px; font-family: var(--body); font-weight: 700; font-size: 124px;
+    line-height: 0.8; letter-spacing: -0.005em; text-transform: uppercase; color: var(--print-ink);
+    white-space: nowrap;
+  }
+  .headline em { font-style: normal; color: var(--print-gold); }
+  .when { margin-top: 14px; font-weight: 700; font-size: 32px; letter-spacing: 0.2em; text-transform: uppercase; }
+  .when .dot { color: var(--print-gold); margin: 0 0.3em; }
+
+  .label { position: absolute; z-index: 5; width: 380px; }
+  .label.home { left: 636px; top: 380px; }
+  .label.away { left: 64px; top: 772px; }
+  .seed { font-weight: 700; font-size: 30px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--print-gold); }
+  .seed sup { font-size: 0.6em; vertical-align: top; letter-spacing: 0.08em; }
+  .team {
+    margin-top: 6px; font-weight: 700; font-size: 96px; line-height: 0.84;
+    text-transform: uppercase; letter-spacing: -0.005em;
+  }
+  .team::after {
+    content: ''; display: block; width: 72px; height: 10px; margin-top: 16px; background: var(--team);
+    box-shadow: 4px 4px 0 var(--print-ink);
+  }
+  .wl { margin-top: 14px; font-weight: 700; font-size: 58px; line-height: 1; }
+  .wl span { font-size: 22px; letter-spacing: 0.22em; margin-left: 10px; color: var(--print-gold); vertical-align: 0.5em; }
+  .players { margin-top: 10px; font-size: 25px; font-weight: 600; letter-spacing: 0.06em; line-height: 1.22;
+    text-transform: uppercase; color: rgba(16, 32, 23, 0.82); }
+
+  .vs {
+    position: absolute; z-index: 6; left: 540px; top: 748px; transform: translate(-50%, -50%) rotate(-8deg);
+    width: 116px; height: 116px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--print-ink); color: var(--paper-bg);
+    font-family: var(--display); font-weight: 700; font-size: 50px; letter-spacing: 0.02em;
+    box-shadow: 6px 6px 0 var(--print-gold);
+  }
+
+  .canvas > .met {
+    position: relative; z-index: 5; margin-top: auto; flex: none;
+    display: flex; align-items: baseline; gap: 18px; padding-top: 14px;
+    border-top: 3px solid var(--print-ink);
+    font-weight: 700; text-transform: uppercase;
+  }
+  .met .k { font-size: 24px; letter-spacing: 0.22em; color: var(--print-gold); }
+  .met .v { font-size: 40px; letter-spacing: 0.06em; }
+  .met .tb { color: var(--print-gold); }
+
+  .canvas > footer {
+    position: relative; z-index: 5; flex: none; margin-bottom: -96px; padding-top: 30px;
+    display: flex; justify-content: center; align-items: center; gap: 18px;
+  }
+  footer .mark { width: 46px; color: var(--print-ink); }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--print-ink); white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="canvas grain" id="canvas">
+  <div class="block home" id="blockHome"></div>
+  <div class="block away" id="blockAway"></div>
+  <div class="figs home" id="figsHome"></div>
+  <div class="figs away" id="figsAway"></div>
+  <div class="label home" id="labelHome"></div>
+  <div class="label away" id="labelAway"></div>
+  <div class="vs">v</div>
+
+  <header>
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 class="headline" id="title"></h1>
+    <div class="when" id="when"></div>
+  </header>
+
+  <div class="met" id="met"></div>
+
+  <footer>
+    <div class="mark mark--crest"></div>
+    <div class="wordmark">Tuesday Night Tennis</div>
+  </footer>
+</div>
+
+<script type="module">
+const DATA = {
+  kind: 'tie-preview', tie: 'QF3',
+  eyebrow: 'Finals · Season 5 · 2026', title: 'Quarter Final', tag: '3rd v 6th',
+  subtitle: '', date: 'Tue 20 Oct', time: '7:10pm',
+  sides: [
+    { team: 'Brown', seed: '3rd', pairing: 'A. Dickson & T. Angel',
+      players: [
+        { name: 'Adam Dickson', captain: true, photo: '../cutouts/s5/adam-dickson.png', cutout: true },
+        { name: 'Ted Angel', captain: false, photo: '../cutouts/s5/ted-angel.png', cutout: true },
+      ],
+      wins: 5, losses: 3, ratio: '1.23', form: [] },
+    { team: 'Light Blue', seed: '6th', pairing: 'S. Inlander & E. Seamer',
+      players: [
+        { name: 'Shayl Inlander', captain: true, photo: '../cutouts/s5/shayl-inlander.png', cutout: true },
+        { name: 'Ethan Seamer', captain: false, photo: '../cutouts/s5/ethan-seamer.png', cutout: true },
+      ],
+      wins: 3, losses: 5, ratio: '0.92', form: [] },
+  ],
+  meeting: { label: 'Round 3', winner: 'Brown', sets: [{ a: 6, b: 5, tbA: null, tbB: 5 }], note: null },
+  stakes: '', stakesLose: '',
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const tb = (n) => (n === null || n === undefined ? '' : `<span class="tb">${n}</span>`);
+const setText = (s) => `${s.a}${tb(s.tbA)}–${s.b}${tb(s.tbB)}`;
+const number = (tie) => /\d+$/.exec(tie ?? '')?.[0] ?? '';
+const seed = (s) => {
+  const [, n, suf] = /^(\d+)(\D*)$/.exec(s) ?? [, s, ''];
+  return `${esc(n)}<sup>${esc(suf)}</sup> seed`;
+};
+
+/** Shrink until the block fits its box, down to a floor. */
+function fit(el, max, min, width) {
+  for (let size = max; size >= min; size -= 2) {
+    el.style.fontSize = `${size}px`;
+    const words = [...el.querySelectorAll('span')];
+    if (words.every((w) => w.getBoundingClientRect().width <= width)) return;
+  }
+}
+
+window.__render = function (d) {
+  const [home, away] = d.sides;
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  const n = number(d.tie);
+  document.getElementById('title').innerHTML = `${esc(d.title)}${n ? ` <em>${esc(n)}</em>` : ''}`;
+  document.getElementById('when').innerHTML =
+    [d.subtitle || d.date, d.time].filter(Boolean).map(esc).join('<span class="dot">·</span>');
+
+  for (const [where, s] of [['Home', home], ['Away', away]]) {
+    document.getElementById(`block${where}`).dataset.team = s.team;
+    const [cap, mate] = s.players;
+    document.getElementById(`figs${where}`).innerHTML = [['mate', mate], ['cap', cap]]
+      .filter(([, p]) => p?.photo)
+      .map(([role, p]) => `<div class="fig ${role}${p.cutout ? '' : ' framed'}"><img src="${esc(p.photo)}" alt=""></div>`)
+      .join('');
+    const label = document.getElementById(`label${where}`);
+    label.dataset.team = s.team;
+    // One word a line, so "Light Blue" stacks rather than shrinking to nothing.
+    label.innerHTML = `<div class="seed">${seed(s.seed)}</div>
+      <div class="team">${s.team.split(' ').map((w) => `<span>${esc(w)}</span>`).join('<br>')}</div>
+      <div class="wl">${s.wins}–${s.losses}<span>W–L</span></div>
+      <div class="players">${s.players.map((p) => esc(p.name)).join('<br>')}</div>`;
+    fit(label.querySelector('.team'), 96, 64, 380);
+  }
+
+  const m = d.meeting;
+  document.getElementById('met').innerHTML = m
+    ? `<span class="k">Last met</span><span class="v">${esc(m.label)} · ${esc(m.winner)} ${m.sets.map(setText).join(' ')}</span>`
+    : `<span class="k">Last met</span><span class="v">Never</span>`;
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

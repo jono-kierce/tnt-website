@@ -129,7 +129,10 @@ teams in the seed slots — refused while home-and-away fixtures remain, later
 rounds left as "Winner of", since winners are results), **tiepreview** (one seeded
 finals tie as a fight poster — `--tie WC`, four `--photos`, home captain
 first; records and form off the final ladder, the stakes off the bracket
-config; drawn best from player cutouts in `graphics/cutouts/`), **drought**
+config; drawn best from player cutouts in `graphics/cutouts/`; `--look
+tape|split|print|cards` draws the same payload four other ways, one per tie
+on a night with several, and a slot fed by a tie already in the CSV — QF1
+after the wildcard — fills off its `win?`), **drought**
 (played finals, never won one — `finalsDroughts` in `stats.ts`; `--assume
 WC:Navy` adds a not-yet-entered finals result so both outcomes can be made the
 day before, refused once the real one is in the CSV) and **mvpsim** (the MVP race as a Monte Carlo projection — the one family

@@ -45,6 +45,7 @@ CSV — which is exactly the round you just added. PNGs land in `graphics/out/`
 | `--round <r>` | A round number, or `WC` / `QF` / `SF` / `F`. Default: the season's latest — except for `preview`, see below. |
 | `--only <list>` | `ladder`, `results`, `scoreboard`, `boards`, `leaders`, `draft`, `preview`, `streaks`, `streakstory`, `headline`, `predictions`, `pair`, `rivalry`, `mvpsim`, `pointsladder`, `pairsplit`, `longest`, `tiebreaks`, `pointsplayed`, `finals`, `finalsfixture`, `tiepreview`, `drought`, `players` — comma-separated. Default `ladder,results,scoreboard,boards`; the rest are once-off posts, so they only render on request. |
 | `--tie <id>` | The finals tie for `--only tiepreview`, by its id in the season config (`WC`, `QF2`…). Default `WC`. |
+| `--look <name>` | Which tie poster: `poster` (default), `tape`, `split`, `print` or `cards` — see Tie preview. |
 | `--pair <a,b>` | The two players for `--only pair` (team-mates) or `--only rivalry` (head to head), comma-separated. |
 | `--sim <path>` | The MVP projection summary CSV, for `--only mvpsim`. Required — there is no default, because the file lives outside this repo. |
 | `--runs <n>` | How many runs that projection was over, for the subtitle. Omitted, it reads "Simulated". |
@@ -146,6 +147,10 @@ graphics/
     longest-matches.html
     finals-format.html  the bracket: format (--only finals) and fixture (--only finalsfixture)
     tie-preview.html    one seeded finals tie as a fight poster (--only tiepreview)
+    tie-tape.html       the same tie, tale of the tape (--look tape)
+    tie-split.html      the same tie, a half each (--look split)
+    tie-print.html      the same tie, screen print on paper (--look print)
+    tie-cards.html      the same tie, two trading cards (--look cards)
     finals-drought.html played finals, never won one (--only drought)
   cutouts/             transparent player PNGs for the posters, by season (see Cutouts)
     fonts/             vendored .woff2 (committed)
@@ -463,8 +468,16 @@ node graphics/render.mjs --only tiepreview --tie WC \
 - **What's at stake comes from the bracket config**: the tie this one's winner
   feeds, and whoever is already seeded into it; "Loser's season is over"
   unless some tie takes the loser.
-- **Refused** while home-and-away fixtures remain, and for any tie fed by
-  another tie's result (SF, F, QF1 after a wildcard) — that's a result.
+- **A slot fed by another tie** (QF1 after a wildcard, a semi) is filled once
+  that tie is in the CSV, off its `win?` — never the bracket config's own
+  `result`. Until then it's **refused**, as is everything while home-and-away
+  fixtures remain. A slot still waiting on two teams reads as both ("Winner
+  plays White or Pink in SF1").
+- **When it's on is the fixture's `Start`** (`date`, `time` in the payload),
+  so a drawn-but-unplayed finals row with a time is all it needs. `--subhead`
+  ("Tonight") replaces the date.
+- **Form includes forfeits**, flagged: the ladder counts them, so the chips
+  still add up to the record. `cards` draws a forfeit chip hollow.
 - **No prediction**, like the weekly preview: posted the day before, a
   percentage reads as a tip.
 - **Photos are four, home captain first**: home captain, home partner, away
@@ -474,6 +487,34 @@ node graphics/render.mjs --only tiepreview --tie WC \
 - Navy's own colour is invisible as a light on this canvas, so the washes and
   rim light use `--team-glow` — generated in `_tokens.css`, the team colour with
   its HSL lightness lifted until it reads. A light team keeps its colour as is.
+
+**Four more looks, same payload** (`--look`), for a night with several ties —
+a carousel of four identical posters reads as one post four times. Each prints
+less than the diagonal poster, on purpose: the photos carry it, and a line of
+small grey context under every number is what makes a poster feel busy.
+
+| Look | What's on it |
+|---|---|
+| `tape` | Pairs down each side, a frosted spine of seed / record / ratio / their home-and-away games between them. |
+| `split` | Home's colour fills the top half, away's the bottom, a gold band across the seam with the tie and the time. Seed, record, names. |
+| `print` | Paper, not ink: each pair breaking out of a halftone block of its colour, the blocks stepping down the page. Seed, record, names, and the one line "Last met". |
+| `cards` | Two trading cards with the seed on a badge and record, names and form on the name plate; the time underneath. |
+
+```bash
+C=graphics/cutouts/s5
+node graphics/render.mjs --only tiepreview --tie QF1 --look tape \
+  --photos "$C/luke-sharrock.png,$C/jack-raines.png,$C/jimmy-gorton-2.png,$C/lachy-godden-2.png"
+node graphics/render.mjs --only tiepreview --tie QF2 --look split \
+  --photos "$C/lachlan-jenkin.png,$C/jamie-harris.png,$C/quinn-feikema.png,$C/angus-hume.png"
+node graphics/render.mjs --only tiepreview --tie QF3 --look print \
+  --photos "$C/adam-dickson.png,$C/ted-angel.png,$C/shayl-inlander.png,$C/ethan-seamer.png"
+node graphics/render.mjs --only tiepreview --tie QF4 --look cards \
+  --photos "$C/jonathan-kierce.png,$C/jackson-virgona.png,$C/charlie-simpson.png,$C/damon-maurice.png"
+```
+
+Files are `s5-qf2-preview-split.png`; the default look keeps its old name.
+`print` puts the partner on the outside of each block, so a captain's raised
+racket can't cross his face — pick that captain's frame with it in mind.
 
 ### Finals drought — `finals-drought.html`
 
@@ -522,8 +563,16 @@ else, so a cutout has to follow two conventions:
    head sits at the PNG's horizontal centre. A racket or a raised fist then
    hangs off one side without dragging the player off his mark.
 
-Named by slug under the season: `cutouts/s5/jimmy-gorton.png`. ~1600px tall is
-plenty (a captain is drawn 720px tall at 2×).
+3. **Face at about an eighth of the height.** A frame the net or the edge cut
+   at the waist reads bigger than a knee crop in the same box, so pad it with
+   transparency below and fade its cut edge until the face box is ~12.5% of
+   the PNG's height. A knee crop is already there.
+
+Named by slug under the season: `cutouts/s5/jimmy-gorton.png`; a second frame
+of the same player is `-2` (`jimmy-gorton-2.png`), so an earlier poster still
+re-renders as posted. ~1600px tall is plenty (a captain is drawn 720px tall at
+2×). macOS Vision finds the face box for you — `VNDetectFaceRectanglesRequest`,
+the same framework as `cutout.m`.
 
 ### Points ladder — `points-ladder.html`
 

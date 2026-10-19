@@ -2560,6 +2560,8 @@ export interface TieFormPayload {
   label: string;
   opponent: string;
   won: boolean;
+  /** Awarded, not played — still a result on the ladder, so still a chip. */
+  forfeit: boolean;
 }
 
 export interface TieSidePayload {
@@ -2579,12 +2581,17 @@ export interface TieSidePayload {
 
 export interface TiePreviewPayload {
   kind: 'tie-preview';
+  /** The tie's id in the season config — "QF2". */
+  tie: string;
   eyebrow: string;
   title: string;
   /** "8th v 9th". */
   tag: string;
   /** When it's on — "Tonight", a date. Empty prints the tag alone. */
   subtitle: string;
+  /** The fixture's `Start`, as the sign at the courts reads it. Null if not drawn with one. */
+  date: string | null;
+  time: string | null;
   sides: [TieSidePayload, TieSidePayload];
   /** Their home-and-away meeting this season, winner's sets first. */
   meeting: {
@@ -2608,12 +2615,12 @@ const TIE_TITLE: Record<string, string> = {
 };
 
 /**
- * One seeded finals tie — the wildcard, or any first-round tie whose slots are
- * both ladder positions — as a poster: both pairs pictured, their records off
- * the final ladder, their form, the night they met in the home and away, and
- * what's at stake. Refused while home-and-away fixtures remain (the seeds
- * aren't settled) and for a tie fed by another tie's result (that's a result,
- * and results belong to the result cards).
+ * One finals tie as a poster: both pairs pictured, their records off the final
+ * ladder, their form, the night they met in the home and away, and what's at
+ * stake. A slot is a ladder position, or the winner (or loser) of a tie whose
+ * result is already in the CSV — QF1 once the wildcard is played. Refused
+ * while home-and-away fixtures remain (the seeds aren't settled) and for a tie
+ * fed by a result still to come.
  *
  * `photos` is four paths, home captain first: home captain, home partner, away
  * captain, away partner. A `.png` is taken as a cutout. Missing ones fall back
@@ -2637,10 +2644,6 @@ export async function tiePreviewPayload(
       `Season ${season} has no finals tie "${tieId}" (has: ${ties.map((m) => m.id).join(', ') || 'none'}).`
     );
   }
-  if (!('seed' in tie.home) || !('seed' in tie.away)) {
-    throw new Error(`${tieId} is fed by another tie's result — it can't be previewed off the ladder.`);
-  }
-
   const teamConfig = await seasonTeamConfigs(season);
   const gone = await withdrawnTeams(season);
   const table = ladderWithPairings(
@@ -2656,11 +2659,38 @@ export async function tiePreviewPayload(
     return l;
   };
 
-  // Home-and-away results only, and none against a withdrawn team — the same
-  // matches the ladder's record is built from, so the chips add up to it.
-  const homeAway = seasonMatches(rows, season).filter(
-    (m) => isPlayedMatch(m) && !m.isFinals && !m.sides.some((s) => gone.includes(s.team))
+  // Home-and-away results, forfeits in and none against a withdrawn team — the
+  // same matches the ladder's record is built from, so the chips add up to it.
+  // A meeting has to have been played, so that one leaves the forfeits out.
+  const matches = seasonMatches(rows, season);
+  const results = matches.filter(
+    (m) => !m.scheduled && !m.isFinals && !m.sides.some((s) => gone.includes(s.team))
   );
+  const homeAway = results.filter(isPlayedMatch);
+  // A tie's match in the CSV, played or only drawn: its stage is the id with
+  // the number stripped (QF2 -> QF), its teams whoever the slots resolve to.
+  const tieMatch = (t: (typeof ties)[number], teams: string[]) =>
+    matches.find(
+      (m) =>
+        m.isFinals &&
+        m.stage === t.id.replace(/\d+$/, '') &&
+        teams.every((team) => m.sides.some((s) => s.team === team))
+    );
+  // The ladder position a slot resolves to: a seed as drawn, or whoever came
+  // out of an earlier tie — off its `win?`, never the bracket's own `result`.
+  const seedOf = (slot: FinalsSlot): number => {
+    if ('seed' in slot) return slot.seed;
+    const fromId = 'winnerOf' in slot ? slot.winnerOf : slot.loserOf;
+    const from = ties.find((m) => m.id === fromId);
+    if (!from) throw new Error(`${tieId} is fed by "${fromId}", which isn't in the bracket.`);
+    const pair = [seedOf(from.home), seedOf(from.away)];
+    const winner = tieMatch(from, pair.map((n) => atSeed(n).team))?.winner;
+    if (!winner) {
+      throw new Error(`${tieId} is fed by another tie's result (${fromId}) that isn't in the CSV yet.`);
+    }
+    const won = pair.find((n) => atSeed(n).team === winner)!;
+    return 'winnerOf' in slot ? won : pair.find((n) => n !== won)!;
+  };
 
   const photo = (path: string | undefined, name: string): { photo: string | null; cutout: boolean } => {
     if (path) return { photo: pathToFileURL(resolve(path)).href, cutout: /\.png$/i.test(path) };
@@ -2672,12 +2702,12 @@ export async function tiePreviewPayload(
     const l = atSeed(seed);
     const pair =
       teamConfig(l.team)?.pair ?? teamRoster(l.team, season, rows).core.map((c) => c.player);
-    const form = homeAway
+    const form = results
       .filter((m) => m.sides.some((s) => s.team === l.team))
       .slice(-(opts.formLength ?? 5))
       .map((m) => {
         const other = m.sides.find((s) => s.team !== l.team)!;
-        return { label: `R${m.round}`, opponent: other.team, won: m.winner === l.team };
+        return { label: `R${m.round}`, opponent: other.team, won: m.winner === l.team, forfeit: m.forfeit };
       });
     return {
       team: l.team,
@@ -2694,8 +2724,9 @@ export async function tiePreviewPayload(
       form,
     };
   };
-  const home = side(tie.home.seed, 0);
-  const away = side(tie.away.seed, 2);
+  const home = side(seedOf(tie.home), 0);
+  const away = side(seedOf(tie.away), 2);
+  const start = tieMatch(tie, [home.team, away.team])?.start ?? null;
 
   const met = homeAway.filter((m) =>
     [home.team, away.team].every((t) => m.sides.some((s) => s.team === t))
@@ -2726,11 +2757,21 @@ export async function tiePreviewPayload(
   );
   let stakes = 'Winner goes through';
   if (next) {
-    const waiting = [next.home, next.away].find((s) => 'seed' in s);
+    const waiting = [next.home, next.away].find((s) => !('winnerOf' in s && s.winnerOf === tieId))!;
+    // Whoever is already waiting there, or the two who could be.
+    const feeder = 'winnerOf' in waiting ? ties.find((m) => m.id === waiting.winnerOf) : undefined;
+    let could: string[] | null = null;
+    try {
+      could = feeder ? [seedOf(feeder.home), seedOf(feeder.away)].map((n) => atSeed(n).team) : null;
+    } catch {
+      // fed in turn by a result still to come — say no more than where it goes
+    }
     stakes =
-      waiting && 'seed' in waiting
+      'seed' in waiting
         ? `Winner plays ${atSeed(waiting.seed).team} (${ordinal(waiting.seed)}) in ${next.id}`
-        : `Winner goes to ${next.id}`;
+        : could
+          ? `Winner plays ${could.join(' or ')} in ${next.id}`
+          : `Winner goes to ${next.id}`;
   }
   const second = ties.find((m) =>
     [m.home, m.away].some((s) => 'loserOf' in s && s.loserOf === tieId)
@@ -2739,10 +2780,13 @@ export async function tiePreviewPayload(
 
   return {
     kind: 'tie-preview',
+    tie: tieId,
     eyebrow: `Finals · ${eyebrowLabel(season)}`,
     title: opts.title ?? TIE_TITLE[tieId.replace(/\d+$/, '')] ?? tie.label ?? tieId,
     tag: `${home.seed} v ${away.seed}`,
     subtitle: opts.subtitle ?? '',
+    date: formatDate(start),
+    time: formatTime(start),
     sides: [home, away],
     meeting,
     stakes,

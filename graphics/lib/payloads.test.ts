@@ -34,6 +34,7 @@ import {
   leaderPhoto,
 } from './payloads.ts';
 import { ANALYSTS } from './predictions.ts';
+import { formatTime } from '../../src/lib/datetime.ts';
 import { leaderBoards } from './boards.ts';
 import {
   isPlayedMatch,
@@ -236,8 +237,25 @@ describe('ladder payload', () => {
     expect(p.stakesLose).toMatch(/season is over/);
   });
 
-  it('refuses a tie fed by another tie\'s result', async () => {
-    await expect(tiePreviewPayload(5, 'QF1')).rejects.toThrow(/fed by another tie/);
+  it('fills a slot from a tie already in the CSV, off its win?', async () => {
+    const p = await tiePreviewPayload(5, 'QF1');
+    const ladder = await ladderPayload(5, resolveRound('9'));
+    const wc = rows.filter((r) => r.season === 5 && r.stage === 'WC' && !r.scheduled);
+    expect(p.sides.map((s) => s.team)).toEqual([ladder.rows[0].team, wc.find((r) => r.win)!.team]);
+    expect(p.tag).toBe('1st v 8th');
+    // When it's on is the fixture's own Start, not anything typed in.
+    const start = rows.find((r) => r.season === 5 && r.stage === 'QF' && r.team === p.sides[0].team)?.start;
+    expect(p.time).toBe(formatTime(start));
+    // SF1's other slot is QF4's winner: two teams who could be waiting.
+    expect(p.stakes).toMatch(/^Winner plays \S.* or \S.* in SF1$/);
+    // A forfeit is a result on the ladder, so it's a chip — flagged as one.
+    const chips = p.sides.flatMap((s) => s.form);
+    expect(chips.some((f) => f.forfeit)).toBe(true);
+  });
+
+  it('refuses a tie fed by a result still to come', async () => {
+    const played = (stage: string) => rows.some((r) => r.season === 5 && r.stage === stage && !r.scheduled);
+    if (!played('SF')) await expect(tiePreviewPayload(5, 'F')).rejects.toThrow(/fed by another tie/);
     await expect(tiePreviewPayload(5, 'XX')).rejects.toThrow(/no finals tie/);
   });
 

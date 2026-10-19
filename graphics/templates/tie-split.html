@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TNT — Finals tie: top and bottom</title>
+<link rel="stylesheet" href="./_tokens.css">
+<link rel="stylesheet" href="./_fonts.css">
+<link rel="stylesheet" href="./_assets.css">
+<link rel="stylesheet" href="./_base.css">
+<link rel="stylesheet" href="./_theme.css">
+<style>
+  /* One team a half, home on top: each half filled with its colour, the pair
+     standing in it, a gold band across the seam carrying the tie and the
+     time. Same payload as tie-preview.html. Cutouts are placed by head and
+     height (see "Cutouts" in graphics/README.md). */
+
+  .canvas { background: var(--ink-deep); }
+
+  /* The seam runs from y=704 at the left edge to y=616 at the right. */
+  .half { position: absolute; inset: 0; z-index: 1; overflow: hidden; }
+  .half.home { clip-path: polygon(0 0, 100% 0, 100% 616px, 0 704px); }
+  .half.away { clip-path: polygon(0 704px, 100% 616px, 100% 100%, 0 100%); }
+  .half::before {
+    content: ''; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse 60% 48% at var(--lx) var(--ly),
+        color-mix(in srgb, var(--team-glow) 70%, transparent), transparent 75%),
+      linear-gradient(var(--deg),
+        color-mix(in srgb, var(--team-2) 72%, var(--ink-deep)) 0%,
+        color-mix(in srgb, var(--team-2) 34%, var(--ink-deep)) 100%);
+  }
+  .half.home { --lx: 74%; --ly: 30%; --deg: 200deg; }
+  .half.away { --lx: 26%; --ly: 78%; --deg: 20deg; }
+  /* Court lines, faint, so a flat fill reads as a surface. */
+  .half::after {
+    content: ''; position: absolute; inset: 0; opacity: 0.1;
+    background:
+      repeating-linear-gradient(-4.2deg, transparent 0 118px, var(--paper) 118px 121px);
+  }
+
+  .fig {
+    position: absolute; z-index: 3; transform: translateX(-50%);
+    filter: drop-shadow(0 0 24px rgba(0, 0, 0, 0.45)) drop-shadow(0 24px 30px rgba(0, 0, 0, 0.5));
+  }
+  .fig img { display: block; height: 100%; width: auto; }
+  .fig.mate { z-index: 2; filter: brightness(0.8) saturate(0.9) drop-shadow(0 0 20px rgba(0, 0, 0, 0.5)); }
+  .fig.framed { filter: none; }
+  .fig.framed img { aspect-ratio: 3 / 4; object-fit: cover;
+    mask-image: radial-gradient(ellipse 50% 50% at 50% 45%, #000 55%, transparent 100%); }
+
+  /* Slots: x is the head, h the height. Home stands on the seam, away on
+     the foot of the frame. */
+  .half.home .fig.cap  { left: 650px; height: 690px; top: 196px; }
+  .half.home .fig.mate { left: 990px; height: 560px; top: 196px; }
+  .half.away .fig.cap  { left: 318px; height: 640px; top: 760px; }
+  .half.away .fig.mate { left: 118px; height: 560px; top: 800px; }
+
+  .floor { position: absolute; left: 0; right: 0; bottom: 0; height: 300px; z-index: 4;
+    background: linear-gradient(180deg, transparent, rgba(5, 11, 7, 0.85) 60%, var(--ink-deep)); }
+
+  /* ---- The band ---- */
+  .band {
+    position: absolute; z-index: 6; left: -40px; right: -40px; top: 612px; height: 96px;
+    transform: rotate(-4.66deg);
+    background: linear-gradient(180deg, #f3dea0 0%, var(--gold) 50%, #b08f45 100%);
+    box-shadow: 0 0 0 3px var(--ink-deep), 0 18px 40px rgba(0, 0, 0, 0.55);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 104px; color: var(--ink-deep);
+  }
+  .band .t {
+    font-family: var(--display); font-weight: 700; font-size: 44px;
+    letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap;
+  }
+  .band .w {
+    font-size: 32px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; white-space: nowrap;
+  }
+
+  /* ---- Each side's card ---- */
+  .info { position: absolute; z-index: 7; }
+  .info.home { left: 64px; top: 168px; }
+  .info.away { right: 64px; top: 812px; text-align: right; }
+  .seed {
+    font-family: var(--display); font-weight: 700; font-size: 30px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold);
+  }
+  .seed sup { font-size: 0.6em; vertical-align: top; letter-spacing: 0.1em; }
+  .team {
+    margin-top: 6px;
+    font-family: var(--display); font-weight: 700; font-size: 128px; line-height: 0.92;
+    letter-spacing: 0.02em; text-transform: uppercase; color: var(--paper); white-space: nowrap;
+    text-shadow: 0 6px 30px rgba(0, 0, 0, 0.45);
+  }
+  .rec { margin-top: 14px; display: flex; gap: 14px; align-items: baseline; }
+  .info.away .rec { justify-content: flex-end; }
+  .rec .wl { font-weight: 700; font-size: 70px; line-height: 1; color: var(--paper); }
+  .rec .k { font-size: 22px; font-weight: 600; letter-spacing: 0.24em; text-transform: uppercase; color: var(--gold-soft); }
+  .players { margin-top: 14px; font-size: 28px; font-weight: 600; letter-spacing: 0.06em; line-height: 1.25;
+    text-transform: uppercase; color: rgba(244, 241, 232, 0.86); }
+
+  .canvas > header { position: relative; z-index: 8; flex: none; text-align: center; }
+  .eyebrow { margin-top: -62px; padding-left: 0.44em; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5); }
+
+  .canvas > footer {
+    position: relative; z-index: 8; flex: none; margin-top: auto; margin-bottom: -96px;
+    display: flex; justify-content: center; align-items: center; gap: 18px;
+  }
+  footer .mark { width: 46px; color: var(--gold); }
+  .wordmark {
+    font-family: var(--display); font-weight: 600; font-size: 23px;
+    letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold); white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="canvas grain" id="canvas">
+  <div class="half home" id="halfHome"></div>
+  <div class="half away" id="halfAway"></div>
+  <div class="floor"></div>
+  <div class="band"><div class="t" id="title"></div><div class="w" id="when"></div></div>
+  <div class="info home" id="infoHome"></div>
+  <div class="info away" id="infoAway"></div>
+
+  <header><div class="eyebrow" id="eyebrow"></div></header>
+
+  <footer>
+    <div class="mark mark--crest"></div>
+    <div class="wordmark">Tuesday Night Tennis</div>
+  </footer>
+</div>
+
+<script type="module">
+const DATA = {
+  kind: 'tie-preview', tie: 'QF2',
+  eyebrow: 'Finals · Season 5 · 2026', title: 'Quarter Final', tag: '2nd v 7th',
+  subtitle: '', date: 'Tue 20 Oct', time: '6:30pm',
+  sides: [
+    { team: 'Red', seed: '2nd', pairing: 'L. Jenkin & J. Harris',
+      players: [
+        { name: 'Lachlan Jenkin', captain: true, photo: '../cutouts/s5/lachlan-jenkin.png', cutout: true },
+        { name: 'Jamie Harris', captain: false, photo: '../cutouts/s5/jamie-harris.png', cutout: true },
+      ],
+      wins: 6, losses: 2, ratio: '1.19', form: [] },
+    { team: 'Green', seed: '7th', pairing: 'Q. Feikema & A. Hume',
+      players: [
+        { name: 'Quinn Feikema', captain: true, photo: '../cutouts/s5/quinn-feikema.png', cutout: true },
+        { name: 'Angus Hume', captain: false, photo: '../cutouts/s5/angus-hume.png', cutout: true },
+      ],
+      wins: 3, losses: 5, ratio: '0.92', form: [] },
+  ],
+  meeting: null,
+  stakes: '', stakesLose: '',
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const number = (tie) => /\d+$/.exec(tie ?? '')?.[0] ?? '';
+const seed = (s) => {
+  const [, n, suf] = /^(\d+)(\D*)$/.exec(s) ?? [, s, ''];
+  return `${esc(n)}<sup>${esc(suf)}</sup> seed`;
+};
+
+/** As large as a line goes inside `width`, down to a floor. */
+function fit(el, max, min, width) {
+  for (let size = max; size >= min; size -= 2) {
+    el.style.fontSize = `${size}px`;
+    if (el.getBoundingClientRect().width <= width) return;
+  }
+}
+
+window.__render = function (d) {
+  const [home, away] = d.sides;
+  document.getElementById('eyebrow').textContent = d.eyebrow;
+  document.getElementById('title').textContent = `${d.title} ${number(d.tie)}`.trim();
+  document.getElementById('when').textContent = [d.subtitle || d.date, d.time].filter(Boolean).join(' · ');
+
+  for (const [where, s] of [['home', home], ['away', away]]) {
+    const half = document.getElementById(where === 'home' ? 'halfHome' : 'halfAway');
+    half.dataset.team = s.team;
+    // Partner first so the captain stands in front.
+    const [cap, mate] = s.players;
+    half.innerHTML = [['mate', mate], ['cap', cap]]
+      .filter(([, p]) => p?.photo)
+      .map(([role, p]) => `<div class="fig ${role}${p.cutout ? '' : ' framed'}"><img src="${esc(p.photo)}" alt=""></div>`)
+      .join('');
+
+    const info = document.getElementById(where === 'home' ? 'infoHome' : 'infoAway');
+    info.innerHTML = `<div class="seed">${seed(s.seed)}</div>
+      <div class="team"><span>${esc(s.team)}</span></div>
+      <div class="rec"><span class="wl">${s.wins}–${s.losses}</span><span class="k">W–L</span></div>
+      <div class="players">${s.players.map((p) => esc(p.name)).join('<br>')}</div>`;
+    // A long colour ("Light Blue") steps down rather than running into the pair.
+    fit(info.querySelector('.team span'), 128, 72, 480);
+  }
+};
+
+if (location.search.includes('guides')) document.body.classList.add('guides');
+window.__render(DATA);
+</script>
+</body>
+</html>

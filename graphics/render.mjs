@@ -75,6 +75,7 @@ const { values: argv } = parseArgs({
     eyebrow: { type: 'string' },
     pair: { type: 'string' },
     tie: { type: 'string' },
+    look: { type: 'string' },
     assume: { type: 'string' },
     player: { type: 'string' },
     sim: { type: 'string' },
@@ -200,6 +201,11 @@ Tie preview (--only tiepreview) — one seeded finals tie as a poster: both
                    pairs pictured, records and form off the final ladder, the
                    night they met in the home and away, what's at stake.
   --tie <id>       The tie, by its id in the season config. Default: WC.
+  --look <name>    Which poster, all from the same data: poster (the diagonal
+                   split, default), tape (tale of the tape — the numbers down
+                   a centre spine), split (one team a half, top and bottom),
+                   print (screen-print, on paper) or cards (two trading
+                   cards). One per tie on a night keeps a carousel varied.
   --photos <list>  Four images, comma-separated: home captain, home partner,
                    away captain, away partner. A .png is drawn as a cutout
                    (knee-cropped, centred on the head — see graphics/cutouts/);
@@ -580,21 +586,36 @@ if (only.has('finalsfixture')) {
   }
 }
 
+/** `--look` for a tie preview: the same payload, five posters. */
+const TIE_LOOKS = {
+  poster: 'tie-preview.html',
+  tape: 'tie-tape.html',
+  split: 'tie-split.html',
+  print: 'tie-print.html',
+  cards: 'tie-cards.html',
+};
+
 if (only.has('tiepreview')) {
   // A once-off poster for one finals tie. Refused (and reported) while the
   // seeds aren't settled, or for a tie fed by another tie's result.
   const tie = argv.tie ?? 'WC';
+  const look = argv.look ?? 'poster';
+  const template = TIE_LOOKS[look];
+  if (!template) {
+    console.error(`Unknown --look "${look}". Pick from: ${Object.keys(TIE_LOOKS).join(', ')}`);
+    process.exit(1);
+  }
   const photos = (argv.photos ?? '').split(',').map((p) => p.trim() || undefined);
   for (const p of photos) if (p && !existsSync(p)) warnings.push(`--photos: no such file "${p}" — using the default.`);
   try {
     await shoot(
-      'tie-preview.html',
+      template,
       await tiePreviewPayload(season, tie, {
         photos: photos.map((p) => (p && existsSync(p) ? p : undefined)),
         title: argv.headline,
         subtitle: argv.subhead,
       }),
-      `s${season}-${tie.toLowerCase()}-preview.png`
+      `s${season}-${tie.toLowerCase()}-preview${look === 'poster' ? '' : `-${look}`}.png`
     );
   } catch (err) {
     console.warn(`  skip tie preview: ${err.message}`);
