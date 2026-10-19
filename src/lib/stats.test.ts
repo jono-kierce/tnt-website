@@ -981,7 +981,8 @@ describe('finals data matches the brackets', () => {
     // Seeded off the ladder the site prints — a withdrawn team (S5 Black) off
     // it and its matches struck — or eighth and ninth come out wrong.
     const seeds = ladder(season, rows, undefined, undefined, withdrawnTeams(cfg)).map((r) => r.team);
-    const csvRows = rows.filter((r) => r.season === season && r.isFinals);
+    // A drawn-but-unplayed tie has rows (and a start time) but no result yet.
+    const csvRows = rows.filter((r) => r.season === season && r.isFinals && !r.scheduled);
 
     const winners = new Map<string, string>();
     const losers = new Map<string, string>();
@@ -1005,7 +1006,7 @@ describe('finals data matches the brackets', () => {
         const sides = csvRows.filter(
           (r) => r.stage === stage && (r.team === home || r.team === away)
         );
-        if (!sides.length) continue; // no stats entered for this tie yet
+        if (!sides.length) continue; // not played (or not entered) yet
 
         it(`S${season} ${m.id}: ${home} v ${away}`, () => {
           expect(res, 'bracket has no result but the CSV has rows').toBeTruthy();

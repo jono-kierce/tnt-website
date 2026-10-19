@@ -662,7 +662,9 @@ function clinchesWithWin(ctx: InsightContext, table: LadderRow[], team: string):
  * would be true of nearly every pairing in round one of every season — the
  * draft remakes ten of them at a stroke — which is the trap that killed the
  * old `firstMeetingInsight`. A record needs a real sample to be a record, so
- * the bar is four nights together, which is also what keeps this stingy.
+ * the bar is five nights together, which is also what keeps this stingy. It
+ * was four until the S5 quarter-final previews tipped it to 30.2% of the
+ * matches it can reach — finals pairs arrive with a season behind them.
  *
  * Nor is there a "won one of six" variant, tempting as it is. It would be an
  * unflattering line under a kind `NEGATIVE_KINDS` doesn't cover, so it would
@@ -672,7 +674,7 @@ function clinchesWithWin(ctx: InsightContext, table: LadderRow[], team: string):
  * bad-pair joke is already told, better, by whichever of those fires.
  */
 export function partnershipInsight(ctx: InsightContext): Insight | null {
-  const MIN = 4;
+  const MIN = 5;
   let best: { pair: string[]; team: string; wins: number; played: number } | null = null;
 
   for (const side of ctx.match.sides) {
