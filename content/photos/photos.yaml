@@ -689,6 +689,91 @@
   season: 5
   caption: Navy after taking their round-nine tiebreak against Light Blue
 
+- file: season-5/qf-feikema-golden-hour.jpg   # TNT Media/S5 Photos/qf/DSC07883.JPG
+  players: [quinn-feikema]
+  season: 5
+  caption: Quinn Feikema in the last of the sun on quarter-final night
+
+- file: season-5/qf-harris-forehand.jpg   # TNT Media/S5 Photos/qf/DSC07905.JPG
+  players: [jamie-harris]
+  season: 5
+  caption:
+
+- file: season-5/qf-jenkin-forehand.jpg   # TNT Media/S5 Photos/qf/DSC07908.JPG
+  players: [lachlan-jenkin]
+  season: 5
+  caption:
+
+- file: season-5/qf-green-embrace.jpg   # TNT Media/S5 Photos/qf/DSC08064.JPG
+  players: [quinn-feikema, angus-hume]
+  season: 5
+  caption: Green beat Red 6-3 in the quarter-finals
+
+- file: season-5/qf-seamer-serve.jpg   # TNT Media/S5 Photos/qf/DSC08083.JPG
+  players: [ethan-seamer]
+  season: 5
+  caption:
+
+- file: season-5/qf-dickson-smash.jpg   # TNT Media/S5 Photos/qf/DSC08111.JPG
+  players: [adam-dickson]
+  season: 5
+  caption:
+
+- file: season-5/qf-inlander-forehand.jpg   # TNT Media/S5 Photos/qf/DSC08137.JPG
+  players: [shayl-inlander]
+  season: 5
+  caption:
+
+- file: season-5/qf-brown-grin.jpg   # TNT Media/S5 Photos/qf/DSC08152.JPG
+  players: [ted-angel, adam-dickson]
+  season: 5
+  caption: Brown beat Light Blue 6-4 in the quarter-finals
+
+- file: season-5/qf-gorton-grounded.jpg   # TNT Media/S5 Photos/qf/DSC08180.JPG
+  players: [jimmy-gorton]
+  season: 5
+  caption:
+
+- file: season-5/qf-through-the-strings.jpg   # TNT Media/S5 Photos/qf/DSC08223.JPG
+  players: [luke-sharrock, lachy-godden]
+  season: 5
+  caption: Lachy Godden through Luke Sharrock's strings
+
+- file: season-5/qf-blue-hour.jpg   # TNT Media/S5 Photos/qf/DSC08229.JPG
+  players: [jimmy-gorton, jack-raines]
+  season: 5
+  caption: Yellow beat Orange 6-0 in the quarter-finals
+
+- file: season-5/qf-night-bench.jpg   # TNT Media/S5 Photos/qf/DSC08241.JPG
+  players: []
+  season: 5
+  caption: The bench on quarter-final night
+
+- file: season-5/qf-virgona-forehand.jpg   # TNT Media/S5 Photos/qf/DSC08324.JPG
+  players: [jackson-virgona]
+  season: 5
+  caption:
+
+- file: season-5/qf-maurice-serve.jpg   # TNT Media/S5 Photos/qf/DSC08384.JPG
+  players: [damon-maurice]
+  season: 5
+  caption:
+
+- file: season-5/qf-kierce-serve.jpg   # TNT Media/S5 Photos/qf/DSC08415.JPG
+  players: [jonathan-kierce]
+  season: 5
+  caption:
+
+- file: season-5/qf-simpson-volley.jpg   # TNT Media/S5 Photos/qf/DSC08425.JPG
+  players: [charlie-simpson]
+  season: 5
+  caption:
+
+- file: season-5/qf-five-from-five.jpg   # TNT Media/S5 Photos/qf/DSC08433.JPG
+  players: [jonathan-kierce, luke-sharrock]
+  season: 5
+  caption: Jonathan Kierce and Luke Sharrock, five quarter-finals each and five wins each
+
 # --- Profile pictures (avatar: true) -------------------------------------------
 # Square headshots for the 64-120px avatar tile. Never shown in a gallery, so
 # cutting one from a photo already listed above doesn't show it twice. The
